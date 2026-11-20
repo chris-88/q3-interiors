@@ -32,3 +32,6 @@ coverage
 # Playwright
 test-results
 playwright-report
+
+# Deno (functions are checked with deno; the edge runtime resolves its own deps)
+supabase/functions/deno.lock

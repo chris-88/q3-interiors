@@ -36,6 +36,14 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check Edge Functions
+        run: npm run functions:check
+
       - name: Lint
         run: npm run lint
 

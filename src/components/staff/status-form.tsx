@@ -53,7 +53,11 @@ export function StatusForm({ enquiryId, current }: { enquiryId: string; current:
       <FieldGroup className="gap-4">
         <Field>
           <FieldLabel htmlFor="status">Status</FieldLabel>
-          <NativeSelect id="status" className="w-full" {...register('status')}>
+          <NativeSelect
+            id="status"
+            className="w-full [&_select]:h-11 [&_select]:text-base"
+            {...register('status')}
+          >
             {ENQUIRY_STATUSES.map((value) => (
               <NativeSelectOption key={value} value={value}>
                 {STATUS_LABELS[value]}

@@ -270,7 +270,7 @@ export function EnquiryDetailPage() {
         <RawAnswers enquiry={data} />
       )}
 
-      <Section title="Status">
+      <Section title="Change status">
         <StatusForm enquiryId={data.id} current={data.status} />
       </Section>
       <History events={data.enquiry_events} />

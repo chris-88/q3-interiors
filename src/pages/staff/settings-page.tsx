@@ -254,8 +254,8 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
         {WEEKDAYS.map(([day, name]) => {
           const h = hours(day)
           return (
-            <div key={day} className="flex flex-wrap items-center gap-2">
-              <label className="flex w-32 items-center gap-2 text-sm" htmlFor={`day-${day}`}>
+            <div key={day} className="grid grid-cols-[6.5rem_1fr_auto_1fr] items-center gap-2">
+              <label className="flex items-center gap-2 text-sm" htmlFor={`day-${day}`}>
                 <Checkbox
                   id={`day-${day}`}
                   checked={h !== null}
@@ -270,7 +270,7 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
                     aria-label={`${name} start`}
                     value={h[0]}
                     onChange={(e) => setHours(day, [e.target.value, h[1]])}
-                    className="h-10 w-28 text-base"
+                    className="h-10 min-w-0 text-base"
                   />
                   <span className="text-muted-foreground text-sm">to</span>
                   <Input
@@ -278,7 +278,7 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
                     aria-label={`${name} end`}
                     value={h[1]}
                     onChange={(e) => setHours(day, [h[0], e.target.value])}
-                    className="h-10 w-28 text-base"
+                    className="h-10 min-w-0 text-base"
                   />
                 </>
               )}

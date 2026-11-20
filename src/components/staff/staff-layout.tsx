@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link } from 'react-router'
+import { Link, NavLink } from 'react-router'
 import {
   signInSchema,
   useSession,
@@ -16,6 +16,16 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+
+const StaffContext = createContext<StaffMember | null>(null)
+
+/** The signed-in staff member. Only valid inside <StaffArea>. */
+// oxlint-disable-next-line react/only-export-components
+export function useCurrentStaff(): StaffMember {
+  const staff = useContext(StaffContext)
+  if (!staff) throw new Error('useCurrentStaff outside StaffArea')
+  return staff
+}
 
 function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }) {
   const signOut = useSignOut()
@@ -47,6 +57,33 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
           )}
         </div>
       </header>
+      {staff && (
+        <nav aria-label="Staff" className="bg-background border-b">
+          <ul className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-2">
+            {[
+              ['/staff', 'Enquiries'],
+              ['/staff/appointments', 'Appointments'],
+              ['/staff/settings', 'Settings'],
+            ].map(([to, label]) => (
+              <li key={to}>
+                <NavLink
+                  to={to ?? '/staff'}
+                  end
+                  className={({ isActive }) =>
+                    `focus-visible:ring-ring/50 inline-flex h-11 items-center border-b-2 px-3 text-sm focus-visible:ring-3 focus-visible:outline-none ${
+                      isActive
+                        ? 'border-foreground text-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground border-transparent'
+                    }`
+                  }
+                >
+                  {label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
       <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
     </div>
   )
@@ -188,5 +225,9 @@ export function StaffArea({ children }: { children: ReactNode }) {
       </Shell>
     )
   }
-  return <Shell staff={staff.data}>{children}</Shell>
+  return (
+    <StaffContext.Provider value={staff.data}>
+      <Shell staff={staff.data}>{children}</Shell>
+    </StaffContext.Provider>
+  )
 }

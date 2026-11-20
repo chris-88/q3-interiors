@@ -16,7 +16,9 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatAnswer, visibleFields } from '@/forms/logic'
 import type { FormDefinition, FormField } from '@/forms/types'
-import { formatDateTime } from '@/lib/format'
+import { formatClock, formatDateTime, formatLongDate } from '@/lib/format'
+import { useEnquiryBookings } from '@/api/staff-booking'
+import { BookingStateBadge } from '@/components/staff/booking-state-badge'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -160,8 +162,21 @@ function Attribution({ attribution }: { attribution: EnquiryAttribution | null }
   )
 }
 
+const EVENT_TEXT: Partial<Record<EnquiryEvent['kind'], string>> = {
+  submitted: 'Enquiry received',
+  site_details_added: 'Customer added the property address',
+  contact_requested: 'Customer asked to be contacted',
+  booking_requested: 'Customer booked',
+  booking_confirmed: 'Calendar event created; booking confirmed',
+  booking_retrying: 'Calendar event not created yet; retrying',
+  booking_failed: 'Booking failed',
+  email_sent: 'Confirmation email sent',
+  email_failed: 'Confirmation email not sent',
+}
+
 function eventText(event: EnquiryEvent): string {
-  if (event.kind === 'submitted') return 'Enquiry received'
+  const fixed = EVENT_TEXT[event.kind]
+  if (fixed) return fixed
   const to = event.to_status ? STATUS_LABELS[event.to_status] : 'unknown'
   const from = event.from_status ? STATUS_LABELS[event.from_status] : null
   return from ? `Status changed from ${from} to ${to}` : `Status set to ${to}`
@@ -177,7 +192,11 @@ function History({ events }: { events: EnquiryEvent[] }) {
           {events.map((event) => (
             <li key={event.id} className="flex flex-col gap-0.5 border-l-2 pl-3">
               <span className="text-sm font-medium">{eventText(event)}</span>
-              {event.reason && <span className="text-sm whitespace-pre-line">{event.reason}</span>}
+              {(event.reason ?? event.detail) && (
+                <span className="text-sm break-words whitespace-pre-line">
+                  {event.reason ?? event.detail}
+                </span>
+              )}
               <span className="text-muted-foreground text-xs">
                 <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>
                 {event.actor_name ? ` · ${event.actor_name}` : ''}
@@ -186,6 +205,77 @@ function History({ events }: { events: EnquiryEvent[] }) {
           ))}
         </ol>
       )}
+    </Section>
+  )
+}
+
+function BookingsSection({ enquiryId }: { enquiryId: string }) {
+  const bookings = useEnquiryBookings(enquiryId)
+  return (
+    <Section title="Appointments">
+      {bookings.isPending ? (
+        <Skeleton className="h-16 w-full" />
+      ) : bookings.isError ? (
+        <p className="text-destructive text-sm">Could not load appointments.</p>
+      ) : bookings.data.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No appointment booked.</p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {bookings.data.map((b) => (
+            <li key={b.id} className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">
+                  {formatLongDate(b.starts_at)}, {formatClock(b.starts_at)}
+                </span>
+                <BookingStateBadge state={b.state} />
+              </div>
+              <span className="text-sm">{b.appointment_types.label}</span>
+              {b.failure_reason && (
+                <span className="text-destructive text-sm break-words">{b.failure_reason}</span>
+              )}
+              {b.calendar_event_link && (
+                <a
+                  href={b.calendar_event_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm underline underline-offset-4"
+                >
+                  Open in Google Calendar
+                </a>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+}
+
+function SiteDetails({
+  answers,
+  form,
+}: {
+  answers: EnquiryDetail['answers']
+  form: FormDefinition | undefined
+}) {
+  const fields = form ? form.steps.flatMap((s) => s.fields) : []
+  return (
+    <Section title="Property">
+      <dl className="flex flex-col gap-3">
+        {form
+          ? fields.map((field) => (
+              <Row key={field.id} label={field.label}>
+                {formatAnswer(field, answers[field.id]) ?? (
+                  <span className="text-muted-foreground">Not given</span>
+                )}
+              </Row>
+            ))
+          : Object.entries(answers).map(([key, value]) => (
+              <Row key={key} label={key}>
+                {Array.isArray(value) ? value.join(', ') : value}
+              </Row>
+            ))}
+      </dl>
     </Section>
   )
 }
@@ -268,6 +358,23 @@ export function EnquiryDetailPage() {
         <Answers enquiry={data} form={form} />
       ) : (
         <RawAnswers enquiry={data} />
+      )}
+
+      <BookingsSection enquiryId={data.id} />
+      {data.contact_requested_at && (
+        <Alert>
+          <AlertTitle>Asked to be contacted</AlertTitle>
+          <AlertDescription>
+            {formatDateTime(data.contact_requested_at)}
+            {data.contact_request_reason ? `: ${data.contact_request_reason}` : ''}
+          </AlertDescription>
+        </Alert>
+      )}
+      {data.site_details && (
+        <SiteDetails
+          answers={data.site_details}
+          form={forms.data?.get(`site_details@${data.site_details_form_version ?? 1}`)}
+        />
       )}
 
       <Section title="Change status">

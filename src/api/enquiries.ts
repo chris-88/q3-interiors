@@ -46,7 +46,19 @@ export type EnquiryAttribution = z.infer<typeof attributionSchema>
 
 const eventSchema = z.object({
   id: z.number(),
-  kind: z.enum(['submitted', 'status_changed']),
+  kind: z.enum([
+    'submitted',
+    'status_changed',
+    'site_details_added',
+    'contact_requested',
+    'booking_requested',
+    'booking_confirmed',
+    'booking_failed',
+    'booking_retrying',
+    'email_sent',
+    'email_failed',
+  ]),
+  detail: z.string().nullable(),
   from_status: statusSchema.nullable(),
   to_status: statusSchema.nullable(),
   reason: z.string().nullable(),
@@ -61,6 +73,10 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
   marketing_opt_in: z.boolean(),
   marketing_opt_in_at: z.string().nullable(),
   updated_at: z.string(),
+  site_details: answersSchema.nullable(),
+  site_details_form_version: z.number().nullable(),
+  contact_requested_at: z.string().nullable(),
+  contact_request_reason: z.string().nullable(),
   // One-to-one embed: PostgREST returns an object (or null) because enquiry_id is the key.
   enquiry_attribution: attributionSchema.nullable(),
   enquiry_events: z.array(eventSchema),
@@ -93,9 +109,10 @@ export function useEnquiry(id: string) {
         .from('enquiries')
         .select(
           `${SUMMARY_COLUMNS}, status_reason, marketing_opt_in, marketing_opt_in_at, updated_at,
+           site_details, site_details_form_version, contact_requested_at, contact_request_reason,
            enquiry_attribution (tracking, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
              click_id_present, landing_path, first_seen_at),
-           enquiry_events (id, kind, from_status, to_status, reason, actor_name, created_at)`,
+           enquiry_events (id, kind, from_status, to_status, reason, detail, actor_name, created_at)`,
         )
         .eq('id', id)
         .order('created_at', { referencedTable: 'enquiry_events', ascending: false })

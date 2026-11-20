@@ -1,10 +1,49 @@
-import { Button } from '@/components/ui/button'
+import { lazy, Suspense } from 'react'
+import { Link, Route, Routes } from 'react-router'
+import { PublicLayout } from '@/components/public-layout'
+import { ConfirmationPage } from '@/pages/confirmation-page'
+import { EnquiryPage } from '@/pages/enquiry-page'
+import { LandingPage } from '@/pages/landing-page'
+
+const StaffListRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffListRoute })),
+)
+const StaffDetailRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffDetailRoute })),
+)
+
+function NotFound() {
+  return (
+    <PublicLayout>
+      <h1 className="text-2xl font-semibold tracking-tight">Page not found</h1>
+      <p className="text-muted-foreground mt-2">
+        <Link to="/" className="underline underline-offset-4">
+          Go to the home page
+        </Link>
+      </p>
+    </PublicLayout>
+  )
+}
+
+function Loading() {
+  return (
+    <p className="text-muted-foreground p-6 text-sm" aria-busy="true">
+      Loading…
+    </p>
+  )
+}
 
 export default function App() {
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-4">
-      <h1 className="text-2xl font-semibold">Q3 Interiors</h1>
-      <Button>Get started</Button>
-    </main>
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/enquire" element={<EnquiryPage />} />
+        <Route path="/enquire/sent" element={<ConfirmationPage />} />
+        <Route path="/staff" element={<StaffListRoute />} />
+        <Route path="/staff/enquiries/:id" element={<StaffDetailRoute />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
   )
 }

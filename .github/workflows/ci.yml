@@ -1,0 +1,43 @@
+name: CI
+
+# The same quality gate as the deploy, run on every pull request so a change is green before it
+# merges. The e2e test stubs the Supabase RPC, so it never touches the real database.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The bundle needs a URL and key to boot; fallbacks keep a fork PR (no vars) building.
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'http://127.0.0.1:54321' }}
+  VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || 'ci-placeholder-not-a-real-key' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Upload the Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results
+          retention-days: 7

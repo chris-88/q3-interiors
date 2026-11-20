@@ -1,0 +1,344 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
+import { supabase } from '@/lib/supabase'
+import { ApiError, toApiError } from './errors'
+
+export const BOOKING_STATES = [
+  'reserved',
+  'calendar_pending',
+  'confirmed',
+  'failed',
+  'cancelled',
+] as const
+export type BookingState = (typeof BOOKING_STATES)[number]
+export const BOOKING_STATE_LABELS: Record<BookingState, string> = {
+  reserved: 'Reserved',
+  calendar_pending: 'Confirming',
+  confirmed: 'Confirmed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+}
+
+const answers = z.record(z.string(), z.union([z.string(), z.array(z.string())]))
+
+const bookingSchema = z.object({
+  id: z.string(),
+  enquiry_id: z.string(),
+  state: z.enum(BOOKING_STATES),
+  starts_at: z.string(),
+  ends_at: z.string(),
+  failure_reason: z.string().nullable(),
+  calendar_event_id: z.string(),
+  calendar_event_link: z.string().nullable(),
+  created_at: z.string(),
+  appointment_types: z.object({ label: z.string(), mode: z.enum(['phone', 'on_site']) }),
+  enquiries: z.object({ reference: z.string(), answers }).nullable(),
+})
+export type StaffBooking = z.infer<typeof bookingSchema>
+
+const BOOKING_COLUMNS = `id, enquiry_id, state, starts_at, ends_at, failure_reason, calendar_event_id,
+  calendar_event_link, created_at, appointment_types (label, mode), enquiries (reference, answers)`
+
+export function useAppointments() {
+  return useQuery({
+    queryKey: ['appointments'],
+    queryFn: async (): Promise<StaffBooking[]> => {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(BOOKING_COLUMNS)
+        .order('starts_at', { ascending: true })
+        .limit(300)
+      if (error) throw toApiError(error)
+      return z.array(bookingSchema).parse(data)
+    },
+  })
+}
+
+export function useEnquiryBookings(enquiryId: string) {
+  return useQuery({
+    queryKey: ['enquiries', enquiryId, 'bookings'],
+    queryFn: async (): Promise<StaffBooking[]> => {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(BOOKING_COLUMNS)
+        .eq('enquiry_id', enquiryId)
+        .order('created_at', { ascending: false })
+      if (error) throw toApiError(error)
+      return z.array(bookingSchema).parse(data)
+    },
+  })
+}
+
+const connectionSchema = z.object({
+  staff_user_id: z.string(),
+  status: z.enum(['connected', 'disconnected']),
+  google_email: z.string().nullable(),
+  calendar_id: z.string(),
+  connected_at: z.string().nullable(),
+  last_success_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+  last_error_at: z.string().nullable(),
+})
+export type CalendarConnection = z.infer<typeof connectionSchema>
+
+export function useCalendarConnection(staffUserId: string | undefined) {
+  return useQuery({
+    queryKey: ['calendar_connection', staffUserId],
+    enabled: staffUserId !== undefined,
+    queryFn: async (): Promise<CalendarConnection | null> => {
+      const { data, error } = await supabase
+        .from('calendar_connections')
+        .select(
+          'staff_user_id, status, google_email, calendar_id, connected_at, last_success_at, last_error, last_error_at',
+        )
+        .eq('staff_user_id', staffUserId ?? '')
+        .maybeSingle()
+      if (error) throw toApiError(error)
+      return data === null ? null : connectionSchema.parse(data)
+    },
+  })
+}
+
+export type CalendarAction = 'start' | 'test' | 'disconnect'
+
+const actionResult = z.object({
+  url: z.string().optional(),
+  status: z.string().optional(),
+  error: z.string().optional(),
+  message: z.string().optional(),
+})
+
+export function useCalendarAction(staffUserId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (action: CalendarAction) => {
+      const { data, error } = await supabase.functions.invoke('calendar-admin', {
+        body: { action },
+      })
+      if (error) throw new ApiError(error.message)
+      const parsed = actionResult.parse(data)
+      if (parsed.error === 'not_configured') {
+        throw new ApiError('Google sign-in is not set up on the server yet', 'not_configured')
+      }
+      if (parsed.error || parsed.status === 'error')
+        throw new ApiError(parsed.message ?? parsed.error ?? 'Failed')
+      return parsed
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ['calendar_connection', staffUserId] }),
+  })
+}
+
+export const WEEKDAYS = [
+  ['1', 'Monday'],
+  ['2', 'Tuesday'],
+  ['3', 'Wednesday'],
+  ['4', 'Thursday'],
+  ['5', 'Friday'],
+  ['6', 'Saturday'],
+  ['7', 'Sunday'],
+] as const
+
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/, 'Use HH:MM')
+
+export const availabilitySchema = z.object({
+  staff_user_id: z.string(),
+  working_hours: z.record(z.string(), z.array(z.tuple([clock, clock]))),
+  min_notice_minutes: z.number().int().min(0).max(20160),
+  horizon_days: z.number().int().min(1).max(120),
+  daily_visit_limit: z.number().int().min(0).max(20),
+  slot_step_minutes: z.union([
+    z.literal(10),
+    z.literal(15),
+    z.literal(20),
+    z.literal(30),
+    z.literal(60),
+  ]),
+})
+export type StaffAvailability = z.infer<typeof availabilitySchema>
+
+export function useStaffAvailability(staffUserId: string | undefined) {
+  return useQuery({
+    queryKey: ['staff_availability', staffUserId],
+    enabled: staffUserId !== undefined,
+    queryFn: async (): Promise<StaffAvailability | null> => {
+      const { data, error } = await supabase
+        .from('staff_availability')
+        .select(
+          'staff_user_id, working_hours, min_notice_minutes, horizon_days, daily_visit_limit, slot_step_minutes',
+        )
+        .eq('staff_user_id', staffUserId ?? '')
+        .maybeSingle()
+      if (error) throw toApiError(error)
+      return data === null ? null : availabilitySchema.parse(data)
+    },
+  })
+}
+
+export function useUpdateAvailability() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (value: StaffAvailability) => {
+      const { staff_user_id, ...rest } = availabilitySchema.parse(value)
+      const { error } = await supabase
+        .from('staff_availability')
+        .update({ ...rest, updated_at: new Date().toISOString() })
+        .eq('staff_user_id', staff_user_id)
+      if (error) throw toApiError(error)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staff_availability'] }),
+  })
+}
+
+export const appointmentTypeSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1).max(80),
+  mode: z.enum(['phone', 'on_site']),
+  duration_minutes: z.number().int().min(5).max(480),
+  buffer_before_minutes: z.number().int().min(0).max(240),
+  buffer_after_minutes: z.number().int().min(0).max(240),
+  active: z.boolean(),
+})
+export type AppointmentTypeSettings = z.infer<typeof appointmentTypeSchema>
+
+export function useAppointmentTypes() {
+  return useQuery({
+    queryKey: ['appointment_types'],
+    queryFn: async (): Promise<AppointmentTypeSettings[]> => {
+      const { data, error } = await supabase
+        .from('appointment_types')
+        .select(
+          'id, label, mode, duration_minutes, buffer_before_minutes, buffer_after_minutes, active',
+        )
+        .order('sort_order')
+      if (error) throw toApiError(error)
+      return z.array(appointmentTypeSchema).parse(data)
+    },
+  })
+}
+
+export function useUpdateAppointmentType() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (value: AppointmentTypeSettings) => {
+      const { id, mode: _mode, ...rest } = appointmentTypeSchema.parse(value)
+      const { error } = await supabase
+        .from('appointment_types')
+        .update({ ...rest, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw toApiError(error)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['appointment_types'] }),
+  })
+}
+
+export type StaffException = {
+  id: string
+  kind: 'calendar' | 'booking' | 'contact' | 'email'
+  text: string
+  link: string
+}
+
+/** Things that need a person: a disconnected calendar, failed bookings, contact requests, failed emails. */
+export function useExceptions(staffUserId: string | undefined) {
+  return useQuery({
+    queryKey: ['exceptions', staffUserId],
+    enabled: staffUserId !== undefined,
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<StaffException[]> => {
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const [connection, failed, contacts, emails] = await Promise.all([
+        supabase
+          .from('calendar_connections')
+          .select('status, last_error')
+          .eq('staff_user_id', staffUserId ?? '')
+          .maybeSingle(),
+        supabase
+          .from('bookings')
+          .select('id, enquiry_id, failure_reason, enquiries (reference)')
+          .eq('state', 'failed')
+          .gte('updated_at', since)
+          .order('updated_at', { ascending: false }),
+        supabase
+          .from('enquiries')
+          .select('id, reference, contact_request_reason')
+          .not('contact_requested_at', 'is', null)
+          .eq('status', 'new')
+          .order('contact_requested_at', { ascending: false }),
+        supabase
+          .from('communications')
+          .select('id, enquiry_id, last_error, enquiries (reference)')
+          .eq('state', 'failed')
+          .gte('updated_at', since),
+      ])
+      for (const r of [connection, failed, contacts, emails]) if (r.error) throw toApiError(r.error)
+      const out: StaffException[] = []
+      const conn = z
+        .object({ status: z.string(), last_error: z.string().nullable() })
+        .nullable()
+        .parse(connection.data)
+      if (!conn || conn.status !== 'connected') {
+        out.push({
+          id: 'calendar',
+          kind: 'calendar',
+          text: conn
+            ? `Google Calendar is disconnected${conn.last_error ? `: ${conn.last_error}` : ''}. Customers are being asked if we can contact them instead.`
+            : 'No Google Calendar is connected. Customers cannot book times and are offered a call-back instead.',
+          link: '/staff/settings',
+        })
+      }
+      const ref = z.object({ reference: z.string() }).nullable()
+      for (const b of z
+        .array(
+          z.object({
+            id: z.string(),
+            enquiry_id: z.string(),
+            failure_reason: z.string().nullable(),
+            enquiries: ref,
+          }),
+        )
+        .parse(failed.data)) {
+        out.push({
+          id: `booking-${b.id}`,
+          kind: 'booking',
+          text: `Booking for ${b.enquiries?.reference ?? 'an enquiry'} failed: ${b.failure_reason ?? 'unknown reason'}`,
+          link: `/staff/enquiries/${b.enquiry_id}`,
+        })
+      }
+      for (const e of z
+        .array(
+          z.object({
+            id: z.string(),
+            reference: z.string(),
+            contact_request_reason: z.string().nullable(),
+          }),
+        )
+        .parse(contacts.data)) {
+        out.push({
+          id: `contact-${e.id}`,
+          kind: 'contact',
+          text: `${e.reference} asked to be contacted${e.contact_request_reason ? ` (${e.contact_request_reason})` : ''}`,
+          link: `/staff/enquiries/${e.id}`,
+        })
+      }
+      for (const c of z
+        .array(
+          z.object({
+            id: z.string(),
+            enquiry_id: z.string(),
+            last_error: z.string().nullable(),
+            enquiries: ref,
+          }),
+        )
+        .parse(emails.data)) {
+        out.push({
+          id: `email-${c.id}`,
+          kind: 'email',
+          text: `Confirmation email for ${c.enquiries?.reference ?? 'an enquiry'} not sent: ${c.last_error ?? 'unknown error'}`,
+          link: `/staff/enquiries/${c.enquiry_id}`,
+        })
+      }
+      return out
+    },
+  })
+}

@@ -14,11 +14,20 @@ export type SubmitEnquiryInput = {
   attribution: Attribution | null
 }
 
-const referenceSchema = z.string().regex(/^Q3-[A-Z0-9]{6}$/)
+const submittedSchema = z.object({
+  reference: z.string().regex(/^Q3-[A-Z0-9]{6}$/),
+  access_token: z.string().min(20),
+  expires_at: z.string(),
+})
 
-/** Saves an enquiry through `submit_enquiry`. Resolves to the customer-facing reference. */
-export async function submitEnquiry(input: SubmitEnquiryInput): Promise<string> {
-  const { data, error } = await supabase.rpc('submit_enquiry', {
+export type SubmittedEnquiry = { reference: string; accessToken: string }
+
+/**
+ * Saves an enquiry through `submit_enquiry_with_access`. Resolves to the customer-facing
+ * reference and an access token that lets this browser schedule against this enquiry only.
+ */
+export async function submitEnquiry(input: SubmitEnquiryInput): Promise<SubmittedEnquiry> {
+  const { data, error } = await supabase.rpc('submit_enquiry_with_access', {
     p_idempotency_key: input.idempotencyKey,
     p_form_id: input.formId,
     p_form_version: input.formVersion,
@@ -27,9 +36,9 @@ export async function submitEnquiry(input: SubmitEnquiryInput): Promise<string> 
     p_attribution: input.attribution,
   })
   if (error) throw toApiError(error)
-  const parsed = referenceSchema.safeParse(data)
-  if (!parsed.success) throw new ApiError('Unexpected response from submit_enquiry')
-  return parsed.data
+  const parsed = submittedSchema.safeParse(data)
+  if (!parsed.success) throw new ApiError('Unexpected response from submit_enquiry_with_access')
+  return { reference: parsed.data.reference, accessToken: parsed.data.access_token }
 }
 
 export function useSubmitEnquiry() {

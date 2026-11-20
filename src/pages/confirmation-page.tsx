@@ -4,12 +4,14 @@ import { Link } from 'react-router'
 import { PublicLayout } from '@/components/public-layout'
 import { buttonVariants } from '@/components/ui/button'
 import { business } from '@/config/business'
+import { readBookingAccess } from '@/lib/booking-access'
 import { readSubmittedReference } from '@/lib/draft'
 import { safeStorage } from '@/lib/storage'
 
 /** Shown only after `submit_enquiry` has returned a reference. */
 export function ConfirmationPage() {
   const [reference] = useState(() => readSubmittedReference(safeStorage('session')))
+  const [access] = useState(() => readBookingAccess(safeStorage('local')))
 
   if (!reference) {
     return (
@@ -61,9 +63,17 @@ export function ConfirmationPage() {
           your reference.
         </p>
       )}
+      {access && access.reference === reference && (
+        <Link
+          to={`/book/${access.token}`}
+          className={buttonVariants({ size: 'lg', className: 'mt-10 h-12' })}
+        >
+          Choose a time to talk
+        </Link>
+      )}
       <Link
         to="/"
-        className={buttonVariants({ variant: 'outline', size: 'lg', className: 'mt-10 h-12' })}
+        className={buttonVariants({ variant: 'outline', size: 'lg', className: 'mt-4 h-12' })}
       >
         Back to the home page
       </Link>

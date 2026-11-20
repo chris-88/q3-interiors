@@ -1,0 +1,11 @@
+{
+  // Import map shared by every function on the q3-interiors stack (the stack's main router loads
+  // /home/deno/functions/deno.jsonc). Deployed by scripts/functions-deploy.sh; the first two
+  // entries are the stack's own defaults and must stay.
+  "imports": {
+    "@supabase/functions-js": "jsr:@supabase/functions-js@^2",
+    "@supabase/server": "npm:@supabase/server@^1",
+    "zod": "npm:zod@4.6.7",
+    "postgres": "npm:postgres@3.4.7",
+  },
+}

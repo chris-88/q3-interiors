@@ -30,6 +30,7 @@ import {
   saveDraft,
   type Draft,
 } from '@/lib/draft'
+import { rememberBookingAccess } from '@/lib/booking-access'
 import { safeStorage, type SafeStorage } from '@/lib/storage'
 
 type Props = {
@@ -177,9 +178,11 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
         attribution: currentAttribution(localStore),
       },
       {
-        onSuccess: (reference) => {
+        onSuccess: ({ reference, accessToken }) => {
           completeSubmission(sessionStore, reference)
-          void navigate('/enquire/sent', { replace: true })
+          rememberBookingAccess(localStore, { reference, token: accessToken })
+          // Straight on to scheduling. The token is opaque; nothing personal goes in the URL.
+          void navigate(`/book/${accessToken}`, { replace: true })
         },
       },
     )

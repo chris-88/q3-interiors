@@ -20,7 +20,8 @@ expect_code() {
   fi
 }
 
-for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events; do
+for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
+  bookings appointment_types staff_availability calendar_connections integration_jobs communications; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -33,4 +34,22 @@ expect_code "anon cannot change status" 42501 \
 expect_code "submit_enquiry validates on the server" 22023 \
   "$(curl -s -X POST "$rest/rpc/submit_enquiry" "${headers[@]}" \
     -d '{"p_idempotency_key":"00000000-0000-4000-8000-000000000000","p_form_id":"enquiry","p_form_version":1,"p_answers":{}}')"
+expect_code "anon cannot resolve tokens directly" 42501 \
+  "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
+
+# Edge Functions (slice 2).
+functions="$url/functions/v1"
+check() { # what, expected, actual
+  if [[ "$3" == "$2" ]]; then echo "ok    $1"; else echo "FAIL  $1: got $3"; fail=1; fi
+}
+check "public-booking refuses an unknown token" '{"error":"invalid_token"}' \
+  "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
+    -d '{"action":"context","token":"not-a-real-token-0000000000"}')"
+check "booking-worker refuses a call without the worker secret" '{"error":"forbidden"}' \
+  "$(curl -s -X POST "$functions/booking-worker" "${headers[@]}" -d '{}')"
+check "calendar-admin refuses a caller who is not staff" '{"error":"forbidden"}' \
+  "$(curl -s -X POST "$functions/calendar-admin" "${headers[@]}" -d '{"action":"start"}')"
+check "the OAuth callback is reachable without a JWT and refuses a bad state" \
+  "https://q3.chrisquinn.ie/#/staff/settings?calendar=error&reason=expired" \
+  "$(curl -s -o /dev/null -w '%{redirect_url}' "$functions/google-oauth-callback?state=bad&code=x")"
 exit "$fail"

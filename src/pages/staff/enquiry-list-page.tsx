@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router'
 import { useEnquiries, useFormVersions, type EnquirySummary } from '@/api/enquiries'
+import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { StatusBadge } from '@/components/staff/status-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ export function EnquiryListPage() {
 
   return (
     <>
+      <ExceptionsBanner />
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">Enquiries</h1>
         <Button

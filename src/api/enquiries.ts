@@ -1,0 +1,146 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
+import { formDefinitionSchema } from '@/forms/definition-schema'
+import type { FormDefinition } from '@/forms/types'
+import { supabase } from '@/lib/supabase'
+import { toApiError } from './errors'
+
+export const ENQUIRY_STATUSES = ['new', 'in_review', 'contacted', 'unsuitable'] as const
+export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number]
+
+export const STATUS_LABELS: Record<EnquiryStatus, string> = {
+  new: 'New',
+  in_review: 'In review',
+  contacted: 'Contacted',
+  unsuitable: 'Unsuitable',
+}
+
+const statusSchema = z.enum(ENQUIRY_STATUSES)
+const answersSchema = z.record(z.string(), z.union([z.string(), z.array(z.string())]))
+
+const enquirySummarySchema = z.object({
+  id: z.string(),
+  reference: z.string(),
+  status: statusSchema,
+  form_id: z.string(),
+  form_version: z.number(),
+  answers: answersSchema,
+  submitted_at: z.string(),
+})
+
+export type EnquirySummary = z.infer<typeof enquirySummarySchema>
+
+const attributionSchema = z.object({
+  tracking: z.enum(['tagged', 'unknown']),
+  utm_source: z.string().nullable(),
+  utm_medium: z.string().nullable(),
+  utm_campaign: z.string().nullable(),
+  utm_content: z.string().nullable(),
+  utm_term: z.string().nullable(),
+  click_id_present: z.boolean().nullable(),
+  landing_path: z.string().nullable(),
+  first_seen_at: z.string().nullable(),
+})
+
+export type EnquiryAttribution = z.infer<typeof attributionSchema>
+
+const eventSchema = z.object({
+  id: z.number(),
+  kind: z.enum(['submitted', 'status_changed']),
+  from_status: statusSchema.nullable(),
+  to_status: statusSchema.nullable(),
+  reason: z.string().nullable(),
+  actor_name: z.string().nullable(),
+  created_at: z.string(),
+})
+
+export type EnquiryEvent = z.infer<typeof eventSchema>
+
+const enquiryDetailSchema = enquirySummarySchema.extend({
+  status_reason: z.string().nullable(),
+  marketing_opt_in: z.boolean(),
+  marketing_opt_in_at: z.string().nullable(),
+  updated_at: z.string(),
+  // One-to-one embed: PostgREST returns an object (or null) because enquiry_id is the key.
+  enquiry_attribution: attributionSchema.nullable(),
+  enquiry_events: z.array(eventSchema),
+})
+
+export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
+
+const SUMMARY_COLUMNS = 'id, reference, status, form_id, form_version, answers, submitted_at'
+
+export function useEnquiries() {
+  return useQuery({
+    queryKey: ['enquiries'],
+    queryFn: async (): Promise<EnquirySummary[]> => {
+      const { data, error } = await supabase
+        .from('enquiries')
+        .select(SUMMARY_COLUMNS)
+        .order('submitted_at', { ascending: false })
+        .limit(200)
+      if (error) throw toApiError(error)
+      return z.array(enquirySummarySchema).parse(data)
+    },
+  })
+}
+
+export function useEnquiry(id: string) {
+  return useQuery({
+    queryKey: ['enquiries', id],
+    queryFn: async (): Promise<EnquiryDetail | null> => {
+      const { data, error } = await supabase
+        .from('enquiries')
+        .select(
+          `${SUMMARY_COLUMNS}, status_reason, marketing_opt_in, marketing_opt_in_at, updated_at,
+           enquiry_attribution (tracking, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+             click_id_present, landing_path, first_seen_at),
+           enquiry_events (id, kind, from_status, to_status, reason, actor_name, created_at)`,
+        )
+        .eq('id', id)
+        .order('created_at', { referencedTable: 'enquiry_events', ascending: false })
+        .maybeSingle()
+      if (error) throw toApiError(error)
+      return data === null ? null : enquiryDetailSchema.parse(data)
+    },
+  })
+}
+
+/** Every published form version, keyed `formId@version`. Staff only (RLS). */
+export function useFormVersions() {
+  return useQuery({
+    queryKey: ['form_versions'],
+    staleTime: Infinity,
+    queryFn: async (): Promise<Map<string, FormDefinition>> => {
+      const { data, error } = await supabase
+        .from('form_versions')
+        .select('form_id, version, schema')
+      if (error) throw toApiError(error)
+      const rows = z
+        .array(z.object({ form_id: z.string(), version: z.number(), schema: formDefinitionSchema }))
+        .parse(data)
+      return new Map(rows.map((row) => [`${row.form_id}@${row.version}`, row.schema]))
+    },
+  })
+}
+
+export type SetStatusInput = { id: string; status: EnquiryStatus; reason: string | null }
+
+export function useSetEnquiryStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, status, reason }: SetStatusInput) => {
+      const { error } = await supabase.rpc('set_enquiry_status', {
+        p_enquiry_id: id,
+        p_status: status,
+        p_reason: reason,
+      })
+      if (error) throw toApiError(error)
+    },
+    onSuccess: (_data, { id }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['enquiries', id] }),
+        queryClient.invalidateQueries({ queryKey: ['enquiries'], exact: true }),
+      ]),
+  })
+}

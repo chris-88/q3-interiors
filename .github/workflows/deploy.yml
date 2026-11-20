@@ -52,6 +52,13 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
+      # The enquiry journey end to end at 390px against the built bundle (RPC stubbed).
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end
+        run: npm run test:e2e
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

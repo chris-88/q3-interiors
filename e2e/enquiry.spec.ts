@@ -1,34 +1,16 @@
-import { expect, test, type Request } from '@playwright/test'
-
-type SubmitBody = {
-  p_idempotency_key: string
-  p_form_id: string
-  p_form_version: number
-  p_answers: Record<string, unknown>
-  p_marketing_opt_in: boolean
-  p_attribution: Record<string, unknown> | null
-}
+import { expect, test } from '@playwright/test'
+import { installFakeBackend } from './fake-backend'
 
 test('a homeowner describes a project, corrects an answer, survives a failed save and sends it', async ({
   page,
 }) => {
-  const bodies: SubmitBody[] = []
   const urls: string[] = []
   page.on('framenavigated', (frame) => {
     if (frame === page.mainFrame()) urls.push(frame.url())
   })
 
   // First attempt fails at the network; the retry succeeds.
-  let attempts = 0
-  await page.route('**/rest/v1/rpc/submit_enquiry', async (route) => {
-    bodies.push((route.request() as Request).postDataJSON() as SubmitBody)
-    attempts += 1
-    if (attempts === 1) {
-      await route.abort('internetdisconnected')
-      return
-    }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '"Q3-TEST23"' })
-  })
+  const { submitBodies: bodies } = await installFakeBackend(page, { failFirstSubmit: true })
 
   await page.goto('/?utm_source=instagram&utm_medium=paid_social&fbclid=abc#/')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('renovation')
@@ -89,10 +71,13 @@ test('a homeowner describes a project, corrects an answer, survives a failed sav
   await expect(page.getByText('Your enquiry has not gone through')).toBeVisible()
   await expect(page.getByText('D07 X2Y3')).toBeVisible()
 
-  // The retry reuses the idempotency key, and only then is the confirmation shown.
+  // The retry reuses the idempotency key; only after the save does scheduling open.
   await page.getByRole('button', { name: 'Try again' }).click()
-  await expect(page.getByRole('heading', { name: 'Thank you, we have your enquiry' })).toBeVisible()
-  await expect(page.getByText('Q3-TEST23')).toBeVisible()
+  await expect(page.getByText(/Enquiry received. Your reference is Q3-/)).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'How would you like to talk it through?' }),
+  ).toBeVisible()
+  expect(page.url()).toMatch(/#\/book\/tok-/)
 
   expect(bodies).toHaveLength(2)
   const [first, second] = bodies

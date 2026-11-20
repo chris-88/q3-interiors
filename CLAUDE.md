@@ -8,18 +8,18 @@ Q3 Interiors is a multi-trade renovation contractor. This app is its customer ac
 
 The scaffold is a hello page with a working Supabase client; no features, pages or tables yet.
 
-| Concern            | Choice                                                                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| Build              | Vite + React + TypeScript (strict, `noUncheckedIndexedAccess`, no `any`)                                                       |
-| Styling / UI       | Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (Base UI)                                                                    |
-| Routing            | React Router, `HashRouter` (GitHub Pages cannot serve deep links)                                                              |
-| Server state       | TanStack Query; Supabase reads/writes through hooks in `src/api/`                                                              |
-| Validation / forms | Zod + React Hook Form                                                                                                          |
-| Backend            | Supabase (eu-west-2), ref pending: project not yet created (CLI returned Forbidden on 2026-11-20); fill the ref in once linked |
-| Tests              | Vitest + Testing Library; Playwright when e2e is warranted                                                                     |
-| Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                                                               |
-| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `q3.chrisquinn.ie`                                                          |
-| Node               | `.nvmrc` = 24                                                                                                                  |
+| Concern            | Choice                                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Build              | Vite + React + TypeScript (strict, `noUncheckedIndexedAccess`, no `any`)                                                            |
+| Styling / UI       | Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (Base UI)                                                                         |
+| Routing            | React Router, `HashRouter` (GitHub Pages cannot serve deep links)                                                                   |
+| Server state       | TanStack Query; Supabase reads/writes through hooks in `src/api/`                                                                   |
+| Validation / forms | Zod + React Hook Form                                                                                                               |
+| Backend            | Self-hosted Supabase stack `q3-interiors` (`~/code/infra/stacks/q3-interiors`), public URL `https://api.chrisquinn.ie/q3-interiors` |
+| Tests              | Vitest + Testing Library; Playwright when e2e is warranted                                                                          |
+| Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                                                                    |
+| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `q3.chrisquinn.ie`                                                               |
+| Node               | `.nvmrc` = 24                                                                                                                       |
 
 ## Operating philosophy: lean surface, high floor
 
@@ -66,7 +66,7 @@ If you can't satisfy an item, say so explicitly rather than quietly skipping it.
 
 - `src/lib/env.ts` is the only reader of `import.meta.env`; `src/lib/supabase.ts` is the one client. Anon key only; never `service_role` in anything a browser can reach.
 - Build-time env lives in repo variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`), never committed. `.env.local` is gitignored.
-- Schema changes are SQL migrations (`supabase migration new`, then `supabase db push`). RLS on every table from creation.
+- Schema changes are SQL migrations in `supabase/migrations/`. The backend is self-hosted, so there is no `supabase db push`: apply with `psql "$(pass show env/q3-interiors/DATABASE_URL)" -f supabase/migrations/<file>.sql` and record them in `supabase_migrations.schema_migrations` (as `~/code/hydr` does). `env/q3-interiors/DATABASE_URL` in pass is not created yet; see the infra README and `~/dotfiles/docs/backups.md`. RLS on every table from creation.
 - shadcn components land in `src/components/ui/`; check shadcn before hand-building a component.
 - Conventional commits, one concern each.
 

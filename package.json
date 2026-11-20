@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage",
     "forms:sql": "node scripts/form-sql.ts",
     "db:migrate": "scripts/db-migrate.sh",
-    "test:db": "psql \"${DATABASE_URL:-$(pass show env/q3-interiors/DATABASE_URL)}\" -X -q -v ON_ERROR_STOP=1 -o /dev/null -f supabase/tests/access.sql -f supabase/tests/booking.sql -c begin -f supabase/forms/published.sql -c rollback && scripts/check-anon-http.sh && echo 'database checks passed'",
+    "test:db": "psql \"${DATABASE_URL:-$(pass show env/q3-interiors/DATABASE_URL)}\" -X -q -v ON_ERROR_STOP=1 -o /dev/null -f supabase/tests/access.sql -f supabase/tests/booking.sql -c begin -f supabase/forms/published.sql -c rollback && supabase/tests/race.sh && scripts/check-anon-http.sh && echo 'database checks passed'",
     "test:e2e": "playwright test",
     "functions:check": "cd supabase/functions && deno check --config deno.jsonc public-booking/index.ts booking-worker/index.ts calendar-admin/index.ts google-oauth-callback/index.ts",
     "functions:deploy": "scripts/functions-deploy.sh",

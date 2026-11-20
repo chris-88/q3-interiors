@@ -1,0 +1,72 @@
+import { useState } from 'react'
+import { CircleCheck } from 'lucide-react'
+import { Link } from 'react-router'
+import { PublicLayout } from '@/components/public-layout'
+import { buttonVariants } from '@/components/ui/button'
+import { business } from '@/config/business'
+import { readSubmittedReference } from '@/lib/draft'
+import { safeStorage } from '@/lib/storage'
+
+/** Shown only after `submit_enquiry` has returned a reference. */
+export function ConfirmationPage() {
+  const [reference] = useState(() => readSubmittedReference(safeStorage('session')))
+
+  if (!reference) {
+    return (
+      <PublicLayout>
+        <h1 className="text-2xl font-semibold tracking-tight">No enquiry to show</h1>
+        <p className="text-muted-foreground mt-2">
+          This page shows your reference after you send an enquiry. If you have not sent one yet,
+          you can start now.
+        </p>
+        <Link to="/enquire" className={buttonVariants({ size: 'lg', className: 'mt-6 h-12' })}>
+          Tell us about your project
+        </Link>
+      </PublicLayout>
+    )
+  }
+
+  return (
+    <PublicLayout>
+      <CircleCheck className="text-foreground size-8" aria-hidden="true" />
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+        Thank you, we have your enquiry
+      </h1>
+      <p className="text-muted-foreground mt-2">
+        Your reference is below. Keep it handy if you contact us about this project.
+      </p>
+      <p className="mt-6 rounded-xl border px-4 py-5 text-center">
+        <span className="text-muted-foreground block text-sm">Reference</span>
+        <span className="mt-1 block font-mono text-2xl font-semibold tracking-wider">
+          {reference}
+        </span>
+      </p>
+
+      <h2 className="mt-10 text-lg font-semibold tracking-tight">What happens next</h2>
+      <ul className="text-muted-foreground mt-4 flex list-disc flex-col gap-3 pl-5">
+        <li>We will read your enquiry and get in touch by phone or email to talk it through.</li>
+        <li>
+          If a visit makes sense, we will arrange a time to see the space, take measurements and
+          give you an estimated range.
+        </li>
+        <li>
+          An estimate visit is for us to assess and price the work. It does not commit you to a
+          quote, and it is not a start date.
+        </li>
+      </ul>
+      {(business.contactEmail ?? business.contactPhone) && (
+        <p className="text-muted-foreground mt-6 text-sm">
+          Need to add something? Contact us at{' '}
+          {[business.contactEmail, business.contactPhone].filter(Boolean).join(' or ')} and quote
+          your reference.
+        </p>
+      )}
+      <Link
+        to="/"
+        className={buttonVariants({ variant: 'outline', size: 'lg', className: 'mt-10 h-12' })}
+      >
+        Back to the home page
+      </Link>
+    </PublicLayout>
+  )
+}

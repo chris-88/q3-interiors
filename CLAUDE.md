@@ -8,18 +8,18 @@ Q3 Interiors is a multi-trade renovation contractor. This app is its customer ac
 
 The scaffold is a hello page with a working Supabase client; no features, pages or tables yet.
 
-| Concern            | Choice                                                                          |
-| ------------------ | ------------------------------------------------------------------------------- |
-| Build              | Vite + React + TypeScript (strict, `noUncheckedIndexedAccess`, no `any`)        |
-| Styling / UI       | Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (Base UI)                     |
-| Routing            | React Router, `HashRouter` (GitHub Pages cannot serve deep links)               |
-| Server state       | TanStack Query; Supabase reads/writes through hooks in `src/api/`               |
-| Validation / forms | Zod + React Hook Form                                                           |
-| Backend            | Supabase project `SUPABASE_REF_PLACEHOLDER` (eu-west-2)                         |
-| Tests              | Vitest + Testing Library; Playwright when e2e is warranted                      |
-| Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                |
-| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `q3-interiors.chrisquinn.ie` |
-| Node               | `.nvmrc` = 24                                                                   |
+| Concern            | Choice                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Build              | Vite + React + TypeScript (strict, `noUncheckedIndexedAccess`, no `any`)                                                       |
+| Styling / UI       | Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (Base UI)                                                                    |
+| Routing            | React Router, `HashRouter` (GitHub Pages cannot serve deep links)                                                              |
+| Server state       | TanStack Query; Supabase reads/writes through hooks in `src/api/`                                                              |
+| Validation / forms | Zod + React Hook Form                                                                                                          |
+| Backend            | Supabase (eu-west-2), ref pending: project not yet created (CLI returned Forbidden on 2026-11-20); fill the ref in once linked |
+| Tests              | Vitest + Testing Library; Playwright when e2e is warranted                                                                     |
+| Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                                                               |
+| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `q3-interiors.chrisquinn.ie`                                                |
+| Node               | `.nvmrc` = 24                                                                                                                  |
 
 ## Operating philosophy: lean surface, high floor
 

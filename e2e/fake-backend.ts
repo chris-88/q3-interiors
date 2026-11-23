@@ -9,6 +9,7 @@ export type SubmitBody = {
   p_answers: Record<string, string | string[]>
   p_marketing_opt_in: boolean
   p_attribution: Record<string, unknown> | null
+  p_trap?: string | null
 }
 
 /**
@@ -16,7 +17,10 @@ export type SubmitBody = {
  * `public-booking` logic running in Node over an in-memory database and a fake Google Calendar.
  * Nothing reaches the real stack or Google.
  */
-export async function installFakeBackend(page: Page, opts: { failFirstSubmit?: boolean } = {}) {
+export async function installFakeBackend(
+  page: Page,
+  opts: { failFirstSubmit?: boolean; limitSubmit?: boolean } = {},
+) {
   const clock = { offset: 0 }
   const now = () => Date.now() + clock.offset
   const db = new FakeDb(now)
@@ -45,6 +49,24 @@ export async function installFakeBackend(page: Page, opts: { failFirstSubmit?: b
     submits += 1
     if (opts.failFirstSubmit && submits === 1) {
       await route.abort('internetdisconnected')
+      return
+    }
+    if (opts.limitSubmit) {
+      // What PostgREST returns for `raise sqlstate 'PT429'`.
+      await route.fulfill({
+        status: 429,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'PT429', message: 'rate_limited', details: null, hint: null }),
+      })
+      return
+    }
+    if (body.p_trap) {
+      // Honeypot: a normal-looking reply, nothing stored.
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ reference: 'Q3-BOT234', access_token: null, expires_at: null }),
+      })
       return
     }
     let saved = byKey.get(body.p_idempotency_key)

@@ -5,6 +5,7 @@ import { BookingPage } from '@/pages/booking-page'
 import { ConfirmationPage } from '@/pages/confirmation-page'
 import { EnquiryPage } from '@/pages/enquiry-page'
 import { LandingPage } from '@/pages/landing-page'
+import { PrivacyPage } from '@/pages/privacy-page'
 
 const StaffListRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffListRoute })),
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/enquire" element={<EnquiryPage />} />
         <Route path="/enquire/sent" element={<ConfirmationPage />} />
         <Route path="/book/:token" element={<BookingPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/staff" element={<StaffListRoute />} />
         <Route path="/staff/enquiries/:id" element={<StaffDetailRoute />} />
         <Route path="/staff/appointments" element={<StaffAppointmentsRoute />} />

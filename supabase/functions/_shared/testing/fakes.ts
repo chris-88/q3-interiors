@@ -318,6 +318,8 @@ export class FakeDb implements Db {
   }
   async completeCalendarJob(jobId: number, link: string | null) {
     const { job, booking } = this.booking(jobId)
+    // Mirrors private.complete_calendar_job: only create jobs complete here.
+    if (job.kind !== 'create_calendar_event') throw new Error(`job ${jobId} is not a create job`)
     if (job.state === 'succeeded') return
     job.state = 'succeeded'
     if (booking.state === 'cancelled') {

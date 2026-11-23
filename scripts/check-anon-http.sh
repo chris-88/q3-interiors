@@ -52,6 +52,9 @@ check "booking-worker refuses a call without the worker secret" '{"error":"forbi
   "$(curl -s -X POST "$functions/booking-worker" "${headers[@]}" -d '{}')"
 check "calendar-admin refuses a caller who is not staff" '{"error":"forbidden"}' \
   "$(curl -s -X POST "$functions/calendar-admin" "${headers[@]}" -d '{"action":"start"}')"
+check "staff-booking refuses a caller who is not staff" '{"error":"forbidden"}' \
+  "$(curl -s -X POST "$functions/staff-booking" "${headers[@]}" \
+    -d '{"action":"cancel","bookingId":"00000000-0000-4000-8000-000000000000"}')"
 check "the OAuth callback is reachable without a JWT and refuses a bad state" \
   "https://q3.chrisquinn.ie/#/staff/settings?calendar=error&reason=expired" \
   "$(curl -s -o /dev/null -w '%{redirect_url}' "$functions/google-oauth-callback?state=bad&code=x")"

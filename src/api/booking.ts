@@ -33,6 +33,8 @@ const bookingSchema = z.object({
   phone: z.string().nullable(),
   address: z.string().nullable(),
   whatToPrepare: z.string(),
+  canChange: z.boolean(),
+  businessPhone: z.string().nullable(),
 })
 export type CustomerBooking = z.infer<typeof bookingSchema>
 
@@ -159,5 +161,68 @@ export function useRequestContact(token: string) {
         z.object({ status: z.literal('requested') }),
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['booking', token, 'context'] }),
+  })
+}
+
+const changeBase = { booking: bookingSchema.nullable().optional() }
+const tooLate = z.object({ status: z.literal('too_late'), businessPhone: z.string().nullable() })
+const notLive = z.object({ status: z.literal('not_live'), ...changeBase })
+
+const moveOptionsSchema = z.union([availabilitySchema, tooLate, notLive])
+export type MoveOptions = z.infer<typeof moveOptionsSchema>
+
+const rescheduleSchema = z.union([
+  z.object({ status: z.literal('rescheduled'), changed: z.boolean(), ...changeBase }),
+  z.object({
+    status: z.literal('slot_unavailable'),
+    alternatives: z.array(slotSchema),
+    ...changeBase,
+  }),
+  z.object({ status: z.literal('unavailable'), reason: z.string(), ...changeBase }),
+  tooLate,
+  notLive,
+])
+export type RescheduleResult = z.infer<typeof rescheduleSchema>
+
+const cancelSchema = z.union([
+  z.object({ status: z.literal('cancelled'), changed: z.boolean(), ...changeBase }),
+  tooLate,
+  notLive,
+])
+export type CancelResult = z.infer<typeof cancelSchema>
+
+/** Free times to move the customer's live booking to (its own time is not offered). */
+export function useMoveOptions(token: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['booking', token, 'move_options'],
+    enabled,
+    staleTime: 30_000,
+    queryFn: () => call({ action: 'move_options', token }, moveOptionsSchema),
+  })
+}
+
+export function useReschedule(token: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (start: string) => call({ action: 'reschedule', token, start }, rescheduleSchema),
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['booking', token] }),
+  })
+}
+
+/**
+ * `onDone` runs before the booking queries refresh: the refresh unmounts the component that
+ * started the cancel, so per-call callbacks would never fire.
+ */
+export function useCancelBooking(token: string, onDone?: (result: CancelResult) => void) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (reason: string) =>
+      call({ action: 'cancel', token, reason: reason || undefined }, cancelSchema),
+    retry: false,
+    onSuccess: (result) => {
+      onDone?.(result)
+      return queryClient.invalidateQueries({ queryKey: ['booking', token] })
+    },
   })
 }

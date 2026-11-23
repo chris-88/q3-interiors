@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { AccessTokenProvider } from './calendar-job.ts'
 import { availabilityForMove, cancel, isLive, reschedule, runDueFor } from './changes.ts'
 import { firstName, type Mailer } from './email.ts'
+import { bucketFor, type Limiter } from './limits.ts'
 import { customerCanChange } from './rules.ts'
 import { GoogleError, type CalendarApi } from './google.ts'
 import { availabilityWindow, generateSlots, type Slot, type SlotType } from './slots.ts'
@@ -16,6 +17,8 @@ export type PublicDeps = {
   mailer: Mailer | null
   appUrl: string
   now: () => number
+  /** Per-address limit for this request; absent in tests that do not exercise it. */
+  limit?: Limiter
 }
 
 export type PublicResult = { status: number; body: unknown }
@@ -169,6 +172,12 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
   if (!enquiryId) return { status: 401, body: { error: 'invalid_token' } }
   const enquiry = await db.getEnquiry(enquiryId)
   if (!enquiry) return { status: 401, body: { error: 'invalid_token' } }
+
+  if (deps.limit) {
+    const { bucket, idemKey } = bucketFor(req.action, enquiryId, req as Record<string, unknown>)
+    if (!(await deps.limit(bucket, idemKey)))
+      return { status: 429, body: { error: 'rate_limited' } }
+  }
 
   const findType = async (id: string) => (await db.listTypes()).find((t) => t.id === id && t.active)
 

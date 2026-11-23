@@ -273,6 +273,7 @@ export class FakeDb implements Db {
   async requestContact(enquiryId: string, reason: string) {
     this.enquiries.get(enquiryId)!.contact_requested_at = new Date(this.now()).toISOString()
     this.events.push({ enquiryId, kind: 'contact_requested', detail: reason })
+    this.queueStaffAlert(enquiryId, 'staff_callback_request')
   }
   async bookingContext(bookingId: string) {
     const b = this.bookings.find((x) => x.id === bookingId)
@@ -622,6 +623,65 @@ export class FakeDb implements Db {
     if (c.state === 'sent') return
     c.state = 'skipped'
     c.last_error = reason
+  }
+  // Slice 4 -----------------------------------------------------------------------------------
+  limiterHits: { bucket: string; hash: string; key: string | null; at: number }[] = []
+  pendingDeletions: { calendar_event_id: string; staff_user_id: string; attempts: number }[] = []
+  async rateLimitTake(bucket: string, hash: string, key: string | null, limit: number) {
+    if (
+      key !== null &&
+      this.limiterHits.some((h) => h.bucket === bucket && h.hash === hash && h.key === key)
+    ) {
+      return true
+    }
+    const recent = this.limiterHits.filter(
+      (h) => h.bucket === bucket && h.hash === hash && h.at > this.now() - 3_600_000,
+    ).length
+    if (recent >= limit) return false
+    this.limiterHits.push({ bucket, hash, key, at: this.now() })
+    return true
+  }
+  async enquirySummary(enquiryId: string) {
+    const e = this.enquiries.get(enquiryId)
+    if (!e) return null
+    return {
+      id: e.id,
+      reference: e.reference,
+      answers: e.answers,
+      contact_request_reason: null,
+      schema: {
+        steps: [
+          { fields: [{ id: 'project_type', options: [{ value: 'kitchen', label: 'Kitchen' }] }] },
+        ],
+      },
+    }
+  }
+  async claimEventDeletions(limit: number) {
+    const due = this.pendingDeletions.slice(0, limit)
+    for (const d of due) d.attempts += 1
+    return due.map((d) => ({ ...d }))
+  }
+  async eventDeletionDone(eventId: string) {
+    this.pendingDeletions = this.pendingDeletions.filter((d) => d.calendar_event_id !== eventId)
+  }
+  async eventDeletionFailed() {}
+  queueStaffAlert(enquiryId: string, template: 'staff_new_enquiry' | 'staff_callback_request') {
+    const key = `${template}:${enquiryId}:${STAFF_ID}`
+    if (this.comms.some((c) => c.dedupe_key === key)) return
+    this.comms.push({
+      id: `c${this.comms.length + 1}`,
+      enquiry_id: enquiryId,
+      booking_id: null,
+      template,
+      recipient: 'staff@q3-test-staff.ie',
+      dedupe_key: key,
+      attempts: 0,
+      max_attempts: 6,
+      state: 'queued',
+      next_attempt_at: 0,
+      provider_message_id: null,
+      last_error: null,
+    })
   }
   async mintAccessToken(enquiryId: string) {
     const token = `minted-${++this.mintedTokens}-0123456789abcdefghij`

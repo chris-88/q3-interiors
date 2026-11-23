@@ -4,6 +4,7 @@ import { accessTokenProvider } from './calendar-job.ts'
 import { createDb } from './db.ts'
 import { createResendMailer, type Mailer } from './email.ts'
 import { createGoogleCalendar, type CalendarApi } from './google.ts'
+import { addressHash, clientAddress, type Limiter } from './limits.ts'
 import type { Db } from './types.ts'
 
 const env = (name: string) => Deno.env.get(name)?.trim() || null
@@ -49,6 +50,20 @@ export function runtime(): Runtime {
     ? createResendMailer({ apiKey: config.resendKey, from: config.emailFrom })
     : null
   return { db, calendar, accessToken, mailer }
+}
+
+/** The per-address limiter for one request (addresses are hashed, never stored). */
+export async function limiterFor(req: Request, db: Db): Promise<Limiter> {
+  const secret = config.workerSecret ?? ''
+  const hash = await addressHash(clientAddress(req.headers), secret)
+  return async (bucket, idemKey) => {
+    const settings = await db.getSettings()
+    const limit =
+      bucket === 'booking_write'
+        ? (settings.booking_write_limit_per_hour ?? 20)
+        : (settings.booking_read_limit_per_hour ?? 300)
+    return db.rateLimitTake(bucket, hash, idemKey, limit)
+  }
 }
 
 export function json(body: unknown, status = 200): Response {

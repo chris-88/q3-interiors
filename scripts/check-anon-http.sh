@@ -32,8 +32,12 @@ expect_code "anon cannot insert enquiries" 42501 \
 expect_code "anon cannot change status" 42501 \
   "$(curl -s -X POST "$rest/rpc/set_enquiry_status" "${headers[@]}" \
     -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000","p_status":"contacted"}')"
-expect_code "submit_enquiry validates on the server" 22023 \
+expect_code "anon cannot call the unlimited submit_enquiry" 42501 \
   "$(curl -s -X POST "$rest/rpc/submit_enquiry" "${headers[@]}" \
+    -d '{"p_idempotency_key":"00000000-0000-4000-8000-000000000000","p_form_id":"enquiry","p_form_version":1,"p_answers":{}}')"
+# An invalid submission fails validation and rolls back, so it leaves no rate-limit row.
+expect_code "submit_enquiry_with_access validates on the server" 22023 \
+  "$(curl -s -X POST "$rest/rpc/submit_enquiry_with_access" "${headers[@]}" \
     -d '{"p_idempotency_key":"00000000-0000-4000-8000-000000000000","p_form_id":"enquiry","p_form_version":1,"p_answers":{}}')"
 expect_code "anon cannot run the funnel report" 42501 \
   "$(curl -s -X POST "$rest/rpc/funnel_report" "${headers[@]}" -d '{"p_from":"2026-01-01","p_to":"2026-12-31"}')"

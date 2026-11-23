@@ -46,7 +46,14 @@ export type CalendarEventInput = {
   timeZone: string
 }
 
-export type CalendarEvent = { id: string; htmlLink: string | null; status: string }
+export type CalendarEvent = {
+  id: string
+  htmlLink: string | null
+  status: string
+  /** Epoch ms of the event's start and end (null for an all-day or unreadable time). */
+  start: number | null
+  end: number | null
+}
 
 export type TokenSet = {
   accessToken: string
@@ -66,6 +73,29 @@ export interface CalendarApi {
   refreshAccessToken(refreshToken: string): Promise<string>
   exchangeCode(code: string, codeVerifier: string, redirectUri: string): Promise<TokenSet>
   revoke(token: string): Promise<void>
+  /** Move an event (events.patch, start and end only). */
+  moveEvent(
+    accessToken: string,
+    calendarId: string,
+    eventId: string,
+    when: { start: string; end: string; timeZone: string },
+  ): Promise<CalendarEvent>
+  /** Delete an event. Resolves (no error) if it is already gone. */
+  deleteEvent(accessToken: string, calendarId: string, eventId: string): Promise<void>
+}
+
+function eventFrom(body: Record<string, unknown>): CalendarEvent {
+  const time = (v: unknown) => {
+    const t = Date.parse(String((v as { dateTime?: string } | undefined)?.dateTime ?? ''))
+    return Number.isNaN(t) ? null : t
+  }
+  return {
+    id: String(body.id),
+    htmlLink: (body.htmlLink as string) ?? null,
+    status: String(body.status ?? 'confirmed'),
+    start: time(body.start),
+    end: time(body.end),
+  }
 }
 
 const CALENDAR = 'https://www.googleapis.com/calendar/v3'
@@ -199,12 +229,7 @@ export function createGoogleCalendar(opts: {
         },
       )
       if (res.status === 404 || res.status === 410) return null
-      const body = await json(res, 'events.get')
-      return {
-        id: String(body.id),
-        htmlLink: (body.htmlLink as string) ?? null,
-        status: String(body.status ?? 'confirmed'),
-      }
+      return eventFrom(await json(res, 'events.get'))
     },
 
     async insertEvent(accessToken, calendarId, event) {
@@ -224,12 +249,33 @@ export function createGoogleCalendar(opts: {
           }),
         },
       )
-      const body = await json(res, 'events.insert')
-      return {
-        id: String(body.id),
-        htmlLink: (body.htmlLink as string) ?? null,
-        status: String(body.status ?? 'confirmed'),
-      }
+      return eventFrom(await json(res, 'events.insert'))
+    },
+
+    async moveEvent(accessToken, calendarId, eventId, when) {
+      const res = await call(
+        `${CALENDAR}/calendars/${encodeURIComponent(calendarId)}/events/${eventId}?sendUpdates=none`,
+        {
+          method: 'PATCH',
+          headers: bearer(accessToken),
+          body: JSON.stringify({
+            start: { dateTime: when.start, timeZone: when.timeZone },
+            end: { dateTime: when.end, timeZone: when.timeZone },
+          }),
+        },
+      )
+      return eventFrom(await json(res, 'events.patch'))
+    },
+
+    async deleteEvent(accessToken, calendarId, eventId) {
+      const res = await call(
+        `${CALENDAR}/calendars/${encodeURIComponent(calendarId)}/events/${eventId}?sendUpdates=none`,
+        { method: 'DELETE', headers: bearer(accessToken) },
+      )
+      // 410 Gone: already deleted. 404: never existed. Both mean the event is not there.
+      if (res.status === 204 || res.status === 200 || res.status === 404 || res.status === 410)
+        return
+      await json(res, 'events.delete')
     },
 
     async refreshAccessToken(refreshToken) {

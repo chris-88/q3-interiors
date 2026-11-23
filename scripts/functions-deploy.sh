@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 
 STACK_DIR="${STACK_DIR:-$HOME/code/infra/stacks/q3-interiors}"
 DEST="$STACK_DIR/volumes/functions"
-FUNCTIONS=(public-booking booking-worker calendar-admin google-oauth-callback)
+FUNCTIONS=(public-booking booking-worker calendar-admin google-oauth-callback staff-booking)
 
 [[ -d "$DEST/main" ]] || { echo "no functions volume at $DEST"; exit 1; }
 

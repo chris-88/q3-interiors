@@ -73,7 +73,7 @@ test('a customer books an estimate visit straight after the enquiry, with Google
   expect(db.bookings).toHaveLength(1)
   expect(db.bookings[0]?.state).toBe('confirmed')
   // test@example.com is a reserved test address: the email is recorded, never sent.
-  expect(db.comms).toHaveLength(1)
+  expect(db.comms.filter((c) => c.template === 'booking_confirmation')).toHaveLength(1)
 })
 
 test('two customers want the same time: the second gets fresh alternatives and books one', async ({

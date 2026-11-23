@@ -97,6 +97,11 @@ select pg_temp.expect((select state = 'skipped' from public.communications
 select pg_temp.expect((select count(*) from public.communications
   where booking_id = pg_temp.id('ba') and template = 'booking_rescheduled') = 1, 'reschedule email queued');
 select pg_temp.expect((select value -> 'changed' from r where name = 'mv') = 'true', 'changed');
+-- Regression (2026-11-23): the create-job path must never claim or complete an update job.
+select pg_temp.expect((select count(*) from private.claim_calendar_jobs(10, pg_temp.id('ba'))) = 0,
+  'create claim ignores update jobs');
+select pg_temp.expect_error(format('select private.complete_calendar_job(%s, null)',
+  (select id from public.integration_jobs where booking_id = pg_temp.id('ba') and kind = 'update_calendar_event')), '22023');
 select pg_temp.expect((private.reschedule_booking(pg_temp.id('ba'), pg_temp.slot(11, 660), 'customer') ->> 'changed') = 'false',
   'repeating a reschedule is a no-op');
 -- The reminder follows the reschedule: a new start gets its own reminder row.

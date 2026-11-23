@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { useEnquiries, useFormVersions, type EnquirySummary } from '@/api/enquiries'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { StatusBadge } from '@/components/staff/status-badge'
@@ -23,12 +23,21 @@ function projectSummary(enquiry: EnquirySummary, form: FormDefinition | undefine
 }
 
 export function EnquiryListPage() {
+  const location = useLocation()
+  const deleted = (location.state as { deleted?: string } | null)?.deleted ?? null
   const enquiries = useEnquiries()
   const forms = useFormVersions()
 
   return (
     <>
       <ExceptionsBanner />
+      {deleted && (
+        <Alert className="mb-4">
+          <AlertDescription>
+            {deleted} was deleted. A note of the deletion (reference, time, who) is kept.
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">Enquiries</h1>
         <Button

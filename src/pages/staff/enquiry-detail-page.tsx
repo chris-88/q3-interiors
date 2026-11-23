@@ -21,6 +21,7 @@ import { useEnquiryBookings } from '@/api/staff-booking'
 import { BookingStateBadge } from '@/components/staff/booking-state-badge'
 import { BookingActions } from '@/components/staff/booking-actions'
 import { OutcomeForm } from '@/components/staff/outcome-form'
+import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -405,6 +406,9 @@ export function EnquiryDetailPage() {
       </Section>
       <History events={data.enquiry_events} />
       <Attribution attribution={data.enquiry_attribution} />
+      <Section title="Delete">
+        <DeleteEnquiry enquiryId={data.id} reference={data.reference} />
+      </Section>
     </div>
   )
 }

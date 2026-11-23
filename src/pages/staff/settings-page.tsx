@@ -13,6 +13,7 @@ import {
   type BookingSettings,
   useBookingSettings,
   useUpdateBookingSettings,
+  useRetentionPreview,
   type StaffAvailability,
 } from '@/api/staff-booking'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
@@ -401,6 +402,50 @@ function TypeForm({ initial }: { initial: AppointmentTypeSettings }) {
   )
 }
 
+function RetentionField({
+  value,
+  onChange,
+}: {
+  value: number | null
+  onChange: (months: number | null) => void
+}) {
+  const preview = useRetentionPreview(value)
+  return (
+    <Field>
+      <FieldLabel htmlFor="retention">Delete enquiries after (months)</FieldLabel>
+      <Input
+        id="retention"
+        type="number"
+        inputMode="numeric"
+        min={1}
+        max={120}
+        placeholder="Off"
+        value={value ?? ''}
+        onChange={(e) => {
+          const n = Number.parseInt(e.target.value, 10)
+          onChange(Number.isFinite(n) && n > 0 ? n : null)
+        }}
+        className="h-10 text-base"
+        aria-describedby="retention-hint retention-preview"
+      />
+      <p id="retention-hint" className="text-muted-foreground text-xs">
+        Empty means off: nothing is deleted automatically. When set, a daily job deletes enquiries
+        older than this, with their bookings, history, emails and calendar events, except enquiries
+        marked won. It cannot be undone.
+      </p>
+      <p id="retention-preview" className="text-sm" aria-live="polite">
+        {value === null
+          ? 'Retention is off.'
+          : preview.isPending
+            ? 'Counting…'
+            : preview.isError
+              ? 'Could not count.'
+              : `With ${value} months, the next run would delete ${preview.data} enquir${preview.data === 1 ? 'y' : 'ies'}.`}
+      </p>
+    </Field>
+  )
+}
+
 function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
   const [value, setValue] = useState(initial)
   const update = useUpdateBookingSettings()
@@ -447,6 +492,10 @@ function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
           Empty until confirmed; customers are then asked to reply to their email instead.
         </p>
       </Field>
+      <RetentionField
+        value={value.retention_months}
+        onChange={(months) => setValue((v) => ({ ...v, retention_months: months }))}
+      />
       {update.isError && (
         <Alert variant="destructive">
           <AlertDescription>Not saved. Check the values.</AlertDescription>

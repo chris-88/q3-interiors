@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { ApiError } from '@/api/errors'
 import { useSubmitEnquiry } from '@/api/submit'
 import { FormFieldInput, fieldDomId } from '@/components/enquiry/form-field'
 import { ReviewStep } from '@/components/enquiry/review-step'
 import { PublicLayout } from '@/components/public-layout'
+import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -60,6 +61,8 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
   const [step, setStep] = useState(() => Math.min(initial.step, reviewIndex))
   const [marketingOptIn, setMarketingOptIn] = useState(initial.marketingOptIn)
   const [returnToReview, setReturnToReview] = useState(false)
+  // Honeypot: people never see or reach this field; bots that fill every input do.
+  const [trap, setTrap] = useState('')
   const headingRef = useRef<HTMLHeadingElement>(null)
   const firstRender = useRef(true)
   const submit = useSubmitEnquiry()
@@ -176,10 +179,16 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
         answers: cleanAnswers(form, values),
         marketingOptIn,
         attribution: currentAttribution(localStore),
+        trap,
       },
       {
         onSuccess: ({ reference, accessToken }) => {
           completeSubmission(sessionStore, reference)
+          if (!accessToken) {
+            // The server saw a bot (honeypot): show the ordinary confirmation, nothing more.
+            void navigate('/enquire/sent', { replace: true })
+            return
+          }
           rememberBookingAccess(localStore, { reference, token: accessToken })
           // Straight on to scheduling. The token is opaque; nothing personal goes in the URL.
           void navigate(`/book/${accessToken}`, { replace: true })
@@ -223,16 +232,28 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
             onEdit={editStep}
             className="mt-6"
           />
-          {submit.isError && (
-            <Alert variant="destructive" className="mt-6" role="alert">
-              <AlertTitle>Your enquiry has not gone through</AlertTitle>
-              <AlertDescription>
-                {submit.error instanceof ApiError && submit.error.code === '22023'
-                  ? 'One of the answers could not be accepted. Please check them and try again.'
-                  : 'We could not reach our system. Your answers are still here. Check your connection and try again; it will not be sent twice.'}
-              </AlertDescription>
-            </Alert>
-          )}
+          {submit.isError &&
+            (submit.error instanceof ApiError && submit.error.code === '22023' ? (
+              <Alert variant="destructive" className="mt-6" role="alert">
+                <AlertTitle>Your enquiry has not gone through</AlertTitle>
+                <AlertDescription>
+                  One of the answers could not be accepted. Please check them and try again.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <TroubleMessage
+                error={submit.error}
+                title="Your enquiry has not gone through"
+                keptNote="Your answers are still here."
+              />
+            ))}
+          <p className="text-muted-foreground mt-6 text-sm">
+            Read{' '}
+            <Link to="/privacy" className="underline underline-offset-4">
+              how we use your details
+            </Link>
+            .
+          </p>
           <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
             <Button
               type="button"
@@ -283,6 +304,23 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
                 onEdit={(id) => clearErrors(id)}
               />
             ))}
+            {isContactStep && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden"
+              >
+                <label htmlFor="website">Website</label>
+                <input
+                  id="website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={trap}
+                  onChange={(e) => setTrap(e.target.value)}
+                />
+              </div>
+            )}
             {isContactStep && (
               <FieldLabel htmlFor="marketing-opt-in" className="w-full">
                 <Field orientation="horizontal" className="items-start">

@@ -253,42 +253,44 @@ export function useExceptions(staffUserId: string | undefined) {
     refetchInterval: 60_000,
     queryFn: async (): Promise<StaffException[]> => {
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      const [connection, failed, contacts, emails, mismatches, removals] = await Promise.all([
-        supabase
-          .from('calendar_connections')
-          .select('status, last_error')
-          .eq('staff_user_id', staffUserId ?? '')
-          .maybeSingle(),
-        supabase
-          .from('bookings')
-          .select('id, enquiry_id, failure_reason, enquiries (reference)')
-          .eq('state', 'failed')
-          .gte('updated_at', since)
-          .order('updated_at', { ascending: false }),
-        supabase
-          .from('enquiries')
-          .select('id, reference, contact_request_reason')
-          .not('contact_requested_at', 'is', null)
-          .eq('status', 'new')
-          .order('contact_requested_at', { ascending: false }),
-        supabase
-          .from('communications')
-          .select('id, enquiry_id, last_error, enquiries (reference)')
-          .eq('state', 'failed')
-          .gte('updated_at', since),
-        supabase
-          .from('bookings')
-          .select('id, enquiry_id, calendar_mismatch, enquiries (reference)')
-          .not('calendar_mismatch', 'is', null)
-          .in('state', ['reserved', 'calendar_pending', 'confirmed']),
-        supabase
-          .from('integration_jobs')
-          .select('id, last_error, bookings (enquiry_id, enquiries (reference))')
-          .eq('kind', 'delete_calendar_event')
-          .eq('state', 'failed')
-          .gte('updated_at', since),
-      ])
-      for (const r of [connection, failed, contacts, emails, mismatches, removals]) {
+      const [connection, failed, contacts, emails, mismatches, removals, orphans] =
+        await Promise.all([
+          supabase
+            .from('calendar_connections')
+            .select('status, last_error')
+            .eq('staff_user_id', staffUserId ?? '')
+            .maybeSingle(),
+          supabase
+            .from('bookings')
+            .select('id, enquiry_id, failure_reason, enquiries (reference)')
+            .eq('state', 'failed')
+            .gte('updated_at', since)
+            .order('updated_at', { ascending: false }),
+          supabase
+            .from('enquiries')
+            .select('id, reference, contact_request_reason')
+            .not('contact_requested_at', 'is', null)
+            .eq('status', 'new')
+            .order('contact_requested_at', { ascending: false }),
+          supabase
+            .from('communications')
+            .select('id, enquiry_id, last_error, enquiries (reference)')
+            .eq('state', 'failed')
+            .gte('updated_at', since),
+          supabase
+            .from('bookings')
+            .select('id, enquiry_id, calendar_mismatch, enquiries (reference)')
+            .not('calendar_mismatch', 'is', null)
+            .in('state', ['reserved', 'calendar_pending', 'confirmed']),
+          supabase
+            .from('integration_jobs')
+            .select('id, last_error, bookings (enquiry_id, enquiries (reference))')
+            .eq('kind', 'delete_calendar_event')
+            .eq('state', 'failed')
+            .gte('updated_at', since),
+          supabase.rpc('pending_event_deletion_count'),
+        ])
+      for (const r of [connection, failed, contacts, emails, mismatches, removals, orphans]) {
         if (r.error) throw toApiError(r.error)
       }
       const out: StaffException[] = []
@@ -388,6 +390,15 @@ export function useExceptions(staffUserId: string | undefined) {
           kind: 'calendar',
           text: `Could not remove the Google Calendar event for cancelled ${j.bookings?.enquiries?.reference ?? 'booking'}: ${j.last_error ?? 'unknown error'}`,
           link: j.bookings ? `/staff/enquiries/${j.bookings.enquiry_id}` : '/staff/appointments',
+        })
+      }
+      const stuck = z.number().parse(orphans.data)
+      if (stuck > 0) {
+        out.push({
+          id: 'orphans',
+          kind: 'calendar',
+          text: `${stuck} Google Calendar event${stuck === 1 ? '' : 's'} from deleted enquiries could not be removed yet. Remove ${stuck === 1 ? 'it' : 'them'} by hand if this persists.`,
+          link: '/staff/settings',
         })
       }
       return out
@@ -535,6 +546,7 @@ export const bookingSettingsSchema = z.object({
     .max(40)
     .nullable()
     .transform((v) => (v ? v : null)),
+  retention_months: z.number().int().min(1).max(120).nullable(),
 })
 export type BookingSettings = z.infer<typeof bookingSettingsSchema>
 
@@ -544,7 +556,7 @@ export function useBookingSettings() {
     queryFn: async (): Promise<BookingSettings | null> => {
       const { data, error } = await supabase
         .from('booking_settings')
-        .select('change_cutoff_minutes, reminder_lead_minutes, business_phone')
+        .select('change_cutoff_minutes, reminder_lead_minutes, business_phone, retention_months')
         .maybeSingle()
       if (error) throw toApiError(error)
       return data === null ? null : bookingSettingsSchema.parse(data)
@@ -586,6 +598,44 @@ export function useFunnelReport(from: string, to: string) {
       const { data, error } = await supabase.rpc('funnel_report', { p_from: from, p_to: to })
       if (error) throw toApiError(error)
       return z.array(funnelRowSchema).parse(data)
+    },
+  })
+}
+
+// Slice 4 ----------------------------------------------------------------------------------------
+
+/** How many enquiries a retention run would delete with `months` (or the saved setting). */
+export function useRetentionPreview(months: number | null) {
+  return useQuery({
+    queryKey: ['retention_preview', months],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('retention_preview', { p_months: months })
+      if (error) throw toApiError(error)
+      return z.number().parse(data)
+    },
+  })
+}
+
+/** Delete an enquiry for a data request. `confirm` must be the enquiry's reference. */
+/** `onDeleted` runs before the queries refresh (the refresh unmounts the detail page). */
+export function useDeleteEnquiry(onDeleted?: (reference: string) => void) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { enquiryId: string; confirm: string }) => {
+      const { data, error } = await supabase.rpc('delete_enquiry', {
+        p_enquiry_id: input.enquiryId,
+        p_confirm_reference: input.confirm,
+      })
+      if (error) throw toApiError(error)
+      return z.string().parse(data)
+    },
+    onSuccess: (reference) => {
+      onDeleted?.(reference)
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['enquiries'] }),
+        queryClient.invalidateQueries({ queryKey: ['appointments'] }),
+        queryClient.invalidateQueries({ queryKey: ['exceptions'] }),
+      ])
     },
   })
 }

@@ -8,6 +8,7 @@ import {
 } from '@/api/booking'
 import { BookingConfirmed } from '@/components/booking/booking-outcome'
 import { SlotPicker } from '@/components/booking/slot-picker'
+import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
@@ -119,9 +120,11 @@ export function ManageBooking({
           />
         </Field>
         {cancel.isError && (
-          <Alert variant="destructive" className="mt-4">
-            <AlertDescription>We could not cancel it just now. Please try again.</AlertDescription>
-          </Alert>
+          <TroubleMessage
+            error={cancel.error}
+            title="We could not cancel it just now"
+            keptNote="Your appointment is unchanged."
+          />
         )}
         <div className={buttonRow}>
           <Button
@@ -172,11 +175,11 @@ export function ManageBooking({
               </dd>
             </dl>
             {reschedule.isError && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertDescription>
-                  We could not move it just now. Your appointment is unchanged. Please try again.
-                </AlertDescription>
-              </Alert>
+              <TroubleMessage
+                error={reschedule.error}
+                title="We could not move it just now"
+                keptNote="Your appointment is unchanged."
+              />
             )}
             <div className={buttonRow}>
               <Button

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
-import { ApiError } from './errors'
+import { ApiError, RateLimitedError } from './errors'
 
 /**
  * Customer scheduling, through the `public-booking` Edge Function. Every call carries the
@@ -93,6 +93,7 @@ async function call<T>(body: Record<string, unknown>, schema: z.ZodType<T>): Pro
     if (error instanceof FunctionsHttpError) {
       const status = (error.context as Response).status
       if (status === 401) throw new InvalidLinkError()
+      if (status === 429) throw new RateLimitedError()
       throw new ApiError(`public-booking returned ${status}`, String(status))
     }
     throw new ApiError(error.message)

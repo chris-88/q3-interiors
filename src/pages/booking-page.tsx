@@ -19,6 +19,7 @@ import { ManageBooking } from '@/components/booking/manage-booking'
 import { SlotPicker } from '@/components/booking/slot-picker'
 import { FormFieldInput } from '@/components/enquiry/form-field'
 import { PublicLayout } from '@/components/public-layout'
+import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -565,12 +566,11 @@ export function BookingPage() {
             </dl>
           )}
           {book.isError && (
-            <Alert variant="destructive" className="mt-6" role="alert">
-              <AlertTitle>The booking has not gone through</AlertTitle>
-              <AlertDescription>
-                We could not reach our system. Try again; you will not be booked twice.
-              </AlertDescription>
-            </Alert>
+            <TroubleMessage
+              error={book.error}
+              title="The booking has not gone through"
+              keptNote="Your enquiry is saved and the time is not booked yet."
+            />
           )}
           <div className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
             <Button

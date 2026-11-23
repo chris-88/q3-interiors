@@ -20,7 +20,10 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       <footer className="text-muted-foreground mx-auto w-full max-w-xl px-5 pb-8 text-xs leading-relaxed">
         <p>
           We use the details you give us only to reply to your enquiry. We will only send you news
-          or offers if you ask us to.
+          or offers if you ask us to.{' '}
+          <Link to="/privacy" className="underline underline-offset-4">
+            How we use your details
+          </Link>
         </p>
         {(business.contactEmail ?? business.contactPhone) && (
           <p className="mt-2">

@@ -31,13 +31,19 @@ const bookingSchema = z.object({
   calendar_event_id: z.string(),
   calendar_event_link: z.string().nullable(),
   created_at: z.string(),
+  attendance: z.enum(['attended', 'no_show']).nullable(),
+  cancelled_at: z.string().nullable(),
+  cancelled_by: z.enum(['customer', 'staff']).nullable(),
+  cancel_reason: z.string().nullable(),
+  calendar_mismatch: z.string().nullable(),
   appointment_types: z.object({ label: z.string(), mode: z.enum(['phone', 'on_site']) }),
   enquiries: z.object({ reference: z.string(), answers }).nullable(),
 })
 export type StaffBooking = z.infer<typeof bookingSchema>
 
 const BOOKING_COLUMNS = `id, enquiry_id, state, starts_at, ends_at, failure_reason, calendar_event_id,
-  calendar_event_link, created_at, appointment_types (label, mode), enquiries (reference, answers)`
+  calendar_event_link, created_at, attendance, cancelled_at, cancelled_by, cancel_reason,
+  calendar_mismatch, appointment_types (label, mode), enquiries (reference, answers)`
 
 export function useAppointments() {
   return useQuery({
@@ -247,7 +253,7 @@ export function useExceptions(staffUserId: string | undefined) {
     refetchInterval: 60_000,
     queryFn: async (): Promise<StaffException[]> => {
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      const [connection, failed, contacts, emails] = await Promise.all([
+      const [connection, failed, contacts, emails, mismatches, removals] = await Promise.all([
         supabase
           .from('calendar_connections')
           .select('status, last_error')
@@ -270,8 +276,21 @@ export function useExceptions(staffUserId: string | undefined) {
           .select('id, enquiry_id, last_error, enquiries (reference)')
           .eq('state', 'failed')
           .gte('updated_at', since),
+        supabase
+          .from('bookings')
+          .select('id, enquiry_id, calendar_mismatch, enquiries (reference)')
+          .not('calendar_mismatch', 'is', null)
+          .in('state', ['reserved', 'calendar_pending', 'confirmed']),
+        supabase
+          .from('integration_jobs')
+          .select('id, last_error, bookings (enquiry_id, enquiries (reference))')
+          .eq('kind', 'delete_calendar_event')
+          .eq('state', 'failed')
+          .gte('updated_at', since),
       ])
-      for (const r of [connection, failed, contacts, emails]) if (r.error) throw toApiError(r.error)
+      for (const r of [connection, failed, contacts, emails, mismatches, removals]) {
+        if (r.error) throw toApiError(r.error)
+      }
       const out: StaffException[] = []
       const conn = z
         .object({ status: z.string(), last_error: z.string().nullable() })
@@ -338,7 +357,235 @@ export function useExceptions(staffUserId: string | undefined) {
           link: `/staff/enquiries/${c.enquiry_id}`,
         })
       }
+      for (const b of z
+        .array(
+          z.object({
+            id: z.string(),
+            enquiry_id: z.string(),
+            calendar_mismatch: z.string(),
+            enquiries: ref,
+          }),
+        )
+        .parse(mismatches.data)) {
+        out.push({
+          id: `mismatch-${b.id}`,
+          kind: 'calendar',
+          text: `${b.enquiries?.reference ?? 'A booking'}: ${b.calendar_mismatch}. The booking itself is unchanged.`,
+          link: `/staff/enquiries/${b.enquiry_id}`,
+        })
+      }
+      for (const j of z
+        .array(
+          z.object({
+            id: z.number(),
+            last_error: z.string().nullable(),
+            bookings: z.object({ enquiry_id: z.string(), enquiries: ref }).nullable(),
+          }),
+        )
+        .parse(removals.data)) {
+        out.push({
+          id: `removal-${j.id}`,
+          kind: 'calendar',
+          text: `Could not remove the Google Calendar event for cancelled ${j.bookings?.enquiries?.reference ?? 'booking'}: ${j.last_error ?? 'unknown error'}`,
+          link: j.bookings ? `/staff/enquiries/${j.bookings.enquiry_id}` : '/staff/appointments',
+        })
+      }
       return out
+    },
+  })
+}
+
+// Slice 3 ----------------------------------------------------------------------------------------
+
+const slotSchema = z.object({
+  start: z.string(),
+  end: z.string(),
+  date: z.string(),
+  time: z.string(),
+})
+export type StaffSlot = z.infer<typeof slotSchema>
+
+const moveOptionsSchema = z.union([
+  z.object({ status: z.literal('ok'), slots: z.array(slotSchema), timezone: z.string() }),
+  z.object({ status: z.literal('unavailable'), reason: z.string() }),
+])
+
+const changeSchema = z.union([
+  z.object({ status: z.enum(['rescheduled', 'cancelled']), changed: z.boolean() }),
+  z.object({ status: z.literal('slot_unavailable'), alternatives: z.array(slotSchema) }),
+  z.object({ status: z.enum(['not_live', 'unavailable']) }).loose(),
+])
+export type StaffChangeResult = z.infer<typeof changeSchema>
+
+async function staffCall<T>(body: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('staff-booking', { body })
+  if (error) throw new ApiError(error.message)
+  return schema.parse(data)
+}
+
+export function useStaffMoveOptions(bookingId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['staff-move-options', bookingId],
+    enabled,
+    staleTime: 30_000,
+    queryFn: () => staffCall({ action: 'move_options', bookingId }, moveOptionsSchema),
+  })
+}
+
+function useBookingChange<I>(build: (input: I) => Record<string, unknown>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: I) => staffCall(build(input), changeSchema),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['enquiries'] }),
+        queryClient.invalidateQueries({ queryKey: ['appointments'] }),
+        queryClient.invalidateQueries({ queryKey: ['staff-move-options'] }),
+        queryClient.invalidateQueries({ queryKey: ['exceptions'] }),
+      ]),
+  })
+}
+
+export function useStaffReschedule() {
+  return useBookingChange((i: { bookingId: string; start: string }) => ({
+    action: 'reschedule',
+    ...i,
+  }))
+}
+
+export function useStaffCancel() {
+  return useBookingChange((i: { bookingId: string; reason: string }) => ({
+    action: 'cancel',
+    bookingId: i.bookingId,
+    reason: i.reason || undefined,
+  }))
+}
+
+export function useSetAttendance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (i: { bookingId: string; attendance: 'attended' | 'no_show' }) => {
+      const { error } = await supabase.rpc('set_booking_attendance', {
+        p_booking_id: i.bookingId,
+        p_attendance: i.attendance,
+      })
+      if (error) throw toApiError(error)
+    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['enquiries'] }),
+        queryClient.invalidateQueries({ queryKey: ['appointments'] }),
+      ]),
+  })
+}
+
+export const LOST_REASONS = [
+  ['price', 'Price'],
+  ['timing', 'Timing'],
+  ['chose_another', 'Chose another company'],
+  ['project_cancelled', 'Project cancelled or postponed'],
+  ['no_response', 'No response'],
+  ['other', 'Other'],
+] as const
+export type LostReason = (typeof LOST_REASONS)[number][0]
+
+export const outcomeSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('won'),
+    value: z.number().nonnegative().max(9_999_999).nullable(),
+  }),
+  z
+    .object({
+      outcome: z.literal('lost'),
+      reason: z.enum(LOST_REASONS.map(([v]) => v) as [LostReason, ...LostReason[]]),
+      note: z.string().trim().max(500),
+    })
+    .refine((v) => v.reason !== 'other' || v.note.length > 0, {
+      path: ['note'],
+      message: 'Say why.',
+    }),
+  z.object({ outcome: z.literal('none') }),
+])
+export type OutcomeInput = z.infer<typeof outcomeSchema>
+
+export function useSetOutcome(enquiryId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: OutcomeInput) => {
+      const v = outcomeSchema.parse(input)
+      const { error } = await supabase.rpc('set_enquiry_outcome', {
+        p_enquiry_id: enquiryId,
+        p_outcome: v.outcome === 'none' ? null : v.outcome,
+        p_value: v.outcome === 'won' ? v.value : null,
+        p_reason: v.outcome === 'lost' ? v.reason : null,
+        p_note: v.outcome === 'lost' ? v.note || null : null,
+      })
+      if (error) throw toApiError(error)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['enquiries'] }),
+  })
+}
+
+export const bookingSettingsSchema = z.object({
+  change_cutoff_minutes: z.number().int().min(0).max(10080),
+  reminder_lead_minutes: z.number().int().min(30).max(10080),
+  business_phone: z
+    .string()
+    .trim()
+    .max(40)
+    .nullable()
+    .transform((v) => (v ? v : null)),
+})
+export type BookingSettings = z.infer<typeof bookingSettingsSchema>
+
+export function useBookingSettings() {
+  return useQuery({
+    queryKey: ['booking_settings'],
+    queryFn: async (): Promise<BookingSettings | null> => {
+      const { data, error } = await supabase
+        .from('booking_settings')
+        .select('change_cutoff_minutes, reminder_lead_minutes, business_phone')
+        .maybeSingle()
+      if (error) throw toApiError(error)
+      return data === null ? null : bookingSettingsSchema.parse(data)
+    },
+  })
+}
+
+export function useUpdateBookingSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (value: BookingSettings) => {
+      const v = bookingSettingsSchema.parse(value)
+      const { error } = await supabase
+        .from('booking_settings')
+        .update({ ...v, updated_at: new Date().toISOString() })
+        .eq('id', true)
+      if (error) throw toApiError(error)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['booking_settings'] }),
+  })
+}
+
+const funnelRowSchema = z.object({
+  campaign: z.string(),
+  enquiries: z.coerce.number(),
+  booked: z.coerce.number(),
+  attended: z.coerce.number(),
+  won: z.coerce.number(),
+  cancelled: z.coerce.number(),
+  no_shows: z.coerce.number(),
+  won_value: z.coerce.number(),
+})
+
+export function useFunnelReport(from: string, to: string) {
+  return useQuery({
+    queryKey: ['funnel', from, to],
+    enabled: from !== '' && to !== '' && from <= to,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('funnel_report', { p_from: from, p_to: to })
+      if (error) throw toApiError(error)
+      return z.array(funnelRowSchema).parse(data)
     },
   })
 }

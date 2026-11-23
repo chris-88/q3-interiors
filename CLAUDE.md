@@ -6,7 +6,7 @@ Guidance for the development agent working on this project. Read this fully befo
 
 Q3 Interiors is a multi-trade renovation contractor. This app is its customer acquisition journey: a homeowner follows a link from Instagram to a mobile enquiry form, the enquiry is saved, and they book a phone consultation or an on-site estimate visit against staff Google Calendars. Staff get an authenticated workspace for enquiries, appointments and outcomes. A separate estimating product will later reuse the enquiry ID.
 
-Slice 1 (enquiry) and slice 2 (booking against one Google Calendar, confirmation email, staff appointments and calendar settings) are built. Cancel/reschedule, reminders, outcomes, uploads, ad pixels and a form editor are later slices (see the vault decision `2026-11-20-q3-pilot-scope-and-hosting`).
+Slices 1 (enquiry), 2 (booking against one Google Calendar, confirmation email, staff appointments and calendar settings) and 3 (cancel and reschedule, email reminders, attendance and won/lost outcomes, funnel report, calendar reconcile flags) are built. SMS, uploads, ad pixels, multi-staff and a form editor are not (see the vault decision `2026-11-20-q3-pilot-scope-and-hosting`).
 
 | Concern            | Choice                                                                                                                              |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -56,16 +56,17 @@ If you can't satisfy an item, say so explicitly rather than quietly skipping it.
 
 ## Routes (HashRouter)
 
-| Route                    | What                                                                                                                          |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `/#/`                    | Landing page, one "Tell us about your project" action                                                                         |
-| `/#/enquire`             | Multi-step enquiry form, then review, then send                                                                               |
-| `/#/enquire/sent`        | Confirmation with the reference; only reachable after a successful save                                                       |
-| `/#/staff`               | Staff sign-in, then the enquiry list (lazy-loaded chunk)                                                                      |
-| `/#/staff/enquiries/:id` | Enquiry detail: answers via the stored form version, contact, status change, history, attribution                             |
-| `/#/book/:token`         | Customer scheduling for one enquiry (opaque access token, 30 days): type, address for a visit, slot, book, pending, confirmed |
-| `/#/staff/appointments`  | Appointments, upcoming first, plus past and failed                                                                            |
-| `/#/staff/settings`      | Connect/reconnect/test/disconnect Google Calendar; availability and appointment types (placeholders)                          |
+| Route                    | What                                                                                                                                                     |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/#/`                    | Landing page, one "Tell us about your project" action                                                                                                    |
+| `/#/enquire`             | Multi-step enquiry form, then review, then send                                                                                                          |
+| `/#/enquire/sent`        | Confirmation with the reference; only reachable after a successful save                                                                                  |
+| `/#/staff`               | Staff sign-in, then the enquiry list (lazy-loaded chunk)                                                                                                 |
+| `/#/staff/enquiries/:id` | Enquiry detail: answers via the stored form version, contact, status change, history, attribution                                                        |
+| `/#/book/:token`         | Customer scheduling for one enquiry (opaque access token, 30 days): type, address for a visit, slot, book, pending, confirmed                            |
+| `/#/staff/appointments`  | Appointments, upcoming first, plus past and failed                                                                                                       |
+| `/#/staff/settings`      | Connect/reconnect/test/disconnect Google Calendar; change cut-off, reminder lead time, business phone; availability and appointment types (placeholders) |
+| `/#/staff/report`        | Funnel report: enquiries -> booked -> attended -> won, overall and by campaign, for a date range                                                         |
 
 Campaign links carry `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, either before the `#` (`https://q3.chrisquinn.ie/?utm_source=instagram#/`) or inside the route (`/#/?utm_source=instagram`). `src/lib/attribution.ts` keeps the first tagged arrival for 30 days in localStorage; an untagged arrival is stored as `tracking = 'unknown'`. Click ids are recorded only as present or not. Never put customer data in a URL.
 
@@ -103,9 +104,10 @@ Edge Functions (source of truth `supabase/functions/`, deployed with `npm run fu
 
 | Function                | Auth                                                                           | What                                                                                                                     |
 | ----------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `public-booking`        | anon key (router JWT check) + enquiry token in the body                        | `context`, `availability`, `site_details`, `book`, `status`, `request_contact`                                           |
+| `public-booking`        | anon key (router JWT check) + enquiry token in the body                        | `context`, `availability`, `site_details`, `book`, `status`, `request_contact`, `move_options`, `reschedule`, `cancel`   |
 | `calendar-admin`        | signed-in staff (GoTrue `/user` + `staff` row)                                 | `start` (Google consent URL, PKCE, state), `test`, `disconnect`                                                          |
 | `google-oauth-callback` | none: listed in `FUNCTIONS_PUBLIC`; authorised by a single-use 10-minute state | exchanges the code, stores the AES-GCM-encrypted refresh token, redirects to `/#/staff/settings?calendar=…`              |
+| `staff-booking`         | signed-in staff (GoTrue `/user` + `staff` row)                                 | `move_options`, `reschedule`, `cancel` for any booking (no cut-off)                                                      |
 | `booking-worker`        | anon key + `x-worker-secret`                                                   | retries due calendar jobs and emails; pg_cron calls it every minute via pg_net (`private.kick_worker`, secrets in Vault) |
 
 Pure logic lives in `supabase/functions/_shared` and is unit-tested with Vitest (`slots.ts`, `calendar-job.ts`, `email.ts`, `public-booking.ts`; fakes in `_shared/testing/fakes.ts`). `db.ts` and `runtime.ts` are Deno-only and checked with `npm run functions:check`.
@@ -121,11 +123,21 @@ Rules that matter:
 
 Stack wiring (infra repo, `stacks/q3-interiors/`): `docker-compose.q3-interiors.yml` passes `FUNCTIONS_PUBLIC`, `GOOGLE_CLIENT_ID/SECRET`, `TOKEN_ENCRYPTION_KEY`, `WORKER_SECRET`, `SMTP_PASS` (Resend key) and URLs to the functions container; `volumes/functions/main/index.ts` (the router) skips JWT verification for names in `FUNCTIONS_PUBLIC`. Secrets live in pass under `infra/q3-interiors/`. After adding or changing one: `~/code/infra/scripts/render-env q3-interiors && cd ~/code/infra/stacks/q3-interiors && sudo docker compose up -d functions`. Vault secrets for the cron worker: `npm run functions:secrets`.
 
+## Changes, reminders and outcomes (slice 3)
+
+- Cancel and reschedule go through `private.cancel_booking` / `private.reschedule_booking`, called by `public-booking` (customers, only before the cut-off in `booking_settings.change_cutoff_minutes`) and `staff-booking` (staff, no cut-off). Both are one transaction each. A reschedule keeps the booking id and its calendar event id and runs under the same `bookings_no_overlap` constraint: a lost race returns alternatives and keeps the old time. Repeating a reschedule to the same time is a no-op; cancelling twice is a no-op.
+- Google follows through `integration_jobs` of kind `update_calendar_event` / `delete_calendar_event` (at most one open job of each kind per booking). Each attempt reads the event first; an update patches start/end only if they differ, and finishes only if the booking still has the time it wrote. After retries, a failed update sets `bookings.calendar_mismatch` (needs attention) and the database time stays the truth. A create job for a booking cancelled meanwhile queues a delete.
+- Reconcile (flag only): every worker run checks up to 10 upcoming confirmed bookings (each at most every 30 minutes) against Google and writes "Event deleted / moved in Google Calendar" to `calendar_mismatch`. It never changes the booking.
+- Reminders: one email, `booking_settings.reminder_lead_minutes` before the start (placeholder 24 h). Planned in `_shared/rules.ts` (`planReminder`): none if the time was chosen inside the lead time, none once started, a missed one goes straight away. Stored with dedupe key `booking_reminder:<booking>:<start epoch>`, so exactly once per booking and start; a reschedule skips the old one and plans a new one; a cancel skips it; the worker re-checks before sending (`staleReason`). A new lead time applies to bookings made or moved after the change.
+- Messages: confirmation, reminder, new time and cancellation. **All customer wording is in `supabase/functions/_shared/messages.ts`** (placeholder). Each email carries a fresh 30-day "Change or cancel" link (`/#/book/<token>`), minted at send time; tokens are never logged. Messages made obsolete are marked `skipped`, not sent.
+- Outcomes: staff mark a past confirmed appointment attended or no-show (`public.set_booking_attendance`) and record won (optional quoted value) or lost (reason from a fixed list plus free text; `other` needs text) with `public.set_enquiry_outcome`. The outcome is a separate field from `enquiries.status` on purpose (handling status vs commercial result); both write to `enquiry_events`.
+- Report: `public.funnel_report(from, to)` (staff only, security definer with an `is_staff()` check) groups enquiries submitted in the Irish date range by `utm_campaign` (`(unknown)` when untagged). Booked = an appointment that reached confirmed (even if later cancelled). Rates are computed in `src/lib/funnel.ts`.
+
 ## Testing
 
 - `npm run test`: unit tests (schema-to-validation, conditional visibility, attribution parsing, drafts and idempotency keys, published-form drift, a few component tests).
 - `npm run test:e2e`: Playwright at 390px against `vite preview` of the current `dist/` (run `npm run build` first; a stale `dist/` tests old code). `e2e/fake-backend.ts` runs the real `public-booking` logic in Node over an in-memory database and a fake Google Calendar and blocks every other backend request, so nothing reaches the stack. Set `SCREENSHOTS_DIR` to keep step screenshots. Runs in CI on pull requests and before deploy.
-- `npm run test:db`: against the live stack: `supabase/tests/access.sql` and `booking.sql` inside transactions that are always rolled back (privileges, RLS, validation, idempotency, tokens, reservations, job and email transitions), the form drift check, `supabase/tests/race.sh` (a real two-session race for one slot; it deletes what it creates), then `scripts/check-anon-http.sh` through the public gateway (tables, RPCs, functions, the OAuth callback). Run it after any migration or functions deploy. Not in CI (the database is not reachable from GitHub).
+- `npm run test:db`: against the live stack: `supabase/tests/access.sql`, `booking.sql` and `changes.sql` inside transactions that are always rolled back (privileges, RLS, validation, idempotency, tokens, reservations, job and email transitions), the form drift check, `supabase/tests/race.sh` (a real two-session race for one slot; it deletes what it creates), then `scripts/check-anon-http.sh` through the public gateway (tables, RPCs, functions, the OAuth callback). Run it after any migration or functions deploy. Not in CI (the database is not reachable from GitHub).
 - Local dev must run on `http://localhost:5173` (the gateway's CORS allow-list); `.env.local` carries the URL and anon key.
 
 ## Commands

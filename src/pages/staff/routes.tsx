@@ -2,6 +2,7 @@ import { StaffArea } from '@/components/staff/staff-layout'
 import { EnquiryDetailPage } from './enquiry-detail-page'
 import { EnquiryListPage } from './enquiry-list-page'
 import { AppointmentsPage } from './appointments-page'
+import { ReportPage } from './report-page'
 import { SettingsPage } from './settings-page'
 
 // Loaded lazily from App so customers never download the staff workspace.
@@ -34,6 +35,14 @@ export function StaffSettingsRoute() {
   return (
     <StaffArea>
       <SettingsPage />
+    </StaffArea>
+  )
+}
+
+export function StaffReportRoute() {
+  return (
+    <StaffArea>
+      <ReportPage />
     </StaffArea>
   )
 }

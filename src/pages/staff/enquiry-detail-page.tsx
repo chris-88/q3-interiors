@@ -19,6 +19,8 @@ import type { FormDefinition, FormField } from '@/forms/types'
 import { formatClock, formatDateTime, formatLongDate } from '@/lib/format'
 import { useEnquiryBookings } from '@/api/staff-booking'
 import { BookingStateBadge } from '@/components/staff/booking-state-badge'
+import { BookingActions } from '@/components/staff/booking-actions'
+import { OutcomeForm } from '@/components/staff/outcome-form'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -171,7 +173,14 @@ const EVENT_TEXT: Partial<Record<EnquiryEvent['kind'], string>> = {
   booking_retrying: 'Calendar event not created yet; retrying',
   booking_failed: 'Booking failed',
   email_sent: 'Confirmation email sent',
-  email_failed: 'Confirmation email not sent',
+  email_failed: 'Email not sent',
+  booking_cancelled: 'Appointment cancelled',
+  booking_rescheduled: 'Appointment moved',
+  calendar_updated: 'Google Calendar updated',
+  calendar_update_failed: 'Google Calendar not updated',
+  attendance_recorded: 'Attendance recorded',
+  outcome_recorded: 'Outcome recorded',
+  outcome_cleared: 'Outcome cleared',
 }
 
 function eventText(event: EnquiryEvent): string {
@@ -230,6 +239,7 @@ function BookingsSection({ enquiryId }: { enquiryId: string }) {
                 <BookingStateBadge state={b.state} />
               </div>
               <span className="text-sm">{b.appointment_types.label}</span>
+              <BookingActions booking={b} />
               {b.failure_reason && (
                 <span className="text-destructive text-sm break-words">{b.failure_reason}</span>
               )}
@@ -376,6 +386,19 @@ export function EnquiryDetailPage() {
           form={forms.data?.get(`site_details@${data.site_details_form_version ?? 1}`)}
         />
       )}
+
+      <Section title="Outcome">
+        <OutcomeForm
+          key={`${data.outcome}-${data.outcome_value}-${data.outcome_reason}`}
+          enquiryId={data.id}
+          current={{
+            outcome: data.outcome,
+            value: data.outcome_value,
+            reason: data.outcome_reason,
+            note: data.outcome_note,
+          }}
+        />
+      </Section>
 
       <Section title="Change status">
         <StatusForm enquiryId={data.id} current={data.status} />

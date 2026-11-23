@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router'
 import { useAppointments, type StaffBooking } from '@/api/staff-booking'
+import { BookingActions } from '@/components/staff/booking-actions'
 import { BookingStateBadge } from '@/components/staff/booking-state-badge'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -11,7 +12,7 @@ import { formatClock, formatLongDate } from '@/lib/format'
 
 const LIVE = new Set(['reserved', 'calendar_pending', 'confirmed'])
 
-function Row({ booking }: { booking: StaffBooking }) {
+function Row({ booking, actions }: { booking: StaffBooking; actions?: boolean }) {
   const name = booking.enquiries?.answers.name
   return (
     <li>
@@ -36,6 +37,11 @@ function Row({ booking }: { booking: StaffBooking }) {
         </div>
         <ChevronRight className="text-muted-foreground size-4" aria-hidden="true" />
       </Link>
+      {actions && (
+        <div className="px-1">
+          <BookingActions booking={booking} />
+        </div>
+      )}
     </li>
   )
 }
@@ -91,7 +97,7 @@ export function AppointmentsPage() {
               ) : (
                 <ul className="mt-2 flex flex-col gap-2">
                   {upcoming.map((b) => (
-                    <Row key={b.id} booking={b} />
+                    <Row key={b.id} booking={b} actions />
                   ))}
                 </ul>
               )}

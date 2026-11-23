@@ -10,6 +10,9 @@ import {
   useUpdateAppointmentType,
   useUpdateAvailability,
   type AppointmentTypeSettings,
+  type BookingSettings,
+  useBookingSettings,
+  useUpdateBookingSettings,
   type StaffAvailability,
 } from '@/api/staff-booking'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
@@ -254,14 +257,15 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
         {WEEKDAYS.map(([day, name]) => {
           const h = hours(day)
           return (
-            <div key={day} className="grid grid-cols-[6.5rem_1fr_auto_1fr] items-center gap-2">
+            <div key={day} className="grid grid-cols-[4.5rem_1fr_auto_1fr] items-center gap-2">
               <label className="flex items-center gap-2 text-sm" htmlFor={`day-${day}`}>
                 <Checkbox
                   id={`day-${day}`}
                   checked={h !== null}
                   onCheckedChange={(checked) => setHours(day, checked ? ['09:00', '17:00'] : null)}
                 />
-                {name}
+                <span aria-hidden="true">{name.slice(0, 3)}</span>
+                <span className="sr-only">{name}</span>
               </label>
               {h && (
                 <>
@@ -270,7 +274,7 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
                     aria-label={`${name} start`}
                     value={h[0]}
                     onChange={(e) => setHours(day, [e.target.value, h[1]])}
-                    className="h-10 min-w-0 text-base"
+                    className="h-10 min-w-0 px-2 text-base tabular-nums [&::-webkit-calendar-picker-indicator]:ml-1 [&::-webkit-calendar-picker-indicator]:w-3.5"
                   />
                   <span className="text-muted-foreground text-sm">to</span>
                   <Input
@@ -278,7 +282,7 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
                     aria-label={`${name} end`}
                     value={h[1]}
                     onChange={(e) => setHours(day, [h[0], e.target.value])}
-                    className="h-10 min-w-0 text-base"
+                    className="h-10 min-w-0 px-2 text-base tabular-nums [&::-webkit-calendar-picker-indicator]:ml-1 [&::-webkit-calendar-picker-indicator]:w-3.5"
                   />
                 </>
               )}
@@ -397,15 +401,93 @@ function TypeForm({ initial }: { initial: AppointmentTypeSettings }) {
   )
 }
 
+function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
+  const [value, setValue] = useState(initial)
+  const update = useUpdateBookingSettings()
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        update.mutate(value)
+      }}
+      className="flex flex-col gap-4"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField
+          id="cutoff"
+          label="Online changes until (hours before)"
+          value={Math.round(value.change_cutoff_minutes / 60)}
+          onChange={(n) => setValue((v) => ({ ...v, change_cutoff_minutes: n * 60 }))}
+          min={0}
+          max={168}
+          hint="Inside this, customers are asked to ring"
+        />
+        <NumberField
+          id="lead"
+          label="Reminder (hours before)"
+          value={Math.round(value.reminder_lead_minutes / 60)}
+          onChange={(n) => setValue((v) => ({ ...v, reminder_lead_minutes: Math.max(n, 1) * 60 }))}
+          min={1}
+          max={168}
+          hint="One email; none if booked later than this"
+        />
+      </div>
+      <Field>
+        <FieldLabel htmlFor="business-phone">Phone customers ring for changes</FieldLabel>
+        <Input
+          id="business-phone"
+          type="tel"
+          inputMode="tel"
+          value={value.business_phone ?? ''}
+          onChange={(e) => setValue((v) => ({ ...v, business_phone: e.target.value || null }))}
+          className="h-10 text-base"
+          aria-describedby="business-phone-hint"
+        />
+        <p id="business-phone-hint" className="text-muted-foreground text-xs">
+          Empty until confirmed; customers are then asked to reply to their email instead.
+        </p>
+      </Field>
+      {update.isError && (
+        <Alert variant="destructive">
+          <AlertDescription>Not saved. Check the values.</AlertDescription>
+        </Alert>
+      )}
+      {update.isSuccess && (
+        <p className="text-muted-foreground text-sm" aria-live="polite">
+          Saved. A new reminder time applies to bookings made or moved from now on.
+        </p>
+      )}
+      <Button type="submit" className="h-10 self-start px-4" disabled={update.isPending}>
+        {update.isPending ? 'Saving…' : 'Save'}
+      </Button>
+    </form>
+  )
+}
+
 export function SettingsPage() {
   const staff = useCurrentStaff()
   const availability = useStaffAvailability(staff.user_id)
   const types = useAppointmentTypes()
+  const bookingSettings = useBookingSettings()
   return (
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
       <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
       <CalendarCard />
+      <Card title="Changes and reminders" id="changes-heading">
+        <p className="text-muted-foreground mb-3 text-sm">
+          Placeholder values until confirmed with Q3 Interiors.
+        </p>
+        {bookingSettings.isPending ? (
+          <Skeleton className="h-32 w-full" />
+        ) : bookingSettings.isError || !bookingSettings.data ? (
+          <Alert variant="destructive">
+            <AlertDescription>Could not load these settings.</AlertDescription>
+          </Alert>
+        ) : (
+          <BookingSettingsForm initial={bookingSettings.data} />
+        )}
+      </Card>
       <Card title="Availability" id="availability-heading">
         <p className="text-muted-foreground mb-3 text-sm">
           Placeholder values until confirmed with Q3 Interiors.

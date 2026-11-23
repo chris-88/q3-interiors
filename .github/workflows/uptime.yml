@@ -1,0 +1,57 @@
+name: Uptime
+
+# Outside-in check every 15 minutes. A failure fails the workflow, and GitHub emails the repo
+# owner about failed scheduled runs. Sends no personal data and creates no rows: the database
+# check is a deliberately invalid submission that fails validation and rolls back, and the
+# function check is a malformed request refused before any database work.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SITE: https://q3.chrisquinn.ie
+      API: https://api.chrisquinn.ie
+      GATEWAY: https://api.chrisquinn.ie/q3-interiors
+      ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - name: Site serves the app shell
+        run: |
+          body="$(curl -fsS --max-time 20 "$SITE/")"
+          grep -q '<div id="root"></div>' <<<"$body" || { echo "::error::app shell missing"; exit 1; }
+          grep -q '<title>Q3 Interiors</title>' <<<"$body" || { echo "::error::title missing"; exit 1; }
+
+      - name: Edge health
+        run: curl -fsS --max-time 20 -o /dev/null "$API/health"
+
+      - name: Gateway answers (401 without a key is up)
+        run: |
+          code="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' "$GATEWAY/rest/v1/")"
+          [ "$code" = 401 ] || { echo "::error::gateway returned $code"; exit 1; }
+
+      - name: Database answers through the API (validation error, nothing stored)
+        run: |
+          out="$(curl -sS --max-time 20 -w '\n%{http_code}' -X POST "$GATEWAY/rest/v1/rpc/submit_enquiry_with_access" \
+            -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" -H 'Content-Type: application/json' \
+            -d '{"p_idempotency_key":"00000000-0000-4000-8000-0000000000ff","p_form_id":"enquiry","p_form_version":1,"p_answers":{}}')"
+          code="$(tail -n1 <<<"$out")"
+          [ "$code" = 400 ] && grep -q '"code":"22023"' <<<"$out" || { echo "::error::database check returned $code"; exit 1; }
+
+      - name: Booking function answers
+        run: |
+          out="$(curl -sS --max-time 20 -w '\n%{http_code}' -X POST "$GATEWAY/functions/v1/public-booking" \
+            -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" -H 'Content-Type: application/json' \
+            -d '{"action":"uptime-check"}')"
+          code="$(tail -n1 <<<"$out")"
+          [ "$code" = 400 ] && grep -q 'bad_request' <<<"$out" || { echo "::error::public-booking returned $code"; exit 1; }

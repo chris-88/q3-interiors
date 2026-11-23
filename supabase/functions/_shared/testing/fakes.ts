@@ -14,6 +14,9 @@ import type {
   AppointmentType,
   Answers,
   BookingRow,
+  BookingSettings,
+  ChangeResult,
+  SyncJob,
   CalendarConnection,
   CalendarJob,
   Communication,
@@ -59,7 +62,12 @@ export const defaultTypes = (): AppointmentType[] => [
   },
 ]
 
-type Job = CalendarJob & { state: string; next_attempt_at: number; last_error: string | null }
+type Job = CalendarJob & {
+  kind: 'create_calendar_event' | 'update_calendar_event' | 'delete_calendar_event'
+  state: string
+  next_attempt_at: number
+  last_error: string | null
+}
 type Comm = Communication & {
   state: string
   next_attempt_at: number
@@ -89,6 +97,13 @@ export class FakeDb implements Db {
     calendar_id: 'primary',
   }
   tokenCiphertext: string | null = 'ciphertext'
+  settings: BookingSettings = {
+    change_cutoff_minutes: 120,
+    reminder_lead_minutes: 1440,
+    business_phone: null,
+  }
+  mismatches = new Map<string, string | null>()
+  mintedTokens = 0
   bookings: (BookingRow & {
     blocked: Interval
     failure_reason: string | null
@@ -155,10 +170,18 @@ export class FakeDb implements Db {
   async getTokenCiphertext() {
     return this.tokenCiphertext
   }
-  async liveReservations(_staff: string, window: Interval): Promise<Reservation[]> {
+  async liveReservations(
+    _staff: string,
+    window: Interval,
+    excludeBookingId?: string,
+  ): Promise<Reservation[]> {
     return this.bookings
       .filter(
-        (b) => LIVE.has(b.state) && b.blocked.start < window.end && window.start < b.blocked.end,
+        (b) =>
+          b.id !== excludeBookingId &&
+          LIVE.has(b.state) &&
+          b.blocked.start < window.end &&
+          window.start < b.blocked.end,
       )
       .map((b) => ({
         blocked: b.blocked,
@@ -226,6 +249,7 @@ export class FakeDb implements Db {
     })
     this.jobs.push({
       id: this.jobs.length + 1,
+      kind: 'create_calendar_event',
       booking_id: id,
       attempts: 0,
       max_attempts: 8,
@@ -272,6 +296,7 @@ export class FakeDb implements Db {
     const due = this.jobs
       .filter(
         (j) =>
+          j.kind === 'create_calendar_event' &&
           (!bookingId || j.booking_id === bookingId) &&
           j.state === 'queued' &&
           j.next_attempt_at <= this.now(),
@@ -295,7 +320,12 @@ export class FakeDb implements Db {
     const { job, booking } = this.booking(jobId)
     if (job.state === 'succeeded') return
     job.state = 'succeeded'
+    if (booking.state === 'cancelled') {
+      this.enqueue('delete_calendar_event', booking.id)
+      return
+    }
     booking.state = 'confirmed'
+    booking.confirmed_at = new Date(this.now()).toISOString()
     booking.link = link
     this.events.push({ enquiryId: booking.enquiry_id, kind: 'booking_confirmed' })
     const email = this.enquiries.get(booking.enquiry_id)!.answers.email
@@ -378,6 +408,224 @@ export class FakeDb implements Db {
   async recordCalendarError(_staff: string, error: string) {
     this.calendarErrors.push(error)
   }
+
+  // Slice 3 -----------------------------------------------------------------------------------
+  private enqueue(kind: Job['kind'], bookingId: string) {
+    const open = this.jobs.find(
+      (j) =>
+        j.kind === kind &&
+        j.booking_id === bookingId &&
+        (j.state === 'queued' || j.state === 'running'),
+    )
+    if (open) {
+      if (open.state === 'queued') open.next_attempt_at = 0
+      return
+    }
+    this.jobs.push({
+      id: this.jobs.length + 1,
+      kind,
+      booking_id: bookingId,
+      attempts: 0,
+      max_attempts: 8,
+      outcome_unknown: false,
+      state: 'queued',
+      next_attempt_at: 0,
+      last_error: null,
+    })
+  }
+  private queueMessage(
+    booking: { id: string; enquiry_id: string },
+    template: Communication['template'],
+    key: string,
+    aboutStart: string | null,
+    at = 0,
+  ) {
+    const email = this.enquiries.get(booking.enquiry_id)?.answers.email
+    if (typeof email !== 'string' || this.comms.some((c) => c.dedupe_key === key)) return
+    this.comms.push({
+      id: `c${this.comms.length + 1}`,
+      enquiry_id: booking.enquiry_id,
+      booking_id: booking.id,
+      template,
+      recipient: email,
+      dedupe_key: key,
+      about_start: aboutStart,
+      attempts: 0,
+      max_attempts: 6,
+      state: 'queued',
+      next_attempt_at: at,
+      provider_message_id: null,
+      last_error: null,
+    })
+  }
+  private skipReminders(bookingId: string, reason: string) {
+    for (const c of this.comms) {
+      if (c.booking_id === bookingId && c.template === 'booking_reminder' && c.state === 'queued') {
+        c.state = 'skipped'
+        c.last_error = reason
+      }
+    }
+  }
+  async getSettings() {
+    return this.settings
+  }
+  async bookingById(id: string) {
+    return this.bookings.find((b) => b.id === id) ?? null
+  }
+  async liveBookingFor(enquiryId: string) {
+    return this.bookings.find((b) => b.enquiry_id === enquiryId && LIVE.has(b.state)) ?? null
+  }
+  async cancelBooking(
+    id: string,
+    actor: 'customer' | 'staff',
+    reason: string | null,
+  ): Promise<ChangeResult> {
+    const b = this.bookings.find((x) => x.id === id)!
+    if (b.state === 'cancelled') return { status: 'cancelled', changed: false }
+    if (b.state === 'failed') return { status: 'not_live' }
+    b.state = 'cancelled'
+    b.cancelled_at = new Date(this.now()).toISOString()
+    this.enqueue('delete_calendar_event', id)
+    this.skipReminders(id, 'Booking cancelled')
+    this.queueMessage(b, 'booking_cancelled', `booking_cancelled:${id}`, b.starts_at)
+    this.events.push({
+      enquiryId: b.enquiry_id,
+      kind: 'booking_cancelled',
+      detail: `${actor}: ${reason ?? ''}`,
+    })
+    return { status: 'cancelled', changed: true }
+  }
+  async rescheduleBooking(
+    id: string,
+    startIso: string,
+    actor: 'customer' | 'staff',
+  ): Promise<ChangeResult> {
+    const b = this.bookings.find((x) => x.id === id)!
+    if (!LIVE.has(b.state)) return { status: 'not_live' }
+    const start = Date.parse(startIso)
+    if (start === Date.parse(b.starts_at)) return { status: 'rescheduled', changed: false }
+    if (start < this.now() + this.availabilityRow.min_notice_minutes * MIN) {
+      return { status: 'slot_unavailable', reason: 'notice' }
+    }
+    const type = this.types.find((t) => t.id === b.appointment_type_id)!
+    const end = start + type.duration_minutes * MIN
+    const blocked = {
+      start: start - type.buffer_before_minutes * MIN,
+      end: end + type.buffer_after_minutes * MIN,
+    }
+    if (
+      this.bookings.some(
+        (o) =>
+          o.id !== id &&
+          LIVE.has(o.state) &&
+          o.blocked.start < blocked.end &&
+          blocked.start < o.blocked.end,
+      )
+    ) {
+      return { status: 'slot_unavailable', reason: 'taken' }
+    }
+    b.starts_at = new Date(start).toISOString()
+    b.ends_at = new Date(end).toISOString()
+    b.blocked = blocked
+    this.enqueue('update_calendar_event', id)
+    this.skipReminders(id, 'Booking moved')
+    this.queueMessage(
+      b,
+      'booking_rescheduled',
+      `booking_rescheduled:${id}:${start / 1000}`,
+      b.starts_at,
+    )
+    this.events.push({ enquiryId: b.enquiry_id, kind: 'booking_rescheduled', detail: actor })
+    return { status: 'rescheduled', changed: true }
+  }
+  async claimSyncJobs(limit: number, bookingId?: string): Promise<SyncJob[]> {
+    const due = this.jobs
+      .filter(
+        (j) =>
+          j.kind !== 'create_calendar_event' &&
+          (!bookingId || j.booking_id === bookingId) &&
+          j.state === 'queued' &&
+          j.next_attempt_at <= this.now(),
+      )
+      .slice(0, limit)
+    for (const j of due) {
+      j.state = 'running'
+      j.attempts += 1
+    }
+    return due.map((j) => ({ ...j }) as SyncJob)
+  }
+  async completeSyncJob(jobId: number, syncedStartIso: string | null, detail: string) {
+    const { job, booking } = this.booking(jobId)
+    if (
+      job.kind === 'update_calendar_event' &&
+      syncedStartIso &&
+      Date.parse(syncedStartIso) !== Date.parse(booking.starts_at)
+    ) {
+      job.state = 'queued'
+      job.next_attempt_at = 0
+      return
+    }
+    job.state = 'succeeded'
+    if (job.kind === 'update_calendar_event') {
+      this.mismatches.set(booking.id, null)
+      this.events.push({ enquiryId: booking.enquiry_id, kind: 'calendar_updated', detail })
+    }
+  }
+  async retrySyncJob(jobId: number, error: string, delaySeconds: number) {
+    const { job } = this.booking(jobId)
+    job.state = 'queued'
+    job.last_error = error
+    job.next_attempt_at = this.now() + delaySeconds * 1000
+  }
+  async failSyncJob(jobId: number, error: string) {
+    const { job, booking } = this.booking(jobId)
+    job.state = 'failed'
+    job.last_error = error
+    if (job.kind === 'update_calendar_event')
+      this.mismatches.set(booking.id, `Could not move the Google Calendar event: ${error}`)
+    this.events.push({
+      enquiryId: booking.enquiry_id,
+      kind: 'calendar_update_failed',
+      detail: error,
+    })
+  }
+  async bookingsToReconcile(limit: number) {
+    return this.bookings
+      .filter(
+        (b) =>
+          b.state === 'confirmed' &&
+          Date.parse(b.ends_at) > this.now() &&
+          !this.jobs.some(
+            (j) => j.booking_id === b.id && (j.state === 'queued' || j.state === 'running'),
+          ),
+      )
+      .slice(0, limit)
+  }
+  async recordReconcile(bookingId: string, mismatch: string | null) {
+    this.mismatches.set(bookingId, mismatch)
+  }
+  async scheduleReminder(bookingId: string, plannedAtIso: string) {
+    const b = this.bookings.find((x) => x.id === bookingId)!
+    if (b.state !== 'confirmed') return
+    this.queueMessage(
+      b,
+      'booking_reminder',
+      `booking_reminder:${b.id}:${Date.parse(b.starts_at) / 1000}`,
+      b.starts_at,
+      Date.parse(plannedAtIso),
+    )
+  }
+  async communicationSkipped(id: string, reason: string) {
+    const c = this.comms.find((x) => x.id === id)!
+    if (c.state === 'sent') return
+    c.state = 'skipped'
+    c.last_error = reason
+  }
+  async mintAccessToken(enquiryId: string) {
+    const token = `minted-${++this.mintedTokens}-0123456789abcdefghij`
+    this.tokens.set(token, { enquiryId, expiresAt: this.now() + 30 * 24 * 60 * MIN })
+    return token
+  }
 }
 
 export type FakeCalendarScript = {
@@ -385,6 +633,8 @@ export type FakeCalendarScript = {
   freeBusyError?: GoogleError
   /** Throw this from the next insert, after (createAnyway) or without creating the event. */
   insertError?: { error: GoogleError; createAnyway: boolean; times?: number }
+  /** Throw this from every move (events.patch). */
+  moveError?: GoogleError
   refreshError?: GoogleError
 }
 
@@ -408,9 +658,7 @@ export class FakeCalendar implements CalendarApi {
     eventId: string,
   ): Promise<CalendarEvent | null> {
     const e = this.events.get(eventId)
-    return e
-      ? { id: eventId, htmlLink: `https://calendar.example/${eventId}`, status: e.status }
-      : null
+    return e ? this.view(eventId, e) : null
   }
   async insertEvent(
     _token: string,
@@ -427,7 +675,7 @@ export class FakeCalendar implements CalendarApi {
     if (this.events.has(event.id))
       throw new GoogleError('conflict', 'The requested identifier already exists.', 409)
     this.events.set(event.id, { ...event, status: 'confirmed' })
-    return { id: event.id, htmlLink: `https://calendar.example/${event.id}`, status: 'confirmed' }
+    return this.view(event.id, { ...event, status: 'confirmed' })
   }
   async refreshAccessToken() {
     if (this.script.refreshError) throw this.script.refreshError
@@ -437,4 +685,35 @@ export class FakeCalendar implements CalendarApi {
     return { accessToken: 'a', refreshToken: 'r', scope: '', email: 'calendar@example.com' }
   }
   async revoke() {}
+  moveCalls = 0
+  deleteCalls = 0
+  private view(id: string, e: CalendarEventInput & { status: string }): CalendarEvent {
+    return {
+      id,
+      htmlLink: `https://calendar.example/${id}`,
+      status: e.status,
+      start: Date.parse(e.start),
+      end: Date.parse(e.end),
+    }
+  }
+  async moveEvent(
+    _token: string,
+    _calendarId: string,
+    eventId: string,
+    when: { start: string; end: string; timeZone: string },
+  ) {
+    this.moveCalls += 1
+    if (this.script.moveError) throw this.script.moveError
+    const e = this.events.get(eventId)
+    if (!e) throw new GoogleError('not_found', 'Not Found', 404)
+    const moved = { ...e, start: when.start, end: when.end }
+    this.events.set(eventId, moved)
+    return this.view(eventId, moved)
+  }
+  /** Like Google: a deleted event stays readable with status "cancelled". */
+  async deleteEvent(_token: string, _calendarId: string, eventId: string) {
+    this.deleteCalls += 1
+    const e = this.events.get(eventId)
+    if (e) this.events.set(eventId, { ...e, status: 'cancelled' })
+  }
 }

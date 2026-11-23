@@ -44,6 +44,8 @@ export type BookingRow = {
   calendar_event_id: string
   idempotency_key: string
   created_at: string
+  confirmed_at?: string | null
+  cancelled_at?: string | null
 }
 
 export type Answers = Record<string, string | string[]>
@@ -64,11 +66,16 @@ export type CalendarJob = {
   outcome_unknown: boolean
 }
 
+export type Template =
+  'booking_confirmation' | 'booking_reminder' | 'booking_cancelled' | 'booking_rescheduled'
+
 export type Communication = {
   id: string
   enquiry_id: string
   booking_id: string | null
-  template: 'booking_confirmation'
+  template: Template
+  /** For reminders and reschedule notices: the start time the message is about. */
+  about_start?: string | null
   recipient: string
   dedupe_key: string
   attempts: number
@@ -82,6 +89,25 @@ export type BookingContext = {
   staff: { user_id: string; display_name: string }
   connection: CalendarConnection | null
 }
+
+export type SyncJob = {
+  id: number
+  booking_id: string
+  kind: 'update_calendar_event' | 'delete_calendar_event'
+  attempts: number
+  max_attempts: number
+}
+
+export type BookingSettings = {
+  change_cutoff_minutes: number
+  reminder_lead_minutes: number
+  business_phone: string | null
+}
+
+export type ChangeResult =
+  | { status: 'cancelled' | 'rescheduled'; changed: boolean }
+  | { status: 'not_live' }
+  | { status: 'slot_unavailable'; reason: 'taken' | 'notice' | 'daily_limit' }
 
 export type ReserveResult =
   | { status: 'reserved' | 'existing' | 'already_booked'; booking_id: string }
@@ -99,7 +125,11 @@ export interface Db {
   getAvailability(staffId: string): Promise<StaffAvailability | null>
   getConnection(staffId: string): Promise<CalendarConnection | null>
   getTokenCiphertext(staffId: string): Promise<string | null>
-  liveReservations(staffId: string, window: Interval): Promise<Reservation[]>
+  liveReservations(
+    staffId: string,
+    window: Interval,
+    excludeBookingId?: string,
+  ): Promise<Reservation[]>
   latestBooking(enquiryId: string): Promise<BookingRow | null>
   bookingByKey(key: string): Promise<BookingRow | null>
   reserve(enquiryId: string, typeId: string, startIso: string, key: string): Promise<ReserveResult>
@@ -121,4 +151,30 @@ export interface Db {
   communicationRetry(id: string, error: string, delaySeconds: number, final: boolean): Promise<void>
   markDisconnected(staffId: string, error: string): Promise<void>
   recordCalendarError(staffId: string, error: string): Promise<void>
+  // Slice 3
+  getSettings(): Promise<BookingSettings>
+  bookingById(id: string): Promise<BookingRow | null>
+  liveBookingFor(enquiryId: string): Promise<BookingRow | null>
+  cancelBooking(
+    id: string,
+    actor: 'customer' | 'staff',
+    reason: string | null,
+    actorUserId?: string,
+  ): Promise<ChangeResult>
+  rescheduleBooking(
+    id: string,
+    startIso: string,
+    actor: 'customer' | 'staff',
+    actorUserId?: string,
+  ): Promise<ChangeResult>
+  claimSyncJobs(limit: number, bookingId?: string): Promise<SyncJob[]>
+  completeSyncJob(jobId: number, syncedStartIso: string | null, detail: string): Promise<void>
+  retrySyncJob(jobId: number, error: string, delaySeconds: number): Promise<void>
+  failSyncJob(jobId: number, error: string): Promise<void>
+  bookingsToReconcile(limit: number): Promise<BookingRow[]>
+  recordReconcile(bookingId: string, mismatch: string | null): Promise<void>
+  scheduleReminder(bookingId: string, plannedAtIso: string): Promise<void>
+  communicationSkipped(id: string, reason: string): Promise<void>
+  /** A fresh 30-day access token for an enquiry, for links in emails. Never logged. */
+  mintAccessToken(enquiryId: string): Promise<string>
 }

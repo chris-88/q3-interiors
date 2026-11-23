@@ -191,7 +191,7 @@ describe('public booking: booking', () => {
     expect(calendar.events.size).toBe(1)
     // customer@example.com is a reserved test domain: recorded, never sent.
     expect(mailer.sent).toHaveLength(0)
-    expect(db.comms[0]?.state).toBe('failed')
+    expect(db.comms[0]?.state).toBe('skipped')
   })
 
   it('a double tap or retry with the same key returns the same booking', async () => {
@@ -211,7 +211,7 @@ describe('public booking: booking', () => {
     ).toBe(1)
     expect(db.bookings).toHaveLength(1)
     expect(calendar.events.size).toBe(1)
-    expect(db.comms).toHaveLength(1)
+    expect(db.comms.filter((c) => c.template === 'booking_confirmation')).toHaveLength(1)
   })
 
   it('two customers racing for one slot: one wins, the other gets fresh alternatives', async () => {
@@ -465,7 +465,7 @@ describe('email', () => {
     expect(mailer.sent[0]?.text).toContain('Pat will ring you on 087 123 4567')
     // Completing the job again does not queue a second email.
     await db.completeCalendarJob(1, null)
-    expect(db.comms).toHaveLength(1)
+    expect(db.comms.filter((c) => c.template === 'booking_confirmation')).toHaveLength(1)
   })
 
   it('retries a failed send and records a final failure', async () => {
@@ -484,7 +484,7 @@ describe('email', () => {
     for (let i = 0; i < 6; i += 1) {
       clock += 3_600_000
       const [c] = await db.claimCommunications(1)
-      if (c) await processCommunication(c, { db, mailer })
+      if (c) await processCommunication(c, { db, mailer, appUrl: 'https://q3.example' })
     }
     expect(db.comms[0]?.state).toBe('failed')
     expect(db.events.some((e) => e.kind === 'email_failed')).toBe(true)

@@ -8,6 +8,9 @@ import type {
   Answers,
   BookingContext,
   BookingRow,
+  BookingSettings,
+  ChangeResult,
+  SyncJob,
   CalendarConnection,
   CalendarJob,
   Communication,
@@ -78,13 +81,14 @@ export function createDb(): Db {
         await q`select refresh_token_ciphertext from private.calendar_tokens where staff_user_id = ${staffId}`
       return (row?.refresh_token_ciphertext as string | undefined) ?? null
     },
-    async liveReservations(staffId, window: Interval): Promise<Reservation[]> {
+    async liveReservations(staffId, window: Interval, excludeBookingId): Promise<Reservation[]> {
       const rows = await q`
         select extract(epoch from lower(b.blocked)) * 1000 as bs, extract(epoch from upper(b.blocked)) * 1000 as be,
                extract(epoch from b.starts_at) * 1000 as st, t.mode
         from public.bookings b join public.appointment_types t on t.id = b.appointment_type_id
         where b.staff_user_id = ${staffId}
           and b.state in ('reserved', 'calendar_pending', 'confirmed')
+          and b.id <> coalesce(${excludeBookingId ?? null}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
           and b.blocked && tstzrange(${iso(new Date(window.start))}::timestamptz, ${iso(new Date(window.end))}::timestamptz)`
       return rows.map((r) => ({
         blocked: { start: Number(r.bs), end: Number(r.be) },
@@ -140,7 +144,8 @@ export function createDb(): Db {
       await q`select private.fail_calendar_job(${jobId}, ${error}, ${outcomeUnknown})`
     },
     async claimCommunications(limit, bookingId) {
-      return (await q`select id, enquiry_id, booking_id, template, recipient, dedupe_key, attempts, max_attempts
+      return (await q`select id, enquiry_id, booking_id, template, recipient, dedupe_key, attempts, max_attempts,
+        to_jsonb(about_start) #>> '{}' as about_start
         from private.claim_communications(${limit}, ${bookingId ?? null})`) as unknown as Communication[]
     },
     async communicationSent(id, providerId) {
@@ -154,6 +159,73 @@ export function createDb(): Db {
     },
     async recordCalendarError(staffId, error) {
       await q`select private.record_calendar_error(${staffId}, ${error})`
+    },
+    async getSettings() {
+      const [row] = await q`select change_cutoff_minutes, reminder_lead_minutes, business_phone
+        from public.booking_settings limit 1`
+      return (
+        (row as unknown as BookingSettings) ?? {
+          change_cutoff_minutes: 120,
+          reminder_lead_minutes: 1440,
+          business_phone: null,
+        }
+      )
+    },
+    async bookingById(id) {
+      const [row] = await q`select to_jsonb(b) as b from public.bookings b where id = ${id}`
+      return (row?.b as BookingRow | undefined) ?? null
+    },
+    async liveBookingFor(enquiryId) {
+      const [row] =
+        await q`select to_jsonb(b) as b from public.bookings b where enquiry_id = ${enquiryId}
+        and state in ('reserved', 'calendar_pending', 'confirmed') limit 1`
+      return (row?.b as BookingRow | undefined) ?? null
+    },
+    async cancelBooking(id, actor, reason, actorUserId) {
+      const [row] =
+        await q`select private.cancel_booking(${id}, ${actor}, ${reason}, ${actorUserId ?? null}) as r`
+      return row?.r as ChangeResult
+    },
+    async rescheduleBooking(id, startIso, actor, actorUserId) {
+      const [row] =
+        await q`select private.reschedule_booking(${id}, ${startIso}::timestamptz, ${actor}, ${actorUserId ?? null}) as r`
+      return row?.r as ChangeResult
+    },
+    async claimSyncJobs(limit, bookingId) {
+      return (
+        await q`select id, booking_id, kind, attempts, max_attempts
+        from private.claim_sync_jobs(${limit}, ${bookingId ?? null})`
+      ).map((r) => ({
+        ...(r as unknown as SyncJob),
+        id: Number(r.id),
+      }))
+    },
+    async completeSyncJob(jobId, syncedStartIso, detail) {
+      await q`select private.complete_sync_job(${jobId}, ${syncedStartIso}::timestamptz, ${detail})`
+    },
+    async retrySyncJob(jobId, error, delaySeconds) {
+      await q`select private.retry_sync_job(${jobId}, ${error}, ${delaySeconds})`
+    },
+    async failSyncJob(jobId, error) {
+      await q`select private.fail_sync_job(${jobId}, ${error})`
+    },
+    async bookingsToReconcile(limit) {
+      return (await q`select to_jsonb(b) as b from private.bookings_to_reconcile(${limit}) b`).map(
+        (r) => r.b as BookingRow,
+      )
+    },
+    async recordReconcile(bookingId, mismatch) {
+      await q`select private.record_reconcile(${bookingId}, ${mismatch})`
+    },
+    async scheduleReminder(bookingId, plannedAtIso) {
+      await q`select private.schedule_reminder(${bookingId}, ${plannedAtIso}::timestamptz)`
+    },
+    async communicationSkipped(id, reason) {
+      await q`select private.communication_skipped(${id}, ${reason})`
+    },
+    async mintAccessToken(enquiryId) {
+      const [row] = await q`select private.mint_enquiry_token(${enquiryId}) ->> 'access_token' as t`
+      return String(row?.t)
     },
   }
 }

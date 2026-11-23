@@ -1,5 +1,5 @@
 import { backoffSeconds } from './calendar-job.ts'
-import { formatLocal } from './time.ts'
+import { renderMessage } from './messages.ts'
 import type { BookingContext, Communication, Db } from './types.ts'
 
 export type OutgoingEmail = { to: string; subject: string; text: string; idempotencyKey: string }
@@ -70,65 +70,60 @@ export function isSuppressed(address: string): boolean {
   )
 }
 
-export function firstName(displayName: string): string {
-  return displayName.trim().split(/\s+/)[0] ?? displayName
-}
+export { firstName } from './messages.ts'
 
-export function renderBookingConfirmation(ctx: BookingContext): { subject: string; text: string } {
-  const start = Date.parse(ctx.booking.starts_at)
-  const when = formatLocal(start)
-  const name =
-    typeof ctx.enquiry.answers.name === 'string' ? ctx.enquiry.answers.name.split(/\s+/)[0] : ''
-  const phone = typeof ctx.enquiry.answers.phone === 'string' ? ctx.enquiry.answers.phone : ''
-  const address = ctx.enquiry.site_details?.site_address
-  const staff = firstName(ctx.staff.display_name)
-  const where =
-    ctx.type.mode === 'phone'
-      ? `${staff} will ring you on ${phone}.`
-      : `${staff} will visit you at:\n${typeof address === 'string' ? address : 'the address you gave us'}`
-  const lines = [
-    name ? `Hello ${name},` : 'Hello,',
-    '',
-    `Your ${ctx.type.label.toLowerCase()} with Q3 Interiors is booked.`,
-    '',
-    `When: ${when.weekday} ${when.date} at ${when.time} (Irish time)`,
-    `Length: about ${ctx.type.duration_minutes} minutes`,
-    where,
-    '',
-    `To prepare: ${ctx.type.what_to_prepare}`,
-    '',
-    ctx.type.mode === 'on_site'
-      ? 'This visit is for us to assess and price the work. It does not commit you to a quote, and it is not a start date.'
-      : 'This call is to talk your project through. It does not commit you to anything.',
-    '',
-    `Your reference is ${ctx.enquiry.reference}. If you need to change anything, reply to this email or quote the reference when you contact us.`,
-    '',
-    'Q3 Interiors',
-  ]
-  return {
-    subject: `Booked: ${ctx.type.label}, ${when.weekday} ${when.date} at ${when.time}`,
-    text: lines.join('\n'),
+export type CommunicationDeps = { db: Db; mailer: Mailer; appUrl: string; now?: () => number }
+
+/** Why a queued message should not go out any more, or null to send it. */
+export function staleReason(comm: Communication, ctx: BookingContext, now: number): string | null {
+  const start = ctx.booking.starts_at
+  const same = (a: string | null | undefined) =>
+    a !== null && a !== undefined && Date.parse(a) === Date.parse(start)
+  switch (comm.template) {
+    case 'booking_reminder':
+      if (ctx.booking.state !== 'confirmed') return 'Not sent: booking is not confirmed'
+      if (!same(comm.about_start)) return 'Not sent: booking moved'
+      if (Date.parse(start) <= now) return 'Not sent: appointment already started'
+      return null
+    case 'booking_rescheduled':
+      if (ctx.booking.state === 'cancelled') return 'Not sent: booking cancelled'
+      if (!same(comm.about_start)) return 'Not sent: booking moved again'
+      return null
+    case 'booking_cancelled':
+      return ctx.booking.state === 'cancelled' ? null : 'Not sent: booking is no longer cancelled'
+    case 'booking_confirmation':
+      return ctx.booking.state === 'cancelled' ? 'Not sent: booking cancelled' : null
   }
 }
-
-export type CommunicationDeps = { db: Db; mailer: Mailer }
 
 /** Send one claimed message. The dedupe key doubles as the provider idempotency key. */
 export async function processCommunication(
   comm: Communication,
   deps: CommunicationDeps,
-): Promise<'sent' | 'retrying' | 'failed'> {
+): Promise<'sent' | 'retrying' | 'failed' | 'skipped'> {
   const { db, mailer } = deps
   if (isSuppressed(comm.recipient)) {
-    await db.communicationRetry(comm.id, 'Not sent: reserved test address', 0, true)
-    return 'failed'
+    await db.communicationSkipped(comm.id, 'Not sent: reserved test address')
+    return 'skipped'
   }
   const ctx = comm.booking_id ? await db.bookingContext(comm.booking_id) : null
   if (!ctx) {
     await db.communicationRetry(comm.id, 'Booking not found for this message', 0, true)
     return 'failed'
   }
-  const { subject, text } = renderBookingConfirmation(ctx)
+  const stale = staleReason(comm, ctx, (deps.now ?? Date.now)())
+  if (stale) {
+    await db.communicationSkipped(comm.id, stale)
+    return 'skipped'
+  }
+  const settings = await db.getSettings()
+  const token = await db.mintAccessToken(ctx.enquiry.id)
+  const { subject, text } = renderMessage(comm.template, {
+    ctx,
+    manageUrl: `${deps.appUrl}/#/book/${token}`,
+    businessPhone: settings.business_phone,
+    cancelledStart: comm.about_start ?? null,
+  })
   try {
     const id = await mailer.send({
       to: comm.recipient,

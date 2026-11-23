@@ -1,6 +1,8 @@
 import { z } from 'zod'
-import { processCalendarJob, type AccessTokenProvider } from './calendar-job.ts'
-import { firstName, processCommunication, type Mailer } from './email.ts'
+import type { AccessTokenProvider } from './calendar-job.ts'
+import { availabilityForMove, cancel, isLive, reschedule, runDueFor } from './changes.ts'
+import { firstName, type Mailer } from './email.ts'
+import { customerCanChange } from './rules.ts'
 import { GoogleError, type CalendarApi } from './google.ts'
 import { availabilityWindow, generateSlots, type Slot, type SlotType } from './slots.ts'
 import { BUSINESS_TZ } from './time.ts'
@@ -36,6 +38,9 @@ const requestSchema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('status'), token }),
   z.object({ action: z.literal('request_contact'), token, reason: z.string().max(200).optional() }),
+  z.object({ action: z.literal('cancel'), token, reason: z.string().max(300).optional() }),
+  z.object({ action: z.literal('move_options'), token }),
+  z.object({ action: z.literal('reschedule'), token, start: z.iso.datetime() }),
 ])
 
 export type PublicRequest = z.infer<typeof requestSchema>
@@ -51,6 +56,9 @@ export type BookingSummary = {
   phone: string | null
   address: string | null
   whatToPrepare: string
+  /** False inside the change cut-off: the customer is asked to ring instead. */
+  canChange: boolean
+  businessPhone: string | null
 }
 
 type Availability =
@@ -66,9 +74,14 @@ const slotType = (t: AppointmentType): SlotType => ({
 
 const ok = (body: unknown): PublicResult => ({ status: 200, body })
 
-async function summary(db: Db, bookingId: string): Promise<BookingSummary | null> {
+async function summary(
+  db: Db,
+  bookingId: string,
+  now: number = Date.now(),
+): Promise<BookingSummary | null> {
   const ctx = await db.bookingContext(bookingId)
   if (!ctx) return null
+  const settings = await db.getSettings()
   const phone = ctx.enquiry.answers.phone
   const address = ctx.enquiry.site_details?.site_address
   return {
@@ -87,6 +100,10 @@ async function summary(db: Db, bookingId: string): Promise<BookingSummary | null
     phone: ctx.type.mode === 'phone' && typeof phone === 'string' ? phone : null,
     address: ctx.type.mode === 'on_site' && typeof address === 'string' ? address : null,
     whatToPrepare: ctx.type.what_to_prepare,
+    canChange:
+      isLive(ctx.booking) &&
+      customerCanChange(Date.parse(ctx.booking.starts_at), now, settings.change_cutoff_minutes),
+    businessPhone: settings.business_phone,
   }
 }
 
@@ -139,24 +156,8 @@ function alternativesNear(slots: Slot[], start: string): Slot[] {
   return (after.length > 0 ? after : slots).slice(0, 6)
 }
 
-/** Try the calendar job and, if it confirms, the email, within this request. */
-async function runInline(deps: PublicDeps, bookingId: string) {
-  if (!deps.calendar) return
-  const [job] = await deps.db.claimCalendarJobs(1, bookingId)
-  if (job) {
-    const outcome = await processCalendarJob(job, {
-      db: deps.db,
-      calendar: deps.calendar,
-      accessToken: deps.accessToken,
-      appUrl: deps.appUrl,
-    })
-    if (outcome !== 'confirmed') return
-  }
-  if (deps.mailer) {
-    const [message] = await deps.db.claimCommunications(1, bookingId)
-    if (message) await processCommunication(message, { db: deps.db, mailer: deps.mailer })
-  }
-}
+/** Run whatever is due for this booking now (calendar jobs, reminder plan, emails). */
+const runInline = (deps: PublicDeps, bookingId: string) => runDueFor(deps, bookingId)
 
 export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<PublicResult> {
   const parsed = requestSchema.safeParse(raw)
@@ -198,7 +199,7 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
             eligibility: await db.eligibility(enquiryId, t.id),
           })),
         ),
-        booking: latest ? await summary(db, latest.id) : null,
+        booking: latest ? await summary(db, latest.id, deps.now()) : null,
       })
     }
 
@@ -229,7 +230,27 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
       if (!latest) return ok({ booking: null })
       if (latest.state === 'reserved' || latest.state === 'calendar_pending')
         await runInline(deps, latest.id)
-      return ok({ booking: await summary(db, latest.id) })
+      return ok({ booking: await summary(db, latest.id, deps.now()) })
+    }
+
+    case 'cancel':
+    case 'move_options':
+    case 'reschedule': {
+      const live = await db.liveBookingFor(enquiryId)
+      if (!live) return ok({ status: 'not_live' })
+      const settings = await db.getSettings()
+      if (
+        !customerCanChange(Date.parse(live.starts_at), deps.now(), settings.change_cutoff_minutes)
+      ) {
+        return ok({ status: 'too_late', businessPhone: settings.business_phone })
+      }
+      if (req.action === 'move_options') return ok(await availabilityForMove(deps, live))
+      if (req.action === 'cancel') {
+        const result = await cancel(deps, live, 'customer', req.reason ?? null)
+        return ok({ ...result, booking: await summary(db, live.id, deps.now()) })
+      }
+      const result = await reschedule(deps, live, req.start, 'customer')
+      return ok({ ...result, booking: await summary(db, live.id, deps.now()) })
     }
 
     case 'book': {

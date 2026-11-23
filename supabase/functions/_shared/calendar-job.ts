@@ -93,7 +93,7 @@ export type CalendarJobDeps = {
   appUrl: string
 }
 
-export type CalendarJobOutcome = 'confirmed' | 'retrying' | 'failed'
+export type CalendarJobOutcome = 'confirmed' | 'retrying' | 'failed' | 'cancelled'
 
 /**
  * Create the booking's calendar event exactly once. The event id is fixed on the booking before
@@ -114,6 +114,11 @@ export async function processCalendarJob(
   if (ctx.booking.state === 'confirmed') {
     await db.completeCalendarJob(job.id, null)
     return 'confirmed'
+  }
+  if (ctx.booking.state === 'cancelled') {
+    // Cancelled before its event was made: finishing the job queues a (no-op) delete.
+    await db.completeCalendarJob(job.id, null)
+    return 'cancelled'
   }
   await db.calendarJobStarted(job.id)
   const calendarId = ctx.connection?.calendar_id ?? 'primary'

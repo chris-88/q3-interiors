@@ -9,6 +9,8 @@ import type {
   BookingContext,
   BookingRow,
   BookingSettings,
+  EnquirySummary,
+  PendingEventDeletion,
   ChangeResult,
   SyncJob,
   CalendarConnection,
@@ -161,7 +163,8 @@ export function createDb(): Db {
       await q`select private.record_calendar_error(${staffId}, ${error})`
     },
     async getSettings() {
-      const [row] = await q`select change_cutoff_minutes, reminder_lead_minutes, business_phone
+      const [row] = await q`select change_cutoff_minutes, reminder_lead_minutes, business_phone,
+        booking_write_limit_per_hour, booking_read_limit_per_hour
         from public.booking_settings limit 1`
       return (
         (row as unknown as BookingSettings) ?? {
@@ -222,6 +225,28 @@ export function createDb(): Db {
     },
     async communicationSkipped(id, reason) {
       await q`select private.communication_skipped(${id}, ${reason})`
+    },
+    async rateLimitTake(bucket, addrHash, idemKey, limit) {
+      const [row] =
+        await q`select private.rate_limit_take(${bucket}, ${addrHash}, ${idemKey}, ${limit}) as ok`
+      return Boolean(row?.ok)
+    },
+    async enquirySummary(enquiryId) {
+      const [row] = await q`select e.id, e.reference, e.answers, e.contact_request_reason, f.schema
+        from public.enquiries e
+        left join public.form_versions f on f.form_id = e.form_id and f.version = e.form_version
+        where e.id = ${enquiryId}`
+      return (row as unknown as EnquirySummary) ?? null
+    },
+    async claimEventDeletions(limit) {
+      return (await q`select calendar_event_id, staff_user_id, attempts
+        from private.claim_event_deletions(${limit})`) as unknown as PendingEventDeletion[]
+    },
+    async eventDeletionDone(eventId) {
+      await q`select private.event_deletion_done(${eventId})`
+    },
+    async eventDeletionFailed(eventId, error) {
+      await q`select private.event_deletion_failed(${eventId}, ${error})`
     },
     async mintAccessToken(enquiryId) {
       const [row] = await q`select private.mint_enquiry_token(${enquiryId}) ->> 'access_token' as t`

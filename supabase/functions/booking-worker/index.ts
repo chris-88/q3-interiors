@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
     sync: {} as Record<string, number>,
     email: {} as Record<string, number>,
     reconcile: { checked: 0, flagged: 0 },
+    removed: {} as Record<string, number>,
   }
   try {
     if (calendar) {
@@ -60,6 +61,28 @@ Deno.serve(async (req) => {
       }
     }
     if (calendar) counts.reconcile = await reconcile({ db, calendar, accessToken }, 10)
+    if (calendar) {
+      // Events left behind by deleted enquiries (data requests and retention).
+      for (const pending of await db.claimEventDeletions(10)) {
+        try {
+          const connection = await db.getConnection(pending.staff_user_id)
+          const calendarId = connection?.calendar_id ?? 'primary'
+          const token = await accessToken(pending.staff_user_id)
+          const event = await calendar.getEvent(token, calendarId, pending.calendar_event_id)
+          if (event && event.status !== 'cancelled') {
+            await calendar.deleteEvent(token, calendarId, pending.calendar_event_id)
+          }
+          await db.eventDeletionDone(pending.calendar_event_id)
+          tally(counts.removed, 'done')
+        } catch (error) {
+          await db.eventDeletionFailed(
+            pending.calendar_event_id,
+            error instanceof Error ? error.message : String(error),
+          )
+          tally(counts.removed, 'retrying')
+        }
+      }
+    }
     return json({ ok: true, counts })
   } catch (error) {
     console.error(

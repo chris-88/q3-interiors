@@ -67,7 +67,14 @@ export type CalendarJob = {
 }
 
 export type Template =
-  'booking_confirmation' | 'booking_reminder' | 'booking_cancelled' | 'booking_rescheduled'
+  | 'booking_confirmation'
+  | 'booking_reminder'
+  | 'booking_cancelled'
+  | 'booking_rescheduled'
+  | 'staff_new_enquiry'
+  | 'staff_callback_request'
+
+export type CustomerTemplate = Exclude<Template, 'staff_new_enquiry' | 'staff_callback_request'>
 
 export type Communication = {
   id: string
@@ -102,6 +109,25 @@ export type BookingSettings = {
   change_cutoff_minutes: number
   reminder_lead_minutes: number
   business_phone: string | null
+  booking_write_limit_per_hour?: number
+  booking_read_limit_per_hour?: number
+}
+
+export type EnquirySummary = {
+  id: string
+  reference: string
+  answers: Answers
+  contact_request_reason: string | null
+  /** The form version the enquiry was answered in (for option labels). */
+  schema: {
+    steps: { fields: { id: string; options?: { value: string; label: string }[] }[] }[]
+  } | null
+}
+
+export type PendingEventDeletion = {
+  calendar_event_id: string
+  staff_user_id: string
+  attempts: number
 }
 
 export type ChangeResult =
@@ -177,4 +203,16 @@ export interface Db {
   communicationSkipped(id: string, reason: string): Promise<void>
   /** A fresh 30-day access token for an enquiry, for links in emails. Never logged. */
   mintAccessToken(enquiryId: string): Promise<string>
+  // Slice 4
+  /** Take one unit from a rate-limit bucket; false when over the limit. */
+  rateLimitTake(
+    bucket: 'booking_write' | 'booking_read',
+    addrHash: string,
+    idemKey: string | null,
+    limit: number,
+  ): Promise<boolean>
+  enquirySummary(enquiryId: string): Promise<EnquirySummary | null>
+  claimEventDeletions(limit: number): Promise<PendingEventDeletion[]>
+  eventDeletionDone(eventId: string): Promise<void>
+  eventDeletionFailed(eventId: string, error: string): Promise<void>
 }

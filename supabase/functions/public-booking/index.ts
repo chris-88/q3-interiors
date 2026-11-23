@@ -2,7 +2,7 @@
 // functions router's JWT check); every action is authorised by the enquiry access token in the
 // body. Logs never include request bodies or customer details.
 import { handlePublic } from '../_shared/public-booking.ts'
-import { config, json, runtime } from '../_shared/runtime.ts'
+import { config, json, limiterFor, runtime } from '../_shared/runtime.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204 })
@@ -14,7 +14,13 @@ Deno.serve(async (req) => {
     return json({ error: 'bad_request' }, 400)
   }
   try {
-    const result = await handlePublic(body, { ...runtime(), appUrl: config.appUrl, now: Date.now })
+    const rt = runtime()
+    const result = await handlePublic(body, {
+      ...rt,
+      appUrl: config.appUrl,
+      now: Date.now,
+      limit: await limiterFor(req, rt.db),
+    })
     return json(result.body, result.status)
   } catch (error) {
     console.error(

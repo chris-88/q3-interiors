@@ -1,5 +1,5 @@
 import { backoffSeconds } from './calendar-job.ts'
-import { renderMessage } from './messages.ts'
+import { renderMessage, renderStaffAlert } from './messages.ts'
 import type { BookingContext, Communication, Db } from './types.ts'
 
 export type OutgoingEmail = { to: string; subject: string; text: string; idempotencyKey: string }
@@ -93,6 +93,8 @@ export function staleReason(comm: Communication, ctx: BookingContext, now: numbe
       return ctx.booking.state === 'cancelled' ? null : 'Not sent: booking is no longer cancelled'
     case 'booking_confirmation':
       return ctx.booking.state === 'cancelled' ? 'Not sent: booking cancelled' : null
+    default:
+      return null
   }
 }
 
@@ -101,10 +103,22 @@ export async function processCommunication(
   comm: Communication,
   deps: CommunicationDeps,
 ): Promise<'sent' | 'retrying' | 'failed' | 'skipped'> {
-  const { db, mailer } = deps
+  const { db } = deps
   if (isSuppressed(comm.recipient)) {
     await db.communicationSkipped(comm.id, 'Not sent: reserved test address')
     return 'skipped'
+  }
+  if (comm.template === 'staff_new_enquiry' || comm.template === 'staff_callback_request') {
+    const summary = await db.enquirySummary(comm.enquiry_id)
+    if (!summary) {
+      await db.communicationSkipped(comm.id, 'Enquiry no longer exists')
+      return 'skipped'
+    }
+    const { subject, text } = renderStaffAlert(comm.template, {
+      summary,
+      staffUrl: `${deps.appUrl}/#/staff/enquiries/${summary.id}`,
+    })
+    return send(comm, deps, subject, text)
   }
   const ctx = comm.booking_id ? await db.bookingContext(comm.booking_id) : null
   if (!ctx) {
@@ -123,7 +137,18 @@ export async function processCommunication(
     manageUrl: `${deps.appUrl}/#/book/${token}`,
     businessPhone: settings.business_phone,
     cancelledStart: comm.about_start ?? null,
+    privacyUrl: `${deps.appUrl}/#/privacy`,
   })
+  return send(comm, deps, subject, text)
+}
+
+async function send(
+  comm: Communication,
+  deps: CommunicationDeps,
+  subject: string,
+  text: string,
+): Promise<'sent' | 'retrying' | 'failed'> {
+  const { db, mailer } = deps
   try {
     const id = await mailer.send({
       to: comm.recipient,

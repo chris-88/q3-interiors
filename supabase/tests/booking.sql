@@ -50,10 +50,9 @@ insert into r values ('a_retry', public.submit_enquiry_with_access(
   '00000000-0000-4000-8000-0000000000b1', 'enquiry', 1, pg_temp.answers('a@example.invalid')));
 insert into r values ('b', public.submit_enquiry_with_access(
   '00000000-0000-4000-8000-0000000000b2', 'enquiry', 1, pg_temp.answers('b@example.invalid')));
--- The slice 1 function still works for older clients.
-select pg_temp.expect(public.submit_enquiry(
-  '00000000-0000-4000-8000-0000000000b3', 'enquiry', 1, pg_temp.answers('c@example.invalid')) ~ '^Q3-',
-  'submit_enquiry still returns a reference');
+-- Since slice 4 the unlimited slice 1 function is closed to anon.
+select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+  '00000000-0000-4000-8000-0000000000b3', pg_temp.answers('c@example.invalid')), '42501');
 
 select pg_temp.expect_error('select * from public.bookings', '42501');
 select pg_temp.expect_error('select * from public.appointment_types', '42501');

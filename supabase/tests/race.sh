@@ -10,9 +10,18 @@ answers() {
   printf '{"project_type":"kitchen","description":"Race test, delete me.","location":"D07","timing":"flexible","name":"Race Test","email":"%s@example.invalid","phone":"087 000 0000"}' "$1"
 }
 
-a=$("${PSQL[@]}" -c "select (public.submit_enquiry_with_access(gen_random_uuid(), 'enquiry', 1, '$(answers "$tag-a")'::jsonb))->>'reference'")
-b=$("${PSQL[@]}" -c "select (public.submit_enquiry_with_access(gen_random_uuid(), 'enquiry', 1, '$(answers "$tag-b")'::jsonb))->>'reference'")
-cleanup() { "${PSQL[@]}" -c "delete from public.enquiries where reference in ('$a', '$b')" >/dev/null; }
+# Each submission comes from this test's own pretend address, so the race never uses up a real
+# or shared rate-limit bucket; its limiter rows are removed at the end.
+submit() {
+  "${PSQL[@]}" -c "select (public.submit_enquiry_with_access(gen_random_uuid(), 'enquiry', 1, '$(answers "$1")'::jsonb))->>'reference'
+    from (select set_config('request.headers', '{\"cf-connecting-ip\": \"$tag\"}', false)) s"
+}
+a=$(submit "$tag-a")
+b=$(submit "$tag-b")
+cleanup() {
+  "${PSQL[@]}" -c "delete from public.enquiries where reference in ('$a', '$b')" >/dev/null
+  "${PSQL[@]}" -c "delete from private.rate_limit_hits where addr_hash = private.address_hash('$tag')" >/dev/null
+}
 trap cleanup EXIT
 
 slot="((current_date + 12)::timestamp + interval '10 hours') at time zone 'Europe/Dublin'"

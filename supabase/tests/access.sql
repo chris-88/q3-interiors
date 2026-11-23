@@ -60,13 +60,16 @@ select pg_temp.expect_error(
 select pg_temp.expect_error(
   'select public.publish_form_version(''enquiry'', 99, ''{}''::jsonb)', '42501');
 
+-- Since slice 4 anon submits only through submit_enquiry_with_access (rate limited).
+select pg_temp.expect_error('select public.submit_enquiry(gen_random_uuid(), ''enquiry'', 1, ''{}''::jsonb)', '42501');
+
 -- Submission and idempotency: the same key twice yields the same reference.
-insert into results values ('ref1', public.submit_enquiry(
+insert into results values ('ref1', (public.submit_enquiry_with_access(
   '00000000-0000-4000-8000-000000000001', 'enquiry', 1, pg_temp.valid_answers(), true,
   '{"utm_source": "instagram", "utm_medium": "paid_social", "utm_campaign": "kitchens",
-    "click_id_present": true, "landing_path": "/", "first_seen_at": "2026-11-20T10:00:00Z"}'::jsonb));
-insert into results values ('ref1_again', public.submit_enquiry(
-  '00000000-0000-4000-8000-000000000001', 'enquiry', 1, pg_temp.valid_answers(), true, null));
+    "click_id_present": true, "landing_path": "/", "first_seen_at": "2026-11-20T10:00:00Z"}'::jsonb)) ->> 'reference');
+insert into results values ('ref1_again', (public.submit_enquiry_with_access(
+  '00000000-0000-4000-8000-000000000001', 'enquiry', 1, pg_temp.valid_answers(), true, null)) ->> 'reference');
 select pg_temp.expect(
   (select value from results where name = 'ref1') = (select value from results where name = 'ref1_again'),
   'a repeated idempotency key returns the same reference');
@@ -74,33 +77,33 @@ select pg_temp.expect((select value from results where name = 'ref1') ~ '^Q3-[A-
   'reference format');
 
 -- No attribution at all is stored as unknown.
-insert into results values ('ref_untracked', public.submit_enquiry(
-  '00000000-0000-4000-8000-000000000002', 'enquiry', 1, pg_temp.valid_answers(), false, null));
+insert into results values ('ref_untracked', (public.submit_enquiry_with_access(
+  '00000000-0000-4000-8000-000000000002', 'enquiry', 1, pg_temp.valid_answers(), false, null)) ->> 'reference');
 
 -- A hidden conditional answer is dropped, not stored.
-insert into results values ('ref_hidden', public.submit_enquiry(
+insert into results values ('ref_hidden', (public.submit_enquiry_with_access(
   '00000000-0000-4000-8000-000000000003', 'enquiry', 1,
-  pg_temp.valid_answers() || '{"rooms": ["kitchen"], "project_type_other": "x"}'::jsonb, false, null));
+  pg_temp.valid_answers() || '{"rooms": ["kitchen"], "project_type_other": "x"}'::jsonb, false, null)) ->> 'reference');
 
 -- Server-side validation.
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() - 'email'), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() || '{"email": "not-an-email"}'), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() || '{"phone": "12"}'), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() || '{"timing": "yesterday"}'), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() || '{"surprise": "x"}'), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() || '{"project_type": "whole_home"}'), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 1, %L)',
   gen_random_uuid(), pg_temp.valid_answers() || '{"project_type": "whole_home", "rooms": ["kitchen", "kitchen"]}'),
   '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(%L, ''enquiry'', 99, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(%L, ''enquiry'', 99, %L)',
   gen_random_uuid(), pg_temp.valid_answers()), '22023');
-select pg_temp.expect_error(format('select public.submit_enquiry(null, ''enquiry'', 1, %L)',
+select pg_temp.expect_error(format('select public.submit_enquiry_with_access(null, ''enquiry'', 1, %L)',
   pg_temp.valid_answers()), '22023');
 
 reset role;

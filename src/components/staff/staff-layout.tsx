@@ -63,6 +63,7 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
             {[
               ['/staff', 'Enquiries'],
               ['/staff/appointments', 'Appointments'],
+              ['/staff/report', 'Report'],
               ['/staff/settings', 'Settings'],
             ].map(([to, label]) => (
               <li key={to}>

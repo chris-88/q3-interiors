@@ -15,6 +15,9 @@ const StaffAppointmentsRoute = lazy(() =>
 const StaffSettingsRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffSettingsRoute })),
 )
+const StaffReportRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffReportRoute })),
+)
 const StaffDetailRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffDetailRoute })),
 )
@@ -52,6 +55,7 @@ export default function App() {
         <Route path="/staff/enquiries/:id" element={<StaffDetailRoute />} />
         <Route path="/staff/appointments" element={<StaffAppointmentsRoute />} />
         <Route path="/staff/settings" element={<StaffSettingsRoute />} />
+        <Route path="/staff/report" element={<StaffReportRoute />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

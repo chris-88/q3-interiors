@@ -14,7 +14,8 @@ import {
   type BookingContext,
   type Slot,
 } from '@/api/booking'
-import { BookingConfirmed, BookingPending } from '@/components/booking/booking-outcome'
+import { BookingPending } from '@/components/booking/booking-outcome'
+import { ManageBooking } from '@/components/booking/manage-booking'
 import { SlotPicker } from '@/components/booking/slot-picker'
 import { FormFieldInput } from '@/components/enquiry/form-field'
 import { PublicLayout } from '@/components/public-layout'
@@ -313,7 +314,20 @@ export function BookingPage() {
   if (current && current.state === 'confirmed') {
     return (
       <PublicLayout>
-        <BookingConfirmed booking={current} reference={ctx.reference} />
+        <ManageBooking
+          token={token}
+          booking={current}
+          reference={ctx.reference}
+          onCancelled={() => {
+            book.reset()
+            setNotice(null)
+            setAlternatives(null)
+            setSlot(null)
+            setKey(null)
+            setTypeId(null)
+            setStep('type')
+          }}
+        />
       </PublicLayout>
     )
   }
@@ -326,6 +340,7 @@ export function BookingPage() {
   }
 
   const failedBefore = current?.state === 'failed' && step === 'type' && !notice
+  const cancelledBefore = current?.state === 'cancelled' && step === 'type' && !notice
   const types = ctx.types
   const type = types.find((t) => t.id === typeId) ?? null
 
@@ -369,6 +384,16 @@ export function BookingPage() {
   return (
     <PublicLayout>
       <SavedBanner reference={ctx.reference} />
+
+      {cancelledBefore && current && (
+        <Alert className="mb-6">
+          <AlertTitle>Your appointment is cancelled</AlertTitle>
+          <AlertDescription>
+            {current.type.label} on {formatLongDate(current.start)} at {formatClock(current.start)}{' '}
+            is cancelled and the time released. If you would like a new time, choose one below.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {failedBefore && (
         <Alert className="mb-6">

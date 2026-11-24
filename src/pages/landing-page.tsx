@@ -30,7 +30,11 @@ function MainAction({ className }: { className?: string }) {
   return (
     <Link
       to="/enquire"
-      className={cn(buttonVariants({ size: 'lg' }), 'h-12 px-6 text-base', className)}
+      className={cn(
+        buttonVariants({ size: 'lg' }),
+        'h-auto min-h-12 px-6 py-3 text-base whitespace-normal',
+        className,
+      )}
     >
       Tell us about your project
       <ArrowRight data-icon="inline-end" aria-hidden="true" />
@@ -77,16 +81,16 @@ export function LandingPage() {
           >
             How it works
           </h2>
-          <ol className="mt-8 grid gap-8 md:grid-cols-3 md:gap-12">
+          <ol className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-12">
             {steps.map((step, index) => (
-              <li key={step.title} className="flex max-w-prose gap-4 md:flex-col">
+              <li key={step.title} className="flex max-w-prose min-w-0 gap-4 md:flex-col">
                 <span
                   aria-hidden="true"
                   className="bg-forest flex size-10 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
                 >
                   {index + 1}
                 </span>
-                <div className="flex flex-col gap-2">
+                <div className="flex min-w-0 flex-col gap-2">
                   <h3 className="text-title text-ink font-bold">{step.title}</h3>
                   <p className="text-muted-foreground">{step.body}</p>
                 </div>

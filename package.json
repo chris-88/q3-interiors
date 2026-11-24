@@ -19,10 +19,12 @@
     "test:e2e": "playwright test",
     "functions:check": "cd supabase/functions && deno check --config deno.jsonc public-booking/index.ts booking-worker/index.ts calendar-admin/index.ts google-oauth-callback/index.ts staff-booking/index.ts",
     "functions:deploy": "scripts/functions-deploy.sh",
-    "functions:secrets": "scripts/worker-secrets.sh"
+    "functions:secrets": "scripts/worker-secrets.sh",
+    "brand:images": "node scripts/brand-images.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@fontsource/roboto": "^5.3.0",
     "@hookform/resolvers": "^7.0.7",
     "@supabase/supabase-js": "^2.119.2",
     "@tanstack/react-query": "^5.108.1",

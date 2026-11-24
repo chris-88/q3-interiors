@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
-  STATUS_LABELS,
   useEnquiry,
   useFormVersions,
   type EnquiryAttribution,
@@ -22,6 +21,7 @@ import { BookingStateBadge } from '@/components/staff/booking-state-badge'
 import { BookingActions } from '@/components/staff/booking-actions'
 import { OutcomeForm } from '@/components/staff/outcome-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
+import { eventLine } from '@/components/staff/event-text'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -165,33 +165,6 @@ function Attribution({ attribution }: { attribution: EnquiryAttribution | null }
   )
 }
 
-const EVENT_TEXT: Partial<Record<EnquiryEvent['kind'], string>> = {
-  submitted: 'Enquiry received',
-  site_details_added: 'Customer added the property address',
-  contact_requested: 'Customer asked to be contacted',
-  booking_requested: 'Customer booked',
-  booking_confirmed: 'Calendar event created; booking confirmed',
-  booking_retrying: 'Calendar event not created yet; retrying',
-  booking_failed: 'Booking failed',
-  email_sent: 'Confirmation email sent',
-  email_failed: 'Email not sent',
-  booking_cancelled: 'Appointment cancelled',
-  booking_rescheduled: 'Appointment moved',
-  calendar_updated: 'Google Calendar updated',
-  calendar_update_failed: 'Google Calendar not updated',
-  attendance_recorded: 'Attendance recorded',
-  outcome_recorded: 'Outcome recorded',
-  outcome_cleared: 'Outcome cleared',
-}
-
-function eventText(event: EnquiryEvent): string {
-  const fixed = EVENT_TEXT[event.kind]
-  if (fixed) return fixed
-  const to = event.to_status ? STATUS_LABELS[event.to_status] : 'unknown'
-  const from = event.from_status ? STATUS_LABELS[event.from_status] : null
-  return from ? `Status changed from ${from} to ${to}` : `Status set to ${to}`
-}
-
 function History({ events }: { events: EnquiryEvent[] }) {
   return (
     <Section title="History">
@@ -199,20 +172,21 @@ function History({ events }: { events: EnquiryEvent[] }) {
         <p className="text-muted-foreground text-sm">No history recorded.</p>
       ) : (
         <ol className="flex flex-col gap-4">
-          {events.map((event) => (
-            <li key={event.id} className="flex flex-col gap-0.5 border-l-2 pl-3">
-              <span className="text-sm font-medium">{eventText(event)}</span>
-              {(event.reason ?? event.detail) && (
-                <span className="text-sm break-words whitespace-pre-line">
-                  {event.reason ?? event.detail}
+          {events.map((event) => {
+            const line = eventLine(event)
+            return (
+              <li key={event.id} className="flex flex-col gap-0.5 border-l-2 pl-3">
+                <span className="text-sm font-medium">{line.title}</span>
+                {line.detail && (
+                  <span className="text-sm break-words whitespace-pre-line">{line.detail}</span>
+                )}
+                <span className="text-muted-foreground text-xs">
+                  <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>
+                  {event.actor_name ? ` · ${event.actor_name}` : ''}
                 </span>
-              )}
-              <span className="text-muted-foreground text-xs">
-                <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>
-                {event.actor_name ? ` · ${event.actor_name}` : ''}
-              </span>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ol>
       )}
     </Section>

@@ -164,7 +164,9 @@ export function createDb(): Db {
       await q`select private.record_calendar_error(${staffId}, ${error})`
     },
     async getSettings() {
-      const [row] = await q`select change_cutoff_minutes, reminder_lead_minutes, business_phone,
+      // The phone customers are asked to ring is the business contact phone (Business details).
+      const [row] = await q`select change_cutoff_minutes, reminder_lead_minutes,
+        (select contact_phone from public.business_details limit 1) as business_phone,
         booking_write_limit_per_hour, booking_read_limit_per_hour
         from public.booking_settings limit 1`
       return (

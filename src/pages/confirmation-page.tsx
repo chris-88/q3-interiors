@@ -3,7 +3,7 @@ import { CircleCheck } from 'lucide-react'
 import { Link } from 'react-router'
 import { PublicLayout } from '@/components/public-layout'
 import { buttonVariants } from '@/components/ui/button'
-import { business } from '@/config/business'
+import { contactLine, usePublicBusiness } from '@/api/business'
 import { readBookingAccess } from '@/lib/booking-access'
 import { readSubmittedReference } from '@/lib/draft'
 import { safeStorage } from '@/lib/storage'
@@ -12,6 +12,7 @@ import { safeStorage } from '@/lib/storage'
 export function ConfirmationPage() {
   const [reference] = useState(() => readSubmittedReference(safeStorage('session')))
   const [access] = useState(() => readBookingAccess(safeStorage('local')))
+  const contact = contactLine(usePublicBusiness())
 
   if (!reference) {
     return (
@@ -54,11 +55,9 @@ export function ConfirmationPage() {
           and it is not a start date.
         </li>
       </ul>
-      {(business.contactEmail ?? business.contactPhone) && (
+      {contact && (
         <p className="text-muted-foreground mt-6 text-sm">
-          Need to add something? Contact us at{' '}
-          {[business.contactEmail, business.contactPhone].filter(Boolean).join(' or ')} and quote
-          your reference.
+          Need to add something? Contact us on {contact} and quote your reference.
         </p>
       )}
       {access && access.reference === reference && (

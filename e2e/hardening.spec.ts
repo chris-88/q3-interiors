@@ -41,7 +41,8 @@ test('the privacy notice is linked from the footer and the submit step', async (
     await expect(page.getByRole('heading', { name })).toBeVisible()
   }
   await expect(page.getByText('We do not use advertising pixels or tracking cookies')).toBeVisible()
-  await expect(page.getByText('[Business legal name to be added]')).toBeVisible()
+  // Nothing unconfirmed is shown: no placeholder gaps on the public notice.
+  await expect(page.getByText(/to be added/)).toHaveCount(0)
   await shot(page, 'p1-privacy')
   await fillToReview(page)
   await expect(

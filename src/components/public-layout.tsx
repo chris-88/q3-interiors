@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { buttonVariants } from '@/components/ui/button'
-import { business } from '@/config/business'
+import { BRAND_NAME, usePublicBusiness } from '@/api/business'
 import { cn } from '@/lib/utils'
 
 /**
@@ -26,13 +26,14 @@ function HomeLink() {
           className="block size-12 md:size-26"
         />
       </picture>
-      <span className="text-title text-ink font-bold md:sr-only">{business.name}</span>
+      <span className="text-title text-ink font-bold md:sr-only">{BRAND_NAME}</span>
     </Link>
   )
 }
 
 function Footer() {
-  const contact = [business.contactPhone, business.contactEmail].filter((v): v is string =>
+  const business = usePublicBusiness()
+  const contact = [business.contact_phone, business.contact_email].filter((v): v is string =>
     Boolean(v),
   )
   return (
@@ -50,7 +51,7 @@ function Footer() {
         </div>
         <div className="flex max-w-prose flex-col gap-3 text-sm leading-relaxed">
           {contact.length > 0 && <p>Contact: {contact.join(' · ')}</p>}
-          {business.serviceArea && <p>We work in {business.serviceArea}.</p>}
+          {business.service_area && <p>We work in {business.service_area}.</p>}
           <p>
             We use the details you give us only to reply to your enquiry. We only send news or
             offers if you ask us to.

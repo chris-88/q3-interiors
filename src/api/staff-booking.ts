@@ -540,12 +540,6 @@ export function useSetOutcome(enquiryId: string) {
 export const bookingSettingsSchema = z.object({
   change_cutoff_minutes: z.number().int().min(0).max(10080),
   reminder_lead_minutes: z.number().int().min(30).max(10080),
-  business_phone: z
-    .string()
-    .trim()
-    .max(40)
-    .nullable()
-    .transform((v) => (v ? v : null)),
   retention_months: z.number().int().min(1).max(120).nullable(),
 })
 export type BookingSettings = z.infer<typeof bookingSettingsSchema>
@@ -556,7 +550,7 @@ export function useBookingSettings() {
     queryFn: async (): Promise<BookingSettings | null> => {
       const { data, error } = await supabase
         .from('booking_settings')
-        .select('change_cutoff_minutes, reminder_lead_minutes, business_phone, retention_months')
+        .select('change_cutoff_minutes, reminder_lead_minutes, retention_months')
         .maybeSingle()
       if (error) throw toApiError(error)
       return data === null ? null : bookingSettingsSchema.parse(data)

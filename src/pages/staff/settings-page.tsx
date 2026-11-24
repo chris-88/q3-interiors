@@ -478,21 +478,10 @@ function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
           hint="One email; none if booked later than this"
         />
       </div>
-      <Field>
-        <FieldLabel htmlFor="business-phone">Phone customers ring for changes</FieldLabel>
-        <Input
-          id="business-phone"
-          type="tel"
-          inputMode="tel"
-          value={value.business_phone ?? ''}
-          onChange={(e) => setValue((v) => ({ ...v, business_phone: e.target.value || null }))}
-          className="h-10 text-base"
-          aria-describedby="business-phone-hint"
-        />
-        <p id="business-phone-hint" className="text-muted-foreground text-xs">
-          Empty until confirmed; customers are then asked to reply to their email instead.
-        </p>
-      </Field>
+      <p className="text-muted-foreground text-sm">
+        Inside the cut-off, customers are asked to ring the contact phone in Business details (or to
+        reply to their email while it is empty).
+      </p>
       <RetentionField
         value={value.retention_months}
         onChange={(months) => setValue((v) => ({ ...v, retention_months: months }))}
@@ -519,6 +508,11 @@ const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
     to: '/staff/settings/people',
     label: 'People',
     hint: 'Add staff, switch accounts off, who takes bookings',
+  },
+  {
+    to: '/staff/settings/business',
+    label: 'Business details',
+    hint: 'Name, contact details, service area, privacy contact',
   },
 ]
 

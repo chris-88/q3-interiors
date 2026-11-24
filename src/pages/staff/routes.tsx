@@ -5,6 +5,7 @@ import { AppointmentsPage } from './appointments-page'
 import { ReportPage } from './report-page'
 import { SettingsPage } from './settings-page'
 import { PeoplePage } from './people-page'
+import { BusinessPage } from './business-page'
 // oxlint-disable-next-line react/only-export-components
 export {
   ForgotPasswordPage as StaffForgotRoute,
@@ -57,6 +58,14 @@ export function StaffPeopleRoute() {
   return (
     <StaffArea>
       <PeoplePage />
+    </StaffArea>
+  )
+}
+
+export function StaffBusinessRoute() {
+  return (
+    <StaffArea>
+      <BusinessPage />
     </StaffArea>
   )
 }

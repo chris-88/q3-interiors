@@ -50,10 +50,10 @@ test('a homeowner describes a project, corrects an answer, survives a failed sav
   await page.getByLabel('Email').fill('test@example.com')
   await page.getByLabel('Phone').fill('087 123 4567')
   await page.getByRole('checkbox', { name: /news and offers/ }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Review your enquiry' }).click()
 
   // Review: correct an answer and come straight back.
-  await expect(page.getByRole('heading', { name: 'Check your answers' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review your enquiry', level: 1 })).toBeVisible()
   await expect(page.getByText('Kitchen, Bedrooms')).toBeVisible()
   await page.getByRole('button', { name: 'Change: Where and when' }).click()
   await page.getByLabel('Eircode or area').fill('D07 X2Y3')
@@ -62,7 +62,7 @@ test('a homeowner describes a project, corrects an answer, survives a failed sav
 
   // Answers survive a reload.
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Check your answers' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review your enquiry', level: 1 })).toBeVisible()
   await expect(page.getByText('D07 X2Y3')).toBeVisible()
   await expect(page.getByText('Yes, please')).toBeVisible()
 

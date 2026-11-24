@@ -211,7 +211,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
     <PublicLayout>
       <Progress value={((step + 1) / total) * 100} className="mb-8 gap-2">
         <ProgressLabel className="text-muted-foreground font-normal">
-          {isReview ? 'Check your answers' : `Step ${step + 1} of ${total}`}
+          {isReview ? 'Review your enquiry' : `Step ${step + 1} of ${total}`}
         </ProgressLabel>
       </Progress>
 
@@ -222,7 +222,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
             tabIndex={-1}
             className="text-section text-ink font-bold outline-none"
           >
-            Check your answers
+            Review your enquiry
           </h1>
           <p className="text-muted-foreground mt-2">You can change anything before you send it.</p>
           <ReviewStep
@@ -353,7 +353,11 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
               Back
             </Button>
             <Button type="submit" size="lg" className="h-12 text-base sm:px-6">
-              {returnToReview ? 'Save and review' : 'Continue'}
+              {returnToReview
+                ? 'Save and review'
+                : step === reviewIndex - 1
+                  ? 'Review your enquiry'
+                  : 'Continue'}
             </Button>
           </div>
         </form>

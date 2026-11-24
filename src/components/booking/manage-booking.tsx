@@ -205,7 +205,7 @@ export function ManageBooking({
                         backToView()
                       } else if (result.status === 'slot_unavailable') {
                         setNotice(
-                          'Sorry, that time has just gone. Your appointment is unchanged. Here are the nearest times still free.',
+                          'That time has just been booked. Pick another time. Your appointment is unchanged.',
                         )
                         setAlternatives(result.alternatives)
                         setSlot(null)

@@ -19,7 +19,7 @@ async function bookPhone(page: Page) {
     .click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Book this time' }).click()
-  await expect(page.getByRole('heading', { name: 'You are booked in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
 }
 
 test('a customer moves their appointment, then cancels it', async ({ page }) => {
@@ -84,7 +84,7 @@ test('inside the cut-off the customer is asked to ring', async ({ page }) => {
   db.settings = { ...db.settings, business_phone: '01 555 0100' }
   clock.offset = Date.parse(db.bookings[0]!.starts_at) - Date.now() - 60 * 60_000
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'You are booked in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
   await expect(
     page.getByText('It is too close to your appointment to change it online.'),
   ).toBeVisible()

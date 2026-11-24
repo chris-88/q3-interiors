@@ -21,8 +21,8 @@ async function fillToReview(page: Page, options: { trap?: string } = {}) {
   await page.getByLabel('Email').fill('test@example.com')
   await page.getByLabel('Phone').fill('087 123 4567')
   if (options.trap) await page.locator('#website').fill(options.trap, { force: true })
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('heading', { name: 'Check your answers' })).toBeVisible()
+  await page.getByRole('button', { name: 'Review your enquiry' }).click()
+  await expect(page.getByRole('heading', { name: 'Review your enquiry', level: 1 })).toBeVisible()
 }
 
 test('the privacy notice is linked from the footer and the submit step', async ({ page }) => {
@@ -59,9 +59,9 @@ test('the honeypot is invisible to people and assistive tech, and a bot gets a p
   await expect(page.getByRole('textbox', { name: 'Website' })).toHaveCount(0)
   await expect(page.locator('#website')).toHaveAttribute('tabindex', '-1')
   await page.locator('#website').fill('http://spam.example', { force: true })
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Review your enquiry' }).click()
   await page.getByRole('button', { name: 'Send enquiry' }).click()
-  await expect(page.getByRole('heading', { name: 'Thank you, we have your enquiry' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Enquiry received' })).toBeVisible()
   expect(submitBodies.at(-1)?.p_trap).toBe('http://spam.example')
   expect(db.enquiries.size).toBe(0)
 })

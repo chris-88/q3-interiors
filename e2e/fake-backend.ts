@@ -122,6 +122,6 @@ export async function submitEnquiry(page: Page) {
   await page.getByLabel('Your name').fill('Test Person')
   await page.getByLabel('Email').fill('test@example.com')
   await page.getByLabel('Phone').fill('087 123 4567')
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Review your enquiry' }).click()
   await page.getByRole('button', { name: 'Send enquiry' }).click()
 }

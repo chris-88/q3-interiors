@@ -31,7 +31,7 @@ export function ConfirmationPage() {
   return (
     <PublicLayout>
       <CircleCheck className="text-foreground size-8" aria-hidden="true" />
-      <h1 className="text-section text-ink mt-4 font-bold">Thank you, we have your enquiry</h1>
+      <h1 className="text-section text-ink mt-4 font-bold">Enquiry received</h1>
       <p className="text-muted-foreground mt-2">
         Your reference is below. Keep it handy if you contact us about this project.
       </p>
@@ -50,8 +50,8 @@ export function ConfirmationPage() {
           give you an estimated range.
         </li>
         <li>
-          An estimate visit is for us to assess and price the work. It does not commit you to a
-          quote, and it is not a start date.
+          A site visit is for us to assess and price the work. It does not commit you to a quote,
+          and it is not a start date.
         </li>
       </ul>
       {(business.contactEmail ?? business.contactPhone) && (

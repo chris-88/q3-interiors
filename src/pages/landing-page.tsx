@@ -1,69 +1,112 @@
+import { useEffect, useRef } from 'react'
 import { ArrowRight } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { PublicLayout } from '@/components/public-layout'
 import { buttonVariants } from '@/components/ui/button'
-import { business } from '@/config/business'
 import { cn } from '@/lib/utils'
+
+/*
+ * Landing page per the brand guide, section 4: a text-led introduction (no project photography
+ * until approved photos exist, so no "Our work" section or link), how it works from the real
+ * journey, and the action repeated at the end.
+ */
 
 const steps = [
   {
     title: 'Tell us about your project',
-    body: 'A few questions about the work, where it is and when you would like it done. It takes two or three minutes and there is no account to create.',
+    body: 'Describe the work you have in mind, where it is and when you would like it done. It takes two or three minutes and there is no account to create.',
   },
   {
-    title: 'We get in touch',
-    body: 'We will contact you to talk it through. Where it makes sense, we arrange a visit to see the space, take measurements and give you an estimated range.',
+    title: 'Arrange a call or a site visit',
+    body: 'Choose a time for a phone call to talk it through, or for us to visit, see the space and take measurements.',
   },
   {
-    title: 'A full quote, if you want one',
-    body: 'If the estimate suits you, we prepare a detailed quote for the work.',
+    title: 'Discuss the estimate',
+    body: 'We give you an estimate: a price range for the work. When the scope is agreed and you want to go ahead, a full quote follows.',
   },
 ]
 
-export function LandingPage() {
+function MainAction({ className }: { className?: string }) {
   return (
-    <PublicLayout>
-      <section className="flex flex-col gap-5">
-        <h1 className="text-3xl leading-tight font-semibold tracking-tight text-balance">
-          Planning a renovation? Tell us what you have in mind.
-        </h1>
-        <p className="text-muted-foreground text-base leading-relaxed">
-          {business.name} carries out home renovations that involve several trades.
-          {business.serviceArea ? ` We work in ${business.serviceArea}.` : ''}
-        </p>
-        <Link
-          to="/enquire"
-          className={cn(buttonVariants({ size: 'lg' }), 'h-12 w-full text-base sm:w-auto sm:px-6')}
-        >
-          Tell us about your project
-          <ArrowRight data-icon="inline-end" aria-hidden="true" />
-        </Link>
+    <Link
+      to="/enquire"
+      className={cn(buttonVariants({ size: 'lg' }), 'h-12 px-6 text-base', className)}
+    >
+      Tell us about your project
+      <ArrowRight data-icon="inline-end" aria-hidden="true" />
+    </Link>
+  )
+}
+
+export function LandingPage() {
+  const location = useLocation()
+  const howRef = useRef<HTMLHeadingElement>(null)
+
+  // "How it works" in the header links here with state; move to the section and its heading.
+  useEffect(() => {
+    if ((location.state as { section?: string } | null)?.section === 'how-it-works') {
+      howRef.current?.scrollIntoView({ block: 'start' })
+      howRef.current?.focus()
+    }
+  }, [location.state, location.key])
+
+  return (
+    <PublicLayout width="page">
+      <section aria-labelledby="intro-heading" className="bg-cream">
+        <div className="max-w-page mx-auto flex flex-col gap-6 px-5 py-12 md:px-10 md:py-24">
+          <h1 id="intro-heading" className="text-display text-ink max-w-prose font-bold">
+            Planning a home renovation?
+          </h1>
+          <p className="text-body text-ink max-w-prose">
+            We coordinate the trades, visit your home and prepare an estimate for the work you have
+            in mind.
+          </p>
+          <div>
+            <MainAction />
+          </div>
+        </div>
       </section>
 
-      <section aria-labelledby="next-heading" className="mt-12">
-        <h2 id="next-heading" className="text-lg font-semibold tracking-tight">
-          What happens next
-        </h2>
-        <ol className="mt-5 flex flex-col gap-6">
-          {steps.map((step, index) => (
-            <li key={step.title} className="flex gap-4">
-              <span
-                aria-hidden="true"
-                className="text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-full border text-sm tabular-nums"
-              >
-                {index + 1}
-              </span>
-              <div className="flex flex-col gap-1">
-                <h3 className="font-medium">{step.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{step.body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-        <p className="bg-muted text-muted-foreground mt-8 rounded-lg px-4 py-3 text-sm leading-relaxed">
-          An estimate visit is for us to assess and price the work. Booking one does not commit you
-          to a quote, and it is not a start date.
-        </p>
+      <section aria-labelledby="how-it-works" className="bg-background">
+        <div className="max-w-page mx-auto px-5 py-12 md:px-10 md:py-24">
+          <h2
+            id="how-it-works"
+            ref={howRef}
+            tabIndex={-1}
+            className="text-section text-ink font-bold outline-none"
+          >
+            How it works
+          </h2>
+          <ol className="mt-8 grid gap-8 md:grid-cols-3 md:gap-12">
+            {steps.map((step, index) => (
+              <li key={step.title} className="flex max-w-prose gap-4 md:flex-col">
+                <span
+                  aria-hidden="true"
+                  className="bg-forest flex size-10 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
+                >
+                  {index + 1}
+                </span>
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-title text-ink font-bold">{step.title}</h3>
+                  <p className="text-muted-foreground">{step.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="border-forest bg-cream text-ink mt-10 max-w-prose border-l-4 px-4 py-3">
+            A site visit is for us to assess and price the work. Booking one does not commit you to
+            a quote, and it is not a start date.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="final-heading" className="border-rule bg-background border-t">
+        <div className="max-w-page mx-auto flex flex-col items-start gap-6 px-5 py-12 md:px-10 md:py-16">
+          <h2 id="final-heading" className="text-section text-ink font-bold">
+            Ready to tell us about it?
+          </h2>
+          <MainAction />
+        </div>
       </section>
     </PublicLayout>
   )

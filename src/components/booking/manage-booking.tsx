@@ -25,7 +25,7 @@ function Heading({ children }: { children: React.ReactNode }) {
     <h1
       ref={ref}
       tabIndex={-1}
-      className="text-2xl font-semibold tracking-tight text-balance outline-none"
+      className="text-section text-ink font-bold text-balance outline-none"
     >
       {children}
     </h1>
@@ -236,7 +236,7 @@ export function ManageBooking({
                       type="button"
                       variant={slot?.start === alt.start ? 'default' : 'outline'}
                       aria-pressed={slot?.start === alt.start}
-                      className="h-11 w-full justify-start text-base"
+                      className="h-12 w-full justify-start text-base"
                       onClick={() => setSlot(alt)}
                     >
                       {formatLongDate(alt.start)}, {formatClock(alt.start)}
@@ -323,7 +323,7 @@ export function ManageBooking({
       )}
       <BookingConfirmed booking={booking} reference={reference} />
       <section aria-labelledby="change-heading" className="mt-10">
-        <h2 id="change-heading" className="text-lg font-semibold tracking-tight">
+        <h2 id="change-heading" className="text-title text-ink font-bold">
           Change or cancel
         </h2>
         {booking.canChange ? (

@@ -14,7 +14,7 @@ test('a homeowner describes a project, corrects an answer, survives a failed sav
 
   await page.goto('/?utm_source=instagram&utm_medium=paid_social&fbclid=abc#/')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('renovation')
-  await page.getByRole('link', { name: 'Tell us about your project' }).click()
+  await page.getByRole('link', { name: 'Tell us about your project' }).first().click()
 
   // Step 1: validation is visible and the conditional "Other" question appears on demand.
   await expect(page.getByText('Step 1 of 6')).toBeVisible()

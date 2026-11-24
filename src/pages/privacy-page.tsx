@@ -6,7 +6,7 @@ import { business } from '@/config/business'
 function Part({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-8">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <h2 className="text-title text-ink font-bold">{title}</h2>
       <div className="text-muted-foreground mt-2 flex flex-col gap-3 leading-relaxed">
         {children}
       </div>
@@ -26,7 +26,7 @@ function Missing({ what }: { what: string }) {
 export function PrivacyPage() {
   return (
     <PublicLayout>
-      <h1 className="text-2xl font-semibold tracking-tight">How we use your details</h1>
+      <h1 className="text-section text-ink font-bold">How we use your details</h1>
       <Alert className="mt-4">
         <AlertTitle>Draft</AlertTitle>
         <AlertDescription>

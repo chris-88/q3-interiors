@@ -69,7 +69,7 @@ export function SlotPicker({ slots, selected, onSelect, initialDate }: Props) {
                   type="button"
                   variant={active ? 'default' : 'outline'}
                   aria-pressed={active}
-                  className="h-11 text-base tabular-nums"
+                  className="h-12 text-base tabular-nums"
                   onClick={() => onSelect(slot)}
                 >
                   {formatClock(slot.start)}

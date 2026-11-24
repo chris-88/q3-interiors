@@ -18,7 +18,7 @@ Slices 1 (enquiry), 2 (booking against one Google Calendar, confirmation email, 
 | Backend            | Self-hosted Supabase stack `q3-interiors` (`~/code/infra/stacks/q3-interiors`), public URL `https://api.chrisquinn.ie/q3-interiors` |
 | Tests              | Vitest + Testing Library; Playwright when e2e is warranted                                                                          |
 | Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                                                                    |
-| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `q3.chrisquinn.ie`                                                               |
+| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `book.q3interiors.ie`                                                            |
 | Node               | `.nvmrc` = 24                                                                                                                       |
 
 ## Operating philosophy: lean surface, high floor
@@ -84,7 +84,9 @@ The Q3 Interiors website brand guide v1.0 (supplied 2026-11-24, kept outside the
 | `/#/privacy`             | Privacy notice (PLACEHOLDER wording; legal details from `src/config/business.ts`)                                                                        |
 | `/#/staff/report`        | Funnel report: enquiries -> booked -> attended -> won, overall and by campaign, for a date range                                                         |
 
-Campaign links carry `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, either before the `#` (`https://q3.chrisquinn.ie/?utm_source=instagram#/`) or inside the route (`/#/?utm_source=instagram`). `src/lib/attribution.ts` keeps the first tagged arrival for 30 days in localStorage; an untagged arrival is stored as `tracking = 'unknown'`. Click ids are recorded only as present or not. Never put customer data in a URL.
+Campaign links carry `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, either before the `#` (`https://book.q3interiors.ie/?utm_source=instagram#/`) or inside the route (`/#/?utm_source=instagram`). `src/lib/attribution.ts` keeps the first tagged arrival for 30 days in localStorage; an untagged arrival is stored as `tracking = 'unknown'`. Click ids are recorded only as present or not. Never put customer data in a URL.
+
+The public host is `https://book.q3interiors.ie` (Cloudflare zone `q3interiors.ie`, proxied CNAME to GitHub Pages; `public/CNAME` and the Pages custom domain match it; HTTPS is Cloudflare's, so GitHub's enforce-HTTPS is not used). The old host `q3.chrisquinn.ie` redirects to it at Cloudflare. The API stays at `https://api.chrisquinn.ie/q3-interiors`; its gateway reflects the request origin for CORS.
 
 Customer-facing business values (service area, contact) live in `src/config/business.ts`; `null` placeholders are not shown, so nothing unconfirmed is claimed.
 

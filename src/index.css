@@ -150,6 +150,15 @@
   a {
     text-underline-offset: 0.18em;
   }
+  /* At 200% text on a 320px screen a long word must wrap rather than widen the page. */
+  h1,
+  h2,
+  h3,
+  p,
+  li,
+  dd {
+    overflow-wrap: break-word;
+  }
 }
 
 /*

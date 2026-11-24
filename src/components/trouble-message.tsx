@@ -1,11 +1,12 @@
 import { RateLimitedError } from '@/api/errors'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { contactLine } from '@/config/business'
+import { contactLine, usePublicBusiness } from '@/api/business'
 
 /**
  * What a customer sees when the server refused (too many requests) or could not be reached.
- * Contact details come from the static business config, because the server may be the thing
- * that is down; while they are placeholders (null) the line is left out.
+ * Contact details come from the business details: the server's, or the last copy this browser
+ * saw (the server may be the thing that is down). A first-time visitor who cannot reach the
+ * server sees no contact line; nothing unconfirmed is ever shown.
  */
 export function TroubleMessage({
   error,
@@ -17,7 +18,7 @@ export function TroubleMessage({
   /** What is safe, e.g. "Your answers are still here." */
   keptNote: string
 }) {
-  const contact = contactLine()
+  const contact = contactLine(usePublicBusiness())
   const limited = error instanceof RateLimitedError
   return (
     <Alert variant="destructive" className="mt-6" role="alert">

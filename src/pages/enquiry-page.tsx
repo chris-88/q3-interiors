@@ -18,7 +18,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Progress, ProgressLabel } from '@/components/ui/progress'
-import { business } from '@/config/business'
+import { usePublicBusiness } from '@/api/business'
 import { currentEnquiryForm } from '@/forms/enquiry/v1'
 import { allFields, cleanAnswers, validateFields, visibleFields } from '@/forms/logic'
 import type { Answers, FormDefinition } from '@/forms/types'
@@ -51,6 +51,7 @@ function focusField(id: string) {
 
 export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
   const navigate = useNavigate()
+  const tradingName = usePublicBusiness().trading_name
   const [{ sessionStore, localStore }] = useState(() => ({
     sessionStore: stores.sessionStore ?? safeStorage('session'),
     localStore: stores.localStore ?? safeStorage('local'),
@@ -332,7 +333,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
                   />
                   <FieldContent>
                     <span className="text-base font-normal">
-                      Send me occasional news and offers from {business.name}
+                      Send me occasional news and offers from {tradingName}
                     </span>
                     <FieldDescription>
                       Optional. You can ask us to stop at any time.

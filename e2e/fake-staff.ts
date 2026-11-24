@@ -37,6 +37,7 @@ export type StaffWorld = {
   bookable: { id: string | null }
   rpcCalls: { name: string; body: unknown }[]
   tables: Record<string, unknown[]>
+  business: Record<string, unknown>
 }
 
 export function staffWorld(): StaffWorld {
@@ -68,6 +69,17 @@ export function staffWorld(): StaffWorld {
     bookable: { id: 'u-admin' },
     rpcCalls: [],
     tables: {},
+    business: {
+      trading_name: 'Q3 Interiors',
+      legal_name: null,
+      postal_address: null,
+      contact_phone: null,
+      contact_email: null,
+      service_area: null,
+      privacy_contact: null,
+      privacy_reviewed_at: null,
+      updated_at: new Date().toISOString(),
+    },
   }
 }
 
@@ -201,6 +213,14 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
     const caller = world.staff.get(subOf(req.headers().authorization) ?? '')
     if (table.startsWith('rpc/')) {
       world.rpcCalls.push({ name: table.slice(4), body: req.postDataJSON() })
+      if (table === 'rpc/public_business_details') {
+        const { privacy_reviewed_at, updated_at: _u, ...rest } = world.business
+        return json(route, 200, {
+          ...rest,
+          privacy_reviewed: privacy_reviewed_at !== null,
+          retention_months: null,
+        })
+      }
       if (table === 'rpc/set_bookable_staff') {
         if (caller?.role !== 'admin' || !caller.active)
           return json(route, 403, { code: '42501', message: 'not allowed' })
@@ -209,8 +229,20 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       }
       return json(route, 200, null)
     }
+    if (req.method() === 'PATCH') {
+      const patch = req.postDataJSON() as Record<string, unknown>
+      const admin = caller?.active && caller.role === 'admin'
+      if (table === 'business_details' && admin) {
+        Object.assign(world.business, patch)
+        return json(route, 200, [{ updated_at: world.business.updated_at }])
+      }
+      // What RLS does with a refused update: no error, no rows.
+      return json(route, 200, [])
+    }
     let rows: Record<string, unknown>[] = []
-    if (table === 'staff') {
+    if (table === 'business_details') {
+      rows = caller?.active ? [world.business] : []
+    } else if (table === 'staff') {
       const all = [...world.staff.values()]
       // RLS: active staff see everyone, anyone else only their own row.
       rows = caller?.active ? all : all.filter((s) => s.user_id === caller?.user_id)

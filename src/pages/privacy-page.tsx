@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { PublicLayout } from '@/components/public-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { business } from '@/config/business'
+import { contactLine, usePublicBusiness } from '@/api/business'
 
 function Part({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -14,36 +14,34 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Missing({ what }: { what: string }) {
-  return <em className="text-foreground">[{what} to be added]</em>
-}
-
 /**
  * PLACEHOLDER WORDING. The structure follows what this system actually does; the text must be
- * reviewed and replaced by Q3 Interiors before the pilot. Legal details come from
- * src/config/business.ts.
+ * reviewed by Q3 Interiors before the pilot. Legal details come from Business details (an admin
+ * edits them in Settings); anything not filled in is left out rather than shown as a gap. The
+ * "Draft" marker goes once an admin marks the notice reviewed (go-live checklist).
  */
 export function PrivacyPage() {
+  const business = usePublicBusiness()
+  const name = business.trading_name
+  const requests = business.privacy_contact ?? business.contact_email
   return (
     <PublicLayout>
       <h1 className="text-section text-ink font-bold">How we use your details</h1>
-      <Alert className="mt-4">
-        <AlertTitle>Draft</AlertTitle>
-        <AlertDescription>
-          This notice is a draft and will be finalised by {business.name} before we take enquiries
-          from the public.
-        </AlertDescription>
-      </Alert>
+      {!business.privacy_reviewed && (
+        <Alert className="mt-4">
+          <AlertTitle>Draft</AlertTitle>
+          <AlertDescription>
+            This notice is a draft and will be finalised by {name} before we take enquiries from the
+            public.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Part title="Who we are">
         <p>
-          {business.legalName ?? <Missing what="Business legal name" />}, trading as {business.name}
-          , is responsible for your details.{' '}
-          {business.postalAddress ? (
-            `Our address is ${business.postalAddress}.`
-          ) : (
-            <Missing what="Postal address" />
-          )}
+          {business.legal_name ? `${business.legal_name}, trading as ${name},` : name} is
+          responsible for your details.
+          {business.postal_address ? ` Our address is ${business.postal_address}.` : ''}
         </p>
       </Part>
 
@@ -94,18 +92,22 @@ export function PrivacyPage() {
 
       <Part title="How long we keep it">
         <p>
-          We keep enquiries while we are dealing with them and for a period afterwards that we are
-          still deciding. <Missing what="Retention period" /> If you become a customer we keep what
-          we need for the job and our records.
+          {business.retention_months
+            ? `We delete an enquiry ${business.retention_months} months after it comes in, unless you become a customer.`
+            : 'We keep enquiries while we are dealing with them and for a limited time afterwards.'}{' '}
+          If you become a customer we keep what we need for the job and our records.
         </p>
       </Part>
 
       <Part title="Your rights">
         <p>
           You can ask for a copy of your details, ask us to correct them, or ask us to delete them.
-          Contact us at {business.privacyContact ?? <Missing what="Privacy contact" />} and quote
-          your reference if you have one. You can also complain to the Data Protection Commission
-          (dataprotection.ie).
+          {requests
+            ? `Contact us at ${requests} and quote your reference if you have one.`
+            : contactLine(business)
+              ? `Contact us on ${contactLine(business) ?? ''} and quote your reference if you have one.`
+              : 'Reply to any email we have sent you and quote your reference.'}{' '}
+          You can also complain to the Data Protection Commission (dataprotection.ie).
         </p>
       </Part>
     </PublicLayout>

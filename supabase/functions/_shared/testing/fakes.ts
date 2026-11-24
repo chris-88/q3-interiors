@@ -390,6 +390,10 @@ export class FakeDb implements Db {
     }
     return due.map((c) => ({ ...c }))
   }
+  wording: Record<string, string> = {}
+  async getWording() {
+    return { ...this.wording }
+  }
   async communicationSent(id: string, providerId: string | null) {
     const c = this.comms.find((x) => x.id === id)!
     if (c.state === 'sent') return

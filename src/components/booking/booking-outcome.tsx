@@ -1,5 +1,6 @@
 import { CircleCheck, Clock } from 'lucide-react'
 import type { CustomerBooking } from '@/api/booking'
+import { usePublicVisitDisclaimer } from '@/api/wording'
 import { formatClock, formatLongDate } from '@/lib/format'
 
 function When({ booking }: { booking: CustomerBooking }) {
@@ -39,6 +40,7 @@ export function BookingConfirmed({
   booking: CustomerBooking
   reference: string
 }) {
+  const visitDisclaimer = usePublicVisitDisclaimer()
   return (
     <section aria-labelledby="booked-heading">
       <CircleCheck className="size-8" aria-hidden="true" />
@@ -54,7 +56,7 @@ export function BookingConfirmed({
       <p className="text-muted-foreground mt-2">{booking.whatToPrepare}</p>
       <p className="bg-muted text-muted-foreground mt-6 rounded-lg px-4 py-3 text-sm leading-relaxed">
         {booking.type.mode === 'on_site'
-          ? 'This visit is for us to assess and price the work. It does not commit you to a quote, and it is not a start date.'
+          ? visitDisclaimer
           : 'This call is to talk your project through. It does not commit you to anything.'}
       </p>
     </section>

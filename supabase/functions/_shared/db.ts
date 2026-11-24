@@ -163,6 +163,10 @@ export function createDb(): Db {
     async recordCalendarError(staffId, error) {
       await q`select private.record_calendar_error(${staffId}, ${error})`
     },
+    async getWording() {
+      const rows = await q`select key, body from public.message_blocks`
+      return Object.fromEntries(rows.map((r) => [r.key as string, r.body as string]))
+    },
     async getSettings() {
       // The phone customers are asked to ring is the business contact phone (Business details).
       const [row] = await q`select change_cutoff_minutes, reminder_lead_minutes,

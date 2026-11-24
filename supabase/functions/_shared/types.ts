@@ -224,4 +224,7 @@ export interface Db {
   claimEventDeletions(limit: number): Promise<PendingEventDeletion[]>
   eventDeletionDone(eventId: string): Promise<void>
   eventDeletionFailed(eventId: string, error: string): Promise<void>
+  // Slice 5
+  /** Admin rewording of the email text blocks (key -> text); missing keys use the defaults. */
+  getWording(): Promise<Record<string, string>>
 }

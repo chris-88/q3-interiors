@@ -178,6 +178,7 @@ export async function processCommunication(
       summary,
       staffUrl: `${deps.appUrl}/#/staff/enquiries/${summary.id}`,
       siteUrl: deps.appUrl,
+      wording: await db.getWording(),
     })
     return send(comm, deps, message)
   }
@@ -200,6 +201,7 @@ export async function processCommunication(
     cancelledStart: comm.about_start ?? null,
     privacyUrl: `${deps.appUrl}/#/privacy`,
     siteUrl: deps.appUrl,
+    wording: await db.getWording(),
   })
   return send(comm, deps, message)
 }

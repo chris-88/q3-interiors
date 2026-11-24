@@ -1,7 +1,9 @@
-// Every email's wording, in one file. PLACEHOLDER wording until Q3 Interiors confirms it:
-// changing what people read is a change to this file only. Vocabulary follows the brand guide:
-// an enquiry; a call or a site visit (the appointment); an estimate is a price range; a quote
-// covers an agreed scope. Each message has a plain-text part and a branded HTML part.
+// Every email, in one file. Each message is a FIXED structure (greeting, the date and time, where,
+// the reference, the Change-or-cancel button, the privacy link, the plain-text part) with NAMED
+// TEXT BLOCKS inside it that an admin may reword in Settings > Wording. The defaults below are
+// used for any block not reworded. Blocks are plain text: they are escaped like every other value,
+// and may only use the tokens listed for them. Vocabulary follows the brand guide: an enquiry; a
+// call or a site visit; an estimate is a price range; a quote covers an agreed scope.
 import { formatLocal } from './time.ts'
 import type {
   BookingContext,
@@ -10,8 +12,176 @@ import type {
   StaffAccountTemplate,
 } from './types.ts'
 
+// ---------------------------------------------------------------------------------------------
+// Named text blocks
+// ---------------------------------------------------------------------------------------------
+
+export type WordingBlock = {
+  label: string
+  /** Where it appears, for the admin screen. */
+  where: string
+  default: string
+  max: number
+  /** May the block be left empty (the paragraph is then left out)? */
+  optional?: boolean
+  tokens: readonly ('first_name' | 'event')[]
+}
+
+const CUSTOMER_TOKENS = ['first_name', 'event'] as const
+
+export const WORDING = {
+  'booking_confirmation.intro': {
+    label: 'Opening line',
+    where: 'Booking confirmation email',
+    default: 'Your {event} with Q3 Interiors is booked.',
+    max: 300,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_confirmation.closing': {
+    label: 'Extra paragraph (optional)',
+    where: 'Booking confirmation email, before the reference',
+    default: '',
+    max: 600,
+    optional: true,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_reminder.intro': {
+    label: 'Opening line',
+    where: 'Reminder email',
+    default: 'A reminder of your {event} with Q3 Interiors.',
+    max: 300,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_reminder.closing': {
+    label: 'Extra paragraph (optional)',
+    where: 'Reminder email, before the reference',
+    default: '',
+    max: 600,
+    optional: true,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_rescheduled.intro': {
+    label: 'Opening line',
+    where: 'New time email',
+    default: 'Your {event} with Q3 Interiors has moved to a new time.',
+    max: 300,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_rescheduled.closing': {
+    label: 'Extra paragraph (optional)',
+    where: 'New time email, before the reference',
+    default: '',
+    max: 600,
+    optional: true,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_cancelled.intro': {
+    label: 'Opening line',
+    where: 'Cancellation email',
+    default: 'Your {event} with Q3 Interiors is cancelled. Your enquiry is still saved.',
+    max: 300,
+    tokens: CUSTOMER_TOKENS,
+  },
+  'booking_cancelled.closing': {
+    label: 'Extra paragraph (optional)',
+    where: 'Cancellation email, before the reference',
+    default: '',
+    max: 600,
+    optional: true,
+    tokens: CUSTOMER_TOKENS,
+  },
+  visit_disclaimer: {
+    label: 'Site visit: what it is and is not',
+    where: 'Confirmation email for a site visit, and the booked page',
+    default:
+      'A site visit is for us to assess the work and give you an estimate, which is a price range. It does not commit you to a quote, and it is not a start date.',
+    max: 400,
+    tokens: [],
+  },
+  call_disclaimer: {
+    label: 'Call: what it is',
+    where: 'Confirmation email for a call',
+    default: 'This call is to talk your project through. It does not commit you to anything.',
+    max: 400,
+    tokens: [],
+  },
+  sign_off: {
+    label: 'Sign-off',
+    where: 'The last line of every customer email',
+    default: 'Q3 Interiors',
+    max: 120,
+    tokens: [],
+  },
+  'staff_new_enquiry.intro': {
+    label: 'Opening line',
+    where: 'Staff alert: new enquiry',
+    default: 'A new enquiry has come in.',
+    max: 300,
+    tokens: [],
+  },
+  'staff_new_enquiry.note': {
+    label: 'Note under the details',
+    where: 'Staff alert: new enquiry',
+    default:
+      'The customer may book a call or site visit straight away; if they do not, they are waiting to hear from us.',
+    max: 400,
+    optional: true,
+    tokens: [],
+  },
+  'staff_callback_request.intro': {
+    label: 'Opening line',
+    where: 'Staff alert: call back requested',
+    default: 'A customer has asked us to ring them instead of booking online.',
+    max: 300,
+    tokens: [],
+  },
+} as const satisfies Record<string, WordingBlock>
+
+export type WordingKey = keyof typeof WORDING
+export type Wording = Partial<Record<WordingKey, string>>
+
+export const WORDING_KEYS = Object.keys(WORDING) as WordingKey[]
+
+/** Why a block's text cannot be saved, or null. Server and screen use the same check. */
+export function wordingProblem(key: WordingKey, text: string): string | null {
+  const block: WordingBlock = WORDING[key]
+  const trimmed = text.trim()
+  if (!trimmed && !block.optional) return 'This cannot be empty.'
+  if ([...trimmed].length > block.max) return `Use at most ${block.max} characters.`
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u0008\u000B-\u001F\u007F]/.test(trimmed)) return 'Remove the unusual characters.'
+  for (const match of trimmed.matchAll(/\{([^{}]*)\}/g)) {
+    const token = match[1] ?? ''
+    if (!(block.tokens as readonly string[]).includes(token)) {
+      return block.tokens.length
+        ? `Only these may go in curly brackets: ${block.tokens.map((t) => `{${t}}`).join(', ')}.`
+        : 'Curly brackets cannot be used here.'
+    }
+  }
+  return null
+}
+
+/** The block's text (reworded or default) with its tokens filled in. Still plain text. */
+function block(
+  wording: Wording | undefined,
+  key: WordingKey,
+  values: { first_name?: string; event?: string } = {},
+): string {
+  const custom = wording?.[key]
+  const text =
+    custom !== undefined && wordingProblem(key, custom) === null
+      ? custom.trim()
+      : WORDING[key].default
+  return text.replace(
+    /\{(first_name|event)\}/g,
+    (_m, token: 'first_name' | 'event') => values[token] ?? '',
+  )
+}
+
 export type MessageInput = {
   ctx: BookingContext
+  /** Reworded blocks (from the database); anything missing uses the default. */
+  wording?: Wording
   /** Link back to the customer's booking page (change or cancel); null if unavailable. */
   manageUrl: string | null
   /** Business phone for "ring us", null while it is a placeholder. */
@@ -104,6 +274,7 @@ function parts(input: MessageInput) {
   const when = formatLocal(Date.parse(ctx.booking.starts_at))
   const event = ctx.type.mode === 'on_site' ? 'site visit' : 'call'
   return {
+    firstName: customer,
     hello: customer ? `Hello ${customer},` : 'Hello,',
     event,
     when: `${when.weekday} ${when.date} at ${when.time} (Irish time)`,
@@ -127,13 +298,22 @@ function ringUs(input: MessageInput): string[][] {
 
 export function renderMessage(template: CustomerTemplate, input: MessageInput): RenderedMessage {
   const p = parts(input)
-  const { ctx } = input
+  const { ctx, wording } = input
+  const values = { first_name: p.firstName, event: p.event }
   const disclaimer =
     ctx.type.mode === 'on_site'
-      ? 'A site visit is for us to assess the work and give you an estimate, which is a price range. It does not commit you to a quote, and it is not a start date.'
-      : 'This call is to talk your project through. It does not commit you to anything.'
+      ? block(wording, 'visit_disclaimer')
+      : block(wording, 'call_disclaimer')
   const change = input.manageUrl ? { label: 'Change or cancel', url: input.manageUrl } : undefined
-  const reference = [[`Your enquiry reference is ${p.reference}.`], ['Q3 Interiors']]
+  const closing = (key: WordingKey) => {
+    const text = block(wording, key, values)
+    return text ? [[text]] : []
+  }
+  const reference = (closingKey: WordingKey) => [
+    ...closing(closingKey),
+    [`Your enquiry reference is ${p.reference}.`],
+    [block(wording, 'sign_off')],
+  ]
 
   switch (template) {
     case 'booking_confirmation':
@@ -142,14 +322,14 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
           subject: `Booked: your ${p.event} on ${p.whenShort}`,
           paragraphs: [
             [p.hello],
-            [`Your ${p.event} with Q3 Interiors is booked.`],
+            [block(wording, 'booking_confirmation.intro', values)],
             [`When: ${p.when}`, `Length: about ${ctx.type.duration_minutes} minutes`],
             p.where,
             [`To prepare: ${ctx.type.what_to_prepare}`],
             [disclaimer],
           ],
           action: change,
-          after: [...(change ? ringUs(input) : []), ...reference],
+          after: [...(change ? ringUs(input) : []), ...reference('booking_confirmation.closing')],
         },
         input,
       )
@@ -159,13 +339,13 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
           subject: `Reminder: your ${p.event} on ${p.whenShort}`,
           paragraphs: [
             [p.hello],
-            [`A reminder of your ${p.event} with Q3 Interiors.`],
+            [block(wording, 'booking_reminder.intro', values)],
             [`When: ${p.when}`],
             p.where,
             [`To prepare: ${ctx.type.what_to_prepare}`],
           ],
           action: change,
-          after: [...(change ? ringUs(input) : []), ...reference],
+          after: [...(change ? ringUs(input) : []), ...reference('booking_reminder.closing')],
         },
         input,
       )
@@ -175,12 +355,12 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
           subject: `New time: your ${p.event} on ${p.whenShort}`,
           paragraphs: [
             [p.hello],
-            [`Your ${p.event} with Q3 Interiors has moved to a new time.`],
+            [block(wording, 'booking_rescheduled.intro', values)],
             [`New time: ${p.when}`],
             p.where,
           ],
           action: change,
-          after: [...(change ? ringUs(input) : []), ...reference],
+          after: [...(change ? ringUs(input) : []), ...reference('booking_rescheduled.closing')],
         },
         input,
       )
@@ -192,9 +372,8 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
           subject: `Cancelled: your ${p.event}${wasText}`,
           paragraphs: [
             [p.hello],
-            [
-              `Your ${p.event} with Q3 Interiors${wasText} is cancelled. Your enquiry is still saved.`,
-            ],
+            [block(wording, 'booking_cancelled.intro', values)],
+            ...(was ? [[`Cancelled: ${was.weekday} ${was.date} at ${was.time} (Irish time)`]] : []),
             [
               input.manageUrl
                 ? 'If you would like a new time, you can book one here:'
@@ -202,7 +381,7 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
             ],
           ],
           action: input.manageUrl ? { label: 'Book a new time', url: input.manageUrl } : undefined,
-          after: reference,
+          after: reference('booking_cancelled.closing'),
         },
         input,
       )
@@ -215,6 +394,7 @@ export type StaffAlertInput = {
   /** Staff detail page for the enquiry. */
   staffUrl: string
   siteUrl?: string | null
+  wording?: Wording
 }
 
 /** Label of a choice answer from the stored form version, or the raw value. */
@@ -251,7 +431,7 @@ export function renderStaffAlert(
       {
         subject: `New enquiry ${summary.reference}: ${project}`,
         paragraphs: [
-          ['A new enquiry has come in.'],
+          [block(input.wording, 'staff_new_enquiry.intro')],
           [
             `Reference: ${summary.reference}`,
             `Project: ${project}`,
@@ -260,11 +440,9 @@ export function renderStaffAlert(
           ],
         ],
         action,
-        after: [
-          [
-            'The customer may book a call or site visit straight away; if they do not, they are waiting to hear from us.',
-          ],
-        ],
+        after: block(input.wording, 'staff_new_enquiry.note')
+          ? [[block(input.wording, 'staff_new_enquiry.note')]]
+          : [],
       },
       { siteUrl: input.siteUrl },
     )
@@ -273,7 +451,7 @@ export function renderStaffAlert(
     {
       subject: `Call-back requested ${summary.reference}: ${project}`,
       paragraphs: [
-        ['A customer has asked us to ring them instead of booking online.'],
+        [block(input.wording, 'staff_callback_request.intro')],
         [
           `Reference: ${summary.reference}`,
           `Project: ${project}`,

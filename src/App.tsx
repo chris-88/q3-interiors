@@ -22,6 +22,9 @@ const StaffReportRoute = lazy(() =>
 const StaffBusinessRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffBusinessRoute })),
 )
+const StaffWordingRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffWordingRoute })),
+)
 const StaffPeopleRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffPeopleRoute })),
 )
@@ -71,6 +74,7 @@ export default function App() {
         <Route path="/staff/settings" element={<StaffSettingsRoute />} />
         <Route path="/staff/report" element={<StaffReportRoute />} />
         <Route path="/staff/settings/people" element={<StaffPeopleRoute />} />
+        <Route path="/staff/settings/wording" element={<StaffWordingRoute />} />
         <Route path="/staff/settings/business" element={<StaffBusinessRoute />} />
         <Route path="/staff/forgot" element={<StaffForgotRoute />} />
         <Route path="/staff/set-password" element={<StaffSetPasswordRoute />} />

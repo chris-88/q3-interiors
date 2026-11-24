@@ -5,6 +5,7 @@ import { AppointmentsPage } from './appointments-page'
 import { ReportPage } from './report-page'
 import { SettingsPage } from './settings-page'
 import { PeoplePage } from './people-page'
+import { WordingPage } from './wording-page'
 import { BusinessPage } from './business-page'
 // oxlint-disable-next-line react/only-export-components
 export {
@@ -66,6 +67,14 @@ export function StaffBusinessRoute() {
   return (
     <StaffArea>
       <BusinessPage />
+    </StaffArea>
+  )
+}
+
+export function StaffWordingRoute() {
+  return (
+    <StaffArea>
+      <WordingPage />
     </StaffArea>
   )
 }

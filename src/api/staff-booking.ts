@@ -204,6 +204,7 @@ export const appointmentTypeSchema = z.object({
   buffer_before_minutes: z.number().int().min(0).max(240),
   buffer_after_minutes: z.number().int().min(0).max(240),
   active: z.boolean(),
+  what_to_prepare: z.string(),
 })
 export type AppointmentTypeSettings = z.infer<typeof appointmentTypeSchema>
 
@@ -214,7 +215,7 @@ export function useAppointmentTypes() {
       const { data, error } = await supabase
         .from('appointment_types')
         .select(
-          'id, label, mode, duration_minutes, buffer_before_minutes, buffer_after_minutes, active',
+          'id, label, mode, duration_minutes, buffer_before_minutes, buffer_after_minutes, active, what_to_prepare',
         )
         .order('sort_order')
       if (error) throw toApiError(error)

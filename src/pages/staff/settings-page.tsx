@@ -514,6 +514,7 @@ const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
     label: 'Business details',
     hint: 'Name, contact details, service area, privacy contact',
   },
+  { to: '/staff/settings/wording', label: 'Wording', hint: 'Reword the emails, with a preview' },
 ]
 
 function SetupLinks() {

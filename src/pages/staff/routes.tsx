@@ -5,6 +5,8 @@ import { AppointmentsPage } from './appointments-page'
 import { ReportPage } from './report-page'
 import { SettingsPage } from './settings-page'
 import { PeoplePage } from './people-page'
+import { ChecklistPage } from './checklist-page'
+import { BookingRulesPage } from './booking-rules-page'
 import { CampaignsPage } from './campaigns-page'
 import { WordingPage } from './wording-page'
 import { BusinessPage } from './business-page'
@@ -84,6 +86,22 @@ export function StaffCampaignsRoute() {
   return (
     <StaffArea>
       <CampaignsPage />
+    </StaffArea>
+  )
+}
+
+export function StaffBookingRulesRoute() {
+  return (
+    <StaffArea>
+      <BookingRulesPage />
+    </StaffArea>
+  )
+}
+
+export function StaffChecklistRoute() {
+  return (
+    <StaffArea>
+      <ChecklistPage />
     </StaffArea>
   )
 }

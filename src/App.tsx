@@ -28,6 +28,12 @@ const StaffWordingRoute = lazy(() =>
 const StaffCampaignsRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffCampaignsRoute })),
 )
+const StaffBookingRulesRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffBookingRulesRoute })),
+)
+const StaffChecklistRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffChecklistRoute })),
+)
 const StaffPeopleRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffPeopleRoute })),
 )
@@ -77,6 +83,8 @@ export default function App() {
         <Route path="/staff/settings" element={<StaffSettingsRoute />} />
         <Route path="/staff/report" element={<StaffReportRoute />} />
         <Route path="/staff/settings/people" element={<StaffPeopleRoute />} />
+        <Route path="/staff/settings/checklist" element={<StaffChecklistRoute />} />
+        <Route path="/staff/settings/booking" element={<StaffBookingRulesRoute />} />
         <Route path="/staff/settings/campaigns" element={<StaffCampaignsRoute />} />
         <Route path="/staff/settings/wording" element={<StaffWordingRoute />} />
         <Route path="/staff/settings/business" element={<StaffBusinessRoute />} />

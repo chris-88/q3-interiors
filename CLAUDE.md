@@ -71,24 +71,24 @@ The Q3 Interiors website brand guide v1.0 (supplied 2026-11-24, kept outside the
 
 ## Routes (HashRouter)
 
-| Route                    | What                                                                                                                                                     |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/#/`                    | Landing page, one "Tell us about your project" action                                                                                                    |
-| `/#/enquire`             | Multi-step enquiry form, then review, then send                                                                                                          |
-| `/#/enquire/sent`        | Confirmation with the reference; only reachable after a successful save                                                                                  |
-| `/#/staff`               | Staff sign-in, then the enquiry list (lazy-loaded chunk)                                                                                                 |
-| `/#/staff/enquiries/:id` | Enquiry detail: answers via the stored form version, contact, status change, history, attribution                                                        |
-| `/#/book/:token`         | Customer scheduling for one enquiry (opaque access token, 30 days): type, address for a visit, slot, book, pending, confirmed                            |
-| `/#/staff/appointments`  | Appointments, upcoming first, plus past and failed                                                                                                       |
-| `/#/staff/settings`      | Connect/reconnect/test/disconnect Google Calendar; change cut-off, reminder lead time, business phone; availability and appointment types (placeholders) |
-| `/#/privacy`             | Privacy notice (PLACEHOLDER wording; legal details from `src/config/business.ts`)                                                                        |
-| `/#/staff/report`        | Funnel report: enquiries -> booked -> attended -> won, overall and by campaign, for a date range                                                         |
+| Route                    | What                                                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/#/`                    | Landing page, one "Tell us about your project" action                                                                                               |
+| `/#/enquire`             | Multi-step enquiry form, then review, then send                                                                                                     |
+| `/#/enquire/sent`        | Confirmation with the reference; only reachable after a successful save                                                                             |
+| `/#/staff`               | Staff sign-in, then the enquiry list (lazy-loaded chunk)                                                                                            |
+| `/#/staff/enquiries/:id` | Enquiry detail: answers via the stored form version, contact, status change, history, attribution                                                   |
+| `/#/book/:token`         | Customer scheduling for one enquiry (opaque access token, 30 days): type, address for a visit, slot, book, pending, confirmed                       |
+| `/#/staff/appointments`  | Appointments, upcoming first, plus past and failed                                                                                                  |
+| `/#/staff/settings`      | Own Google Calendar and the booking hours; admins: links to People, Business details, Wording, Campaigns, Go-live checklist, Booking rules and data |
+| `/#/privacy`             | Privacy notice (PLACEHOLDER wording; legal details from `src/config/business.ts`)                                                                   |
+| `/#/staff/report`        | Funnel report: enquiries -> booked -> attended -> won, overall and by campaign, for a date range                                                    |
 
 Campaign links carry `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, either before the `#` (`https://book.q3interiors.ie/?utm_source=instagram#/`) or inside the route (`/#/?utm_source=instagram`). `src/lib/attribution.ts` keeps the first tagged arrival for 30 days in localStorage; an untagged arrival is stored as `tracking = 'unknown'`. Click ids are recorded only as present or not. Never put customer data in a URL.
 
 The public host is `https://book.q3interiors.ie` (Cloudflare zone `q3interiors.ie`, proxied CNAME to GitHub Pages; `public/CNAME` and the Pages custom domain match it; HTTPS is Cloudflare's, so GitHub's enforce-HTTPS is not used). The old host `q3.chrisquinn.ie` redirects to it at Cloudflare. The API stays at `https://api.chrisquinn.ie/q3-interiors`; its gateway reflects the request origin for CORS.
 
-Customer-facing business values (service area, contact) live in `src/config/business.ts`; `null` placeholders are not shown, so nothing unconfirmed is claimed.
+Customer-facing business values live in the database (Business details, below); unset values are not shown, so nothing unconfirmed is claimed.
 
 ## Data model
 
@@ -110,8 +110,8 @@ Customer-facing business values (service area, contact) live in `src/config/busi
 
 ## Staff accounts
 
-- Staff sign in with email and password (Supabase Auth). Being in `auth.users` is not enough: a `staff` row is required. Rows are inserted by an operator with psql, never by a migration (no personal data in the repo).
-- The first admin was created on 2026-11-20 through the GoTrue admin API with the stack's service role key from pass; its password is in pass at `infra/q3-interiors/STAFF_ADMIN_PASSWORD`.
+- Staff sign in with email and password (Supabase Auth). Being in `auth.users` is not enough: an active `staff` row is required. Admins add people in Settings > People (the `staff-accounts` function); no migration ever inserts people (no personal data in the repo).
+- The first admin was created on 2026-11-20 through the GoTrue admin API; its password is in pass at `infra/q3-interiors/STAFF_ADMIN_PASSWORD`.
 - Public sign-up is disabled on the stack (`DISABLE_SIGNUP=true`, infra `17c4c11`).
 
 ## Booking (slice 2)
@@ -162,11 +162,32 @@ Stack wiring (infra repo, `stacks/q3-interiors/`): `docker-compose.q3-interiors.
 - **Deletion**: staff "Delete this enquiry" (detail page, typed reference) calls `public.delete_enquiry`; `private.delete_enquiry_data` queues any Google events in `private.pending_event_deletions` (removed by the worker; stuck ones show in needs attention), logs `public.deletion_log` (reference, reason, who, when; no personal data) and deletes the enquiry with everything attached.
 - **Retention**: `booking_settings.retention_months`, NULL = off (the default; Chris has not chosen a period). `q3-retention` runs `private.run_retention()` daily at 03:15 and deletes enquiries older than that, except those marked won, through the same deletion path. Settings shows the field and `retention_preview()`.
 
+## Admin set-up (slice 5)
+
+Pilot inputs go in through Settings, not code. Settings is split: everyone sees their Google Calendar and the booking hours; admins also get links to People, Business details, Wording, Campaigns, Go-live checklist and Booking rules and data (`/#/staff/settings/<people|business|wording|campaigns|checklist|booking>`).
+
+Roles (`staff.role`, enforced by RLS, security-definer checks and the functions; the screens only explain):
+
+|                                                                                                                                                                                   | staff | admin                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------- |
+| Enquiries, appointments (move, cancel), outcomes, status, report funnel                                                                                                           | yes   | yes                             |
+| Own Google Calendar connection; own availability                                                                                                                                  | yes   | yes (and anyone's availability) |
+| People, who takes bookings, business details, wording, appointment types, change/reminder rules, retention, request limits, delete enquiry, campaigns, spend and costs, checklist | no    | yes                             |
+
+- A deactivated person (`staff.active = false`) keeps their row; `is_staff()` is false for them, so every read and action stops at their next request, they get no alerts, and the staff-accounts function also bans them in GoTrue. Guards: never the last active admin, never the person who takes bookings (choose someone else first), never yourself.
+- Staff accounts: the `staff-accounts` Edge Function (service key from the container env `SUPABASE_SERVICE_ROLE_KEY`, never in a browser) adds, deactivates/reactivates, re-roles and sends password links; `set_password` (any active staff session) enforces 12 to 72 characters; `forgot` answers the same for any address and is limited per address (`password_reset` bucket). Invite and reset emails go through `communications` (`staff_invite`, `staff_password_reset`); the worker asks GoTrue's `generate_link` for a recovery token hash at send time (nothing usable is stored) and links to `/#/staff/set-password?token_hash=...&type=recovery`, which calls `verifyOtp` once and removes the token from the address bar.
+- Who takes bookings: `booking_settings.bookable_staff_user_id`, set with `set_bookable_staff()` (admins). New bookings use that person's availability and calendar; existing bookings keep their `staff_user_id` (and calendar) for moves, cancellations, reminders and reconcile. A person with no connected calendar means customers get the call-back path. Appointment types (lengths, buffers) are business-wide.
+- Business details: `business_details` (one row; NULL = not confirmed and never shown). Public pages read `public_business_details()` (only public fields, the privacy-review flag and the retention period) and keep the last copy in localStorage (`q3.business.v1`) for the failure state; a first-time visitor who cannot reach the server sees no contact line. The functions read the ring-us phone from here.
+- Wording: each email is a fixed structure (greeting, date and time, where, reference, Change-or-cancel button, privacy link, plain-text part) with named text blocks (`WORDING` in `supabase/functions/_shared/messages.ts`). Only changed blocks are stored (`message_blocks`); reset deletes the row. Blocks are plain text, escaped, length-checked and limited to their tokens (`{first_name}`, `{event}`); an invalid stored block falls back to the default. The visit disclaimer on the booked page comes from `public_wording()`. What-to-prepare stays on `appointment_types`.
+- Campaigns: `campaigns` (slug = `utm_campaign`), `campaign_creatives` (slug = `utm_content`; own rows so an ad can attach later), `campaign_spend` (euro cents per day, admin-only). The link builder (`src/lib/campaigns.ts`) puts the tags before the `#` for `SITE_URL`. A slug is locked once a link was copied or tested (`link_used_at`) or an enquiry carries it. `campaign_costs()` feeds the report's spend and cost per enquiry/booked/won (admins); no spend shows as "No spend entered".
+- Go-live checklist: `go_live_checklist()` computes what it can; admins tick the rest (`setup_ticks`), mark the connected Google account as the test account (`setup_state.test_calendar_email`, via `mark_test_calendar()`), and mark the privacy notice reviewed (`business_details.privacy_reviewed_at`, only once legal name, address and privacy contact are set; removes the public "Draft" marker). Logic in `src/lib/checklist.ts`.
+- Request limits (`booking_settings.*_limit_per_hour`) are editable by admins within database bounds (1-100, 5-500, 50-5000).
+
 ## Testing
 
 - `npm run test`: unit tests (schema-to-validation, conditional visibility, attribution parsing, drafts and idempotency keys, published-form drift, a few component tests).
 - `npm run test:e2e`: Playwright at 390px against `vite preview` of the current `dist/` (run `npm run build` first; a stale `dist/` tests old code). `e2e/fake-backend.ts` runs the real `public-booking` logic in Node over an in-memory database and a fake Google Calendar and blocks every other backend request, so nothing reaches the stack. Set `SCREENSHOTS_DIR` to keep step screenshots. Runs in CI on pull requests and before deploy.
-- `npm run test:db`: against the live stack: `supabase/tests/access.sql`, `booking.sql`, `changes.sql` and `hardening.sql` inside transactions that are always rolled back (privileges, RLS, validation, idempotency, tokens, reservations, job and email transitions), the form drift check, `supabase/tests/race.sh` (a real two-session race for one slot; it deletes what it creates), then `scripts/check-anon-http.sh` through the public gateway (tables, RPCs, functions, the OAuth callback). Run it after any migration or functions deploy. Not in CI (the database is not reachable from GitHub).
+- `npm run test:db`: against the live stack: `supabase/tests/access.sql`, `booking.sql`, `changes.sql`, `hardening.sql`, `roles.sql`, `business.sql`, `wording.sql`, `campaigns.sql` and `checklist.sql` inside transactions that are always rolled back (privileges, RLS, validation, idempotency, tokens, reservations, job and email transitions), the form drift check, `supabase/tests/race.sh` (a real two-session race for one slot; it deletes what it creates), then `scripts/check-anon-http.sh` through the public gateway (tables, RPCs, functions, the OAuth callback). Run it after any migration or functions deploy. Not in CI (the database is not reachable from GitHub).
 - Local dev must run on `http://localhost:5173` (the gateway's CORS allow-list); `.env.local` carries the URL and anon key.
 
 ## Commands

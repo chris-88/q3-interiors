@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useCampaignCosts } from '@/api/campaigns'
 import { useFunnelReport } from '@/api/staff-booking'
+import { useCurrentStaff } from '@/components/staff/staff-layout'
+import { costRows, formatCost, formatEuroCents, type CostRow } from '@/lib/campaigns'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -20,7 +23,7 @@ function dublinDate(offsetDays = 0): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Dublin' }).format(d)
 }
 
-function FunnelCard({ row, title }: { row: FunnelRow; title: string }) {
+function FunnelCard({ row, title, cost }: { row: FunnelRow; title: string; cost?: CostRow }) {
   return (
     <section aria-label={title} className="bg-background rounded-xl border p-4">
       <h2 className="font-medium">{title}</h2>
@@ -77,6 +80,32 @@ function FunnelCard({ row, title }: { row: FunnelRow; title: string }) {
           <dd className="tabular-nums">{euro.format(row.won_value)}</dd>
         </div>
       </dl>
+      {cost && (
+        <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-sm">
+          <div>
+            <dt className="text-muted-foreground">Spend in range</dt>
+            <dd className="tabular-nums">
+              {cost.spendCents === null ? 'No spend entered' : formatEuroCents(cost.spendCents)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Per enquiry</dt>
+            <dd className="tabular-nums">
+              {formatCost(cost.perEnquiry, cost.spendCents, cost.enquiries)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Per booked appointment</dt>
+            <dd className="tabular-nums">
+              {formatCost(cost.perBooked, cost.spendCents, cost.booked)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Per won job</dt>
+            <dd className="tabular-nums">{formatCost(cost.perWon, cost.spendCents, cost.won)}</dd>
+          </div>
+        </dl>
+      )}
     </section>
   )
 }
@@ -85,12 +114,16 @@ export function ReportPage() {
   const [from, setFrom] = useState(() => dublinDate(-89))
   const [to, setTo] = useState(() => dublinDate(0))
   const report = useFunnelReport(from, to)
+  // Spend is admin-only end to end; staff see the funnel without costs.
+  const isAdmin = useCurrentStaff().role === 'admin'
+  const costs = useCampaignCosts(from, to, isAdmin)
   const invalid = from === '' || to === '' || from > to
+  const rows = report.data ? costRows(report.data, costs.data ?? []) : []
 
   return (
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
-      <h1 className="text-xl font-semibold tracking-tight">Funnel report</h1>
+      <h1 className="text-section text-ink font-bold">Funnel report</h1>
       <p className="text-muted-foreground -mt-2 text-sm">
         Enquiries received in the date range (Irish dates), and what became of them. Booked means an
         appointment was confirmed, even if later cancelled.
@@ -141,19 +174,31 @@ export function ReportPage() {
             </Button>
           </AlertDescription>
         </Alert>
-      ) : report.data.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="bg-background text-muted-foreground rounded-xl border p-6 text-center">
           No enquiries in this range yet. Numbers appear here as enquiries come in.
         </p>
       ) : (
         <>
-          <FunnelCard row={totals(report.data)} title="All campaigns" />
+          <FunnelCard row={totals(rows)} title="All campaigns" />
           <h2 className="text-muted-foreground mt-2 text-sm font-medium">By campaign</h2>
-          {report.data.map((row) => (
+          {isAdmin && costs.isError && (
+            <Alert variant="destructive">
+              <AlertDescription>Could not load spend; costs are not shown.</AlertDescription>
+            </Alert>
+          )}
+          {rows.map((row) => (
             <FunnelCard
               key={row.campaign}
               row={row}
-              title={row.campaign === '(unknown)' ? 'No campaign tag' : row.campaign}
+              cost={isAdmin && costs.data && row.campaign !== '(unknown)' ? row : undefined}
+              title={
+                row.campaign === '(unknown)'
+                  ? 'No campaign tag'
+                  : row.name
+                    ? `${row.name} (${row.campaign})`
+                    : `${row.campaign} (tag, no campaign set up)`
+              }
             />
           ))}
         </>

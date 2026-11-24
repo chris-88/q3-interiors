@@ -515,6 +515,11 @@ const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
     hint: 'Name, contact details, service area, privacy contact',
   },
   { to: '/staff/settings/wording', label: 'Wording', hint: 'Reword the emails, with a preview' },
+  {
+    to: '/staff/settings/campaigns',
+    label: 'Campaigns',
+    hint: 'Tagged links for ads, creatives and spend',
+  },
 ]
 
 function SetupLinks() {

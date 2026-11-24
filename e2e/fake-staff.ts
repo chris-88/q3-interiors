@@ -38,6 +38,8 @@ export type StaffWorld = {
   rpcCalls: { name: string; body: unknown }[]
   tables: Record<string, unknown[]>
   business: Record<string, unknown>
+  /** Rows returned by the funnel_report RPC. */
+  funnel: Record<string, unknown>[]
 }
 
 export function staffWorld(): StaffWorld {
@@ -69,6 +71,7 @@ export function staffWorld(): StaffWorld {
     bookable: { id: 'u-admin' },
     rpcCalls: [],
     tables: {},
+    funnel: [],
     business: {
       trading_name: 'Q3 Interiors',
       legal_name: null,
@@ -221,6 +224,36 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
           retention_months: null,
         })
       }
+      if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      if (table === 'rpc/mark_campaign_link_used') {
+        const id = (req.postDataJSON() as { p_campaign_id: string }).p_campaign_id
+        for (const c of (world.tables.campaigns ?? []) as Record<string, unknown>[])
+          if (c.id === id) c.link_used_at ??= new Date().toISOString()
+        return json(route, 200, null)
+      }
+      if (table === 'rpc/campaign_costs') {
+        if (caller?.role !== 'admin')
+          return json(route, 403, { code: '42501', message: 'not allowed' })
+        const spend = (world.tables.campaign_spend ?? []) as {
+          campaign_id: string
+          amount_cents: number
+        }[]
+        return json(
+          route,
+          200,
+          ((world.tables.campaigns ?? []) as { id: string; slug: string; name: string }[]).map(
+            (c) => {
+              const mine = spend.filter((x) => x.campaign_id === c.id)
+              return {
+                campaign: c.slug,
+                name: c.name,
+                spend_cents: mine.reduce((a, x) => a + x.amount_cents, 0),
+                spend_entries: mine.length,
+              }
+            },
+          ),
+        )
+      }
       if (table === 'rpc/set_bookable_staff') {
         if (caller?.role !== 'admin' || !caller.active)
           return json(route, 403, { code: '42501', message: 'not allowed' })
@@ -228,6 +261,39 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         return json(route, 200, null)
       }
       return json(route, 200, null)
+    }
+    const admin = Boolean(caller?.active && caller.role === 'admin')
+    const ADMIN_TABLES = ['campaigns', 'campaign_creatives', 'campaign_spend', 'message_blocks']
+    if (req.method() === 'POST' && ADMIN_TABLES.includes(table)) {
+      if (!admin)
+        return json(route, 403, {
+          code: '42501',
+          message: 'new row violates row-level security policy',
+        })
+      const body = req.postDataJSON() as Record<string, unknown>
+      const row: Record<string, unknown> = {
+        id: `${table}-${(world.tables[table] ?? []).length + 1}`,
+        created_at: new Date().toISOString(),
+        archived_at: null,
+        ...(table === 'campaigns' ? { link_used_at: null } : {}),
+        ...body,
+      }
+      world.tables[table] = [...(world.tables[table] ?? []), row]
+      return json(route, 201, [row])
+    }
+    if (req.method() === 'DELETE' && ADMIN_TABLES.includes(table)) {
+      const doomed = select((world.tables[table] ?? []) as Record<string, unknown>[], url)
+      if (admin)
+        world.tables[table] = (world.tables[table] ?? []).filter(
+          (r) => !doomed.includes(r as Record<string, unknown>),
+        )
+      return json(route, 200, [])
+    }
+    if (req.method() === 'PATCH' && ADMIN_TABLES.includes(table)) {
+      if (!admin) return json(route, 200, [])
+      const hits = select((world.tables[table] ?? []) as Record<string, unknown>[], url)
+      for (const r of hits) Object.assign(r, req.postDataJSON() as Record<string, unknown>)
+      return json(route, 200, hits)
     }
     if (req.method() === 'PATCH') {
       const patch = req.postDataJSON() as Record<string, unknown>
@@ -248,6 +314,16 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       rows = caller?.active ? all : all.filter((s) => s.user_id === caller?.user_id)
     } else if (table === 'booking_settings') {
       rows = [{ bookable_staff_user_id: world.bookable.id }]
+    } else if (table === 'campaigns') {
+      // The embedded creatives, as PostgREST returns them for campaign_creatives(...).
+      rows = ((world.tables.campaigns ?? []) as Record<string, unknown>[]).map((c) => ({
+        ...c,
+        campaign_creatives: (
+          (world.tables.campaign_creatives ?? []) as Record<string, unknown>[]
+        ).filter((x) => x.campaign_id === c.id),
+      }))
+    } else if (table === 'campaign_spend' && !admin) {
+      rows = []
     } else {
       rows = (world.tables[table] ?? []) as Record<string, unknown>[]
     }

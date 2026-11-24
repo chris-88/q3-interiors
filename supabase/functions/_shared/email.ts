@@ -1,8 +1,15 @@
 import { backoffSeconds } from './calendar-job.ts'
-import { renderMessage, renderStaffAlert } from './messages.ts'
+import { renderMessage, renderStaffAlert, type RenderedMessage } from './messages.ts'
 import type { BookingContext, Communication, Db } from './types.ts'
 
-export type OutgoingEmail = { to: string; subject: string; text: string; idempotencyKey: string }
+export type OutgoingEmail = {
+  to: string
+  subject: string
+  text: string
+  /** Branded HTML part; the plain-text part is always sent alongside it. */
+  html?: string
+  idempotencyKey: string
+}
 
 export class MailError extends Error {
   readonly retryable: boolean
@@ -41,6 +48,7 @@ export function createResendMailer(opts: {
             to: [email.to],
             subject: email.subject,
             text: email.text,
+            ...(email.html ? { html: email.html } : {}),
           }),
           signal: AbortSignal.timeout(10_000),
         })
@@ -114,11 +122,12 @@ export async function processCommunication(
       await db.communicationSkipped(comm.id, 'Enquiry no longer exists')
       return 'skipped'
     }
-    const { subject, text } = renderStaffAlert(comm.template, {
+    const message = renderStaffAlert(comm.template, {
       summary,
       staffUrl: `${deps.appUrl}/#/staff/enquiries/${summary.id}`,
+      siteUrl: deps.appUrl,
     })
-    return send(comm, deps, subject, text)
+    return send(comm, deps, message)
   }
   const ctx = comm.booking_id ? await db.bookingContext(comm.booking_id) : null
   if (!ctx) {
@@ -132,28 +141,29 @@ export async function processCommunication(
   }
   const settings = await db.getSettings()
   const token = await db.mintAccessToken(ctx.enquiry.id)
-  const { subject, text } = renderMessage(comm.template, {
+  const message = renderMessage(comm.template, {
     ctx,
     manageUrl: `${deps.appUrl}/#/book/${token}`,
     businessPhone: settings.business_phone,
     cancelledStart: comm.about_start ?? null,
     privacyUrl: `${deps.appUrl}/#/privacy`,
+    siteUrl: deps.appUrl,
   })
-  return send(comm, deps, subject, text)
+  return send(comm, deps, message)
 }
 
 async function send(
   comm: Communication,
   deps: CommunicationDeps,
-  subject: string,
-  text: string,
+  message: RenderedMessage,
 ): Promise<'sent' | 'retrying' | 'failed'> {
   const { db, mailer } = deps
   try {
     const id = await mailer.send({
       to: comm.recipient,
-      subject,
-      text,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
       idempotencyKey: comm.dedupe_key,
     })
     await db.communicationSent(comm.id, id)

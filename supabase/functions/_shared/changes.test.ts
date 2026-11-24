@@ -273,7 +273,48 @@ describe('messages', () => {
       businessPhone: null,
       cancelledStart: THU_10,
     })
-    expect(m.subject).toBe('Cancelled: Phone consultation, Thursday 4 March 2027 at 10:00')
-    expect(m.text).toContain('book one here: https://q3.example/#/book/t')
+    expect(m.subject).toBe('Cancelled: your call on Thursday 4 March 2027 at 10:00')
+    expect(m.text).toContain('Book a new time: https://q3.example/#/book/t')
+  })
+
+  it('send a branded HTML part beside the plain text, escaping customer input', async () => {
+    const s = setup()
+    await booked(s)
+    const ctx = (await s.db.bookingContext(s.db.bookings[0]!.id))!
+    ctx.enquiry.answers = { ...ctx.enquiry.answers, name: '<b>Ann</b> Smith' }
+    const m = renderMessage('booking_confirmation', {
+      ctx,
+      manageUrl: 'https://q3.example/#/book/t',
+      businessPhone: null,
+      privacyUrl: 'https://q3.example/#/privacy',
+      siteUrl: 'https://q3.example',
+    })
+    expect(m.subject).toMatch(/^Booked: your call on /)
+    // Plain text keeps every link written out.
+    expect(m.text).toContain('Change or cancel: https://q3.example/#/book/t')
+    expect(m.text).toContain('How we use your details: https://q3.example/#/privacy')
+    expect(m.text).not.toContain('<a ')
+    // HTML: badge from the site, one forest button for the main action, the privacy link.
+    expect(m.html).toContain('src="https://q3.example/brand/q3-badge-email.png"')
+    expect(m.html).toContain('alt="Q3 Interiors"')
+    expect(m.html).toMatch(
+      /<a href="https:\/\/q3.example\/#\/book\/t" style="[^"]*background:#415847/,
+    )
+    expect(m.html).toContain('>Change or cancel</a>')
+    expect(m.html).toContain('href="https://q3.example/#/privacy"')
+    expect(m.html).toContain('Hello &lt;b&gt;Ann&lt;/b&gt;,')
+    expect(m.html).not.toContain('<b>Ann</b>')
+  })
+
+  it('call a site visit a site visit and explain the estimate', async () => {
+    const s = setup()
+    await booked(s)
+    const ctx = (await s.db.bookingContext(s.db.bookings[0]!.id))!
+    ctx.type = { ...ctx.type, mode: 'on_site' }
+    const m = renderMessage('booking_confirmation', { ctx, manageUrl: null, businessPhone: null })
+    expect(m.subject).toMatch(/^Booked: your site visit on /)
+    expect(m.text).toContain('give you an estimate, which is a price range')
+    expect(m.text).toContain('does not commit you to a quote')
+    expect(m.html).not.toContain('Change or cancel')
   })
 })

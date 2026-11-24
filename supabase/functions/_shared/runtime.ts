@@ -21,7 +21,7 @@ export const config = {
   encryptionKey: env('Q3_TOKEN_ENCRYPTION_KEY'),
   workerSecret: env('Q3_WORKER_SECRET'),
   resendKey: env('Q3_RESEND_API_KEY'),
-  emailFrom: env('Q3_EMAIL_FROM') ?? 'Q3 Interiors (test) <q3-interiors-test@baz.chrisquinn.ie>',
+  emailFrom: env('Q3_EMAIL_FROM') ?? 'Q3 Interiors <bookings@q3interiors.ie>',
   supabaseUrl: env('SUPABASE_URL') ?? 'http://api-gw:8000',
   anonKey: env('SUPABASE_ANON_KEY'),
 }

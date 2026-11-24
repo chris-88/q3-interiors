@@ -1,5 +1,10 @@
 import { backoffSeconds } from './calendar-job.ts'
-import { renderMessage, renderStaffAlert, type RenderedMessage } from './messages.ts'
+import {
+  renderAccountEmail,
+  renderMessage,
+  renderStaffAlert,
+  type RenderedMessage,
+} from './messages.ts'
 import type { BookingContext, Communication, Db } from './types.ts'
 
 export type OutgoingEmail = {
@@ -80,7 +85,24 @@ export function isSuppressed(address: string): boolean {
 
 export { firstName } from './messages.ts'
 
-export type CommunicationDeps = { db: Db; mailer: Mailer; appUrl: string; now?: () => number }
+export type CommunicationDeps = {
+  db: Db
+  mailer: Mailer
+  appUrl: string
+  now?: () => number
+  /** Staff account emails: who the person is, and a fresh single-use set-password token hash. */
+  accounts?: {
+    displayName(userId: string): Promise<string | null>
+    recoveryTokenHash(email: string): Promise<string>
+  }
+}
+
+/** The set-password page; GoTrue's token hash is verified there with verifyOtp. */
+export function setPasswordUrl(appUrl: string, tokenHash: string, template: string): string {
+  const params = new URLSearchParams({ token_hash: tokenHash, type: 'recovery' })
+  if (template === 'staff_invite') params.set('welcome', '1')
+  return `${appUrl}/#/staff/set-password?${params.toString()}`
+}
 
 /** Why a queued message should not go out any more, or null to send it. */
 export function staleReason(comm: Communication, ctx: BookingContext, now: number): string | null {
@@ -116,8 +138,38 @@ export async function processCommunication(
     await db.communicationSkipped(comm.id, 'Not sent: reserved test address')
     return 'skipped'
   }
+  if (comm.template === 'staff_invite' || comm.template === 'staff_password_reset') {
+    const name = comm.staff_user_id ? await deps.accounts?.displayName(comm.staff_user_id) : null
+    if (!deps.accounts || !name) {
+      await db.communicationSkipped(comm.id, 'Staff member no longer active')
+      return 'skipped'
+    }
+    let link: string
+    try {
+      // Generated now, not when queued: no usable token is ever stored, and a retry gets a new one.
+      link = setPasswordUrl(
+        deps.appUrl,
+        await deps.accounts.recoveryTokenHash(comm.recipient),
+        comm.template,
+      )
+    } catch (error) {
+      const final = comm.attempts >= comm.max_attempts
+      await db.communicationRetry(
+        comm.id,
+        String(error instanceof Error ? error.message : error),
+        backoffSeconds(comm.attempts),
+        final,
+      )
+      return final ? 'failed' : 'retrying'
+    }
+    return send(
+      comm,
+      deps,
+      renderAccountEmail(comm.template, { displayName: name, link, siteUrl: deps.appUrl }),
+    )
+  }
   if (comm.template === 'staff_new_enquiry' || comm.template === 'staff_callback_request') {
-    const summary = await db.enquirySummary(comm.enquiry_id)
+    const summary = comm.enquiry_id ? await db.enquirySummary(comm.enquiry_id) : null
     if (!summary) {
       await db.communicationSkipped(comm.id, 'Enquiry no longer exists')
       return 'skipped'

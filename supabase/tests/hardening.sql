@@ -109,7 +109,7 @@ select pg_temp.expect(not exists (select 1 from public.enquiries where reference
 
 -- Staff alert: one per enquiry per staff member, even after retries.
 select pg_temp.expect((select count(*) from public.communications c join public.enquiries e on e.id = c.enquiry_id
-  where e.idempotency_key = pg_temp.key(1) and c.template = 'staff_new_enquiry') = (select count(*) from public.staff),
+  where e.idempotency_key = pg_temp.key(1) and c.template = 'staff_new_enquiry') = (select count(*) from public.staff where active),
   'one new-enquiry alert per staff member');
 select pg_temp.expect(not exists (select 1 from public.communications where template = 'staff_new_enquiry'
   and dedupe_key like '%' || pg_temp.key(4)::text || '%'), 'no alert for a trap');
@@ -118,7 +118,7 @@ select private.request_contact((select id from public.enquiries where idempotenc
 select private.request_contact((select id from public.enquiries where idempotency_key = pg_temp.key(2)), 'Again');
 reset role;
 select pg_temp.expect((select count(*) from public.communications c join public.enquiries e on e.id = c.enquiry_id
-  where e.idempotency_key = pg_temp.key(2) and c.template = 'staff_callback_request') = (select count(*) from public.staff),
+  where e.idempotency_key = pg_temp.key(2) and c.template = 'staff_callback_request') = (select count(*) from public.staff where active),
   'one call-back alert per staff member');
 
 -- Limiter rules directly: an idempotent retry is one row; purge keeps recent rows.

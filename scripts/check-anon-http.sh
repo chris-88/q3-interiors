@@ -59,6 +59,14 @@ check "calendar-admin refuses a caller who is not staff" '{"error":"forbidden"}'
 check "staff-booking refuses a caller who is not staff" '{"error":"forbidden"}' \
   "$(curl -s -X POST "$functions/staff-booking" "${headers[@]}" \
     -d '{"action":"cancel","bookingId":"00000000-0000-4000-8000-000000000000"}')"
+check "staff-accounts refuses admin actions from anon" '{"error":"forbidden"}' \
+  "$(curl -s -X POST "$functions/staff-accounts" "${headers[@]}" \
+    -d '{"action":"add","name":"X","email":"x@example.invalid","role":"admin"}')"
+check "staff-accounts refuses a password change from anon" '{"error":"forbidden"}' \
+  "$(curl -s -X POST "$functions/staff-accounts" "${headers[@]}" \
+    -d '{"action":"set_password","password":"aaaaaaaaaaaaaaaa"}')"
+check "forgot password validates the address" '{"error":"invalid_email"}' \
+  "$(curl -s -X POST "$functions/staff-accounts" "${headers[@]}" -d '{"action":"forgot","email":"nope"}')"
 check "the OAuth callback is reachable without a JWT and refuses a bad state" \
   "https://book.q3interiors.ie/#/staff/settings?calendar=error&reason=expired" \
   "$(curl -s -o /dev/null -w '%{redirect_url}' "$functions/google-oauth-callback?state=bad&code=x")"

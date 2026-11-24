@@ -5,7 +5,8 @@
 import { processCalendarJob } from '../_shared/calendar-job.ts'
 import { processSyncJob, reconcile, scheduleReminder } from '../_shared/changes.ts'
 import { processCommunication } from '../_shared/email.ts'
-import { config, json, runtime } from '../_shared/runtime.ts'
+import { accountStore } from '../_shared/db.ts'
+import { authAdmin, config, json, runtime } from '../_shared/runtime.ts'
 
 function sameSecret(a: string, b: string): boolean {
   if (a.length !== b.length) return false
@@ -53,10 +54,20 @@ Deno.serve(async (req) => {
       }
     }
     if (mailer) {
+      const auth = authAdmin()
+      const accounts = auth
+        ? {
+            displayName: async (userId: string) => {
+              const member = await accountStore.staffMember(userId)
+              return member?.active ? member.display_name : null
+            },
+            recoveryTokenHash: (email: string) => auth.recoveryTokenHash(email),
+          }
+        : undefined
       for (const message of await db.claimCommunications(10)) {
         tally(
           counts.email,
-          await processCommunication(message, { db, mailer, appUrl: config.appUrl }),
+          await processCommunication(message, { db, mailer, appUrl: config.appUrl, accounts }),
         )
       }
     }

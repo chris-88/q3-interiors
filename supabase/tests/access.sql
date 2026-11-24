@@ -145,8 +145,8 @@ select pg_temp.expect_error('delete from public.form_versions', '55000');
 insert into auth.users (id, aud, role, email)
 values ('00000000-0000-4000-8000-0000000000a1', 'authenticated', 'authenticated', 'outsider@example.invalid'),
        ('00000000-0000-4000-8000-0000000000a2', 'authenticated', 'authenticated', 'staff@example.invalid');
-insert into public.staff (user_id, role, display_name)
-values ('00000000-0000-4000-8000-0000000000a2', 'staff', 'Test Staff');
+insert into public.staff (user_id, role, display_name, email)
+values ('00000000-0000-4000-8000-0000000000a2', 'staff', 'Test Staff', 'staff@example.invalid');
 insert into results
 select 'enquiry1', id::text from public.enquiries
 where idempotency_key = '00000000-0000-4000-8000-000000000001';

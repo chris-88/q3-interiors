@@ -70,6 +70,7 @@ function BusinessForm({ initial }: { initial: BusinessRow }) {
     handleSubmit,
     formState: { errors, isDirty },
     reset,
+    getValues,
   } = useForm<BusinessFormInput, unknown, BusinessFormValues>({
     resolver: zodResolver(businessFormSchema),
     defaultValues: Object.fromEntries(
@@ -81,7 +82,7 @@ function BusinessForm({ initial }: { initial: BusinessRow }) {
       noValidate
       onSubmit={handleSubmit((values) =>
         save.mutate(values, {
-          onSuccess: () => reset(values as BusinessFormInput, { keepValues: true }),
+          onSuccess: () => reset(getValues()),
         }),
       )}
     >

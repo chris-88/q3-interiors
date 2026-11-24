@@ -3,4 +3,4 @@
  * index.html, links and the badge image in emails, OAuth return). Change it here when the site
  * moves to its production domain, then deploy the site and the functions.
  */
-export const SITE_URL = 'https://q3.chrisquinn.ie'
+export const SITE_URL = 'https://book.q3interiors.ie'

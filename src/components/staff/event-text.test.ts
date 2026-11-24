@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { EnquiryEvent } from '@/api/enquiries'
 import { eventLine } from './event-text'
+
+// The labels live beside the data hooks; keep the real client (and its env check) out of the test.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }))
 
 const event = (over: Partial<EnquiryEvent>): EnquiryEvent =>
   ({

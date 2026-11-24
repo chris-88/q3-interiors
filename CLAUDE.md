@@ -54,6 +54,21 @@ If you can't satisfy an item, say so explicitly rather than quietly skipping it.
 - shadcn components land in `src/components/ui/`; check shadcn before hand-building a component.
 - Conventional commits, one concern each.
 
+## Brand
+
+The Q3 Interiors website brand guide v1.0 (supplied 2026-11-24, kept outside the repo) is applied through the existing Tailwind/shadcn tokens in `src/index.css`; its `q3-web.css` is not imported.
+
+- Colours: forest `#415847` (primary, links, focus; hover `#324639`), cream `#E8E6D6` (secondary/muted surfaces), ink `#1F2922` (text), muted text `#526154`, control edge `#758175`, divider `#C8CDBF`, error `#943B30`. White is the page and card background. Utilities: `bg-forest`, `bg-cream`, `text-ink`, `border-rule`, `border-edge`.
+- Type: Roboto 400/500/700 self-hosted via `@fontsource/roboto` (latin subset, `font-display: swap`). Scale: `text-display`, `text-section`, `text-title`, `text-body` (fluid clamps from the guide).
+- Shape and size: 4px radius; controls 48px (`h-12`, `min-h-12`); widths `max-w-page` (1200px), `max-w-form` (640px), `max-w-prose` (64ch).
+- Focus: 3px forest outline, 3px offset, unlayered in `index.css` so it beats utilities; cream inside `.on-forest`.
+- Light only: no dark tokens; `dark:` utilities never apply.
+- Logos: the four supplied SVGs, unchanged, in `public/brand/`. Public header: round mark at 48px with visible "Q3 Interiors" on small screens, square badge from 768px; the link is named "Q3 Interiors home" and the image is decorative. Footer: forest band, badge on a cream surface. Staff: white surfaces, round mark in the header, density unchanged.
+- Favicon: `public/favicon.svg` is a favicon-only cut of the round mark (no ring, heavier stroke, cream tile), plus `favicon-32.png` and `apple-touch-icon.png` (180px).
+- Link preview and email badge: `public/og/q3-og.png` (1200x630) and `public/brand/q3-badge-email.png` are rendered by `npm run brand:images` (`scripts/brand-images.cjs`).
+- One site URL: `SITE_URL` in `supabase/functions/_shared/site.ts`. Vite injects it into `index.html` (`%SITE_URL%`, Open Graph/Twitter tags) and the functions use it for every link and image in emails.
+- Wording: public states use the guide's section 5 phrases, shown only when the saved state supports them. Vocabulary: enquiry; a call or a site visit; an estimate is a price range; a quote covers an agreed scope. No "Our work" until approved photos exist. Email wording lives in `supabase/functions/_shared/messages.ts` (plain text plus a branded HTML part).
+
 ## Routes (HashRouter)
 
 | Route                    | What                                                                                                                                                     |

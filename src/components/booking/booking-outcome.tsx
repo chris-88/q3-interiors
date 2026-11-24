@@ -43,7 +43,7 @@ export function BookingConfirmed({
     <section aria-labelledby="booked-heading">
       <CircleCheck className="size-8" aria-hidden="true" />
       <h1 id="booked-heading" className="text-section text-ink mt-4 font-bold">
-        You are booked in
+        {booking.type.mode === 'on_site' ? 'Your site visit is booked' : 'Your call is booked'}
       </h1>
       <p className="text-muted-foreground mt-2">
         We will email you a confirmation. Your reference is{' '}
@@ -66,7 +66,7 @@ export function BookingPending({ booking, slow }: { booking: CustomerBooking; sl
     <section aria-labelledby="pending-heading" aria-live="polite">
       <Clock className="size-8 animate-pulse" aria-hidden="true" />
       <h1 id="pending-heading" className="text-section text-ink mt-4 font-bold">
-        Confirming your appointment
+        Confirming your appointment…
       </h1>
       <p className="text-muted-foreground mt-2">
         {slow

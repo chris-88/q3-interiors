@@ -22,7 +22,7 @@ test('a customer books an estimate visit straight after the enquiry, with Google
     page.getByRole('heading', { name: 'How would you like to talk it through?' }),
   ).toBeVisible()
   await shot(page, 'b1-type')
-  await page.getByRole('radio', { name: /Estimate visit at your home/ }).click()
+  await page.getByRole('radio', { name: /Site visit/ }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
 
   // The visit needs the address first; validation is visible.
@@ -37,7 +37,9 @@ test('a customer books an estimate visit straight after the enquiry, with Google
   await page.getByRole('button', { name: 'Continue' }).click()
 
   // Slot picker, in Irish time.
-  await expect(page.getByRole('heading', { name: 'Choose a time' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Choose a time for your site visit' }),
+  ).toBeVisible()
   await expect(page.getByText('Irish time (Europe/Dublin)')).toBeVisible()
   const times = page.getByRole('group', { name: /^Time on/ }).getByRole('button')
   await expect(times.first()).toBeVisible()
@@ -56,11 +58,11 @@ test('a customer books an estimate visit straight after the enquiry, with Google
   }
   await page.getByRole('button', { name: 'Book this time' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Confirming your appointment' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Confirming your appointment…' })).toBeVisible()
   await shot(page, 'b4-pending')
   // The retry becomes due; the next status poll reconciles the existing event.
   clock.offset = 31_000
-  await expect(page.getByRole('heading', { name: 'You are booked in' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Your site visit is booked' })).toBeVisible({
     timeout: 15_000,
   })
   await expect(page.getByText('Irish time (Europe/Dublin)')).toBeVisible()
@@ -127,14 +129,14 @@ test('two customers want the same time: the second gets fresh alternatives and b
   ).toBe('reserved')
 
   await page.getByRole('button', { name: 'Book this time' }).click()
-  await expect(page.getByText('Sorry, that time has just gone')).toBeVisible()
+  await expect(page.getByText('That time has just been booked. Pick another time.')).toBeVisible()
   await shot(page, 'b6-alternatives')
   const alternatives = page.getByRole('list', { name: 'Nearest free times' }).getByRole('button')
   await expect(alternatives.first()).toBeVisible()
   await alternatives.first().click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Book this time' }).click()
-  await expect(page.getByRole('heading', { name: 'You are booked in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
   await expect(page.getByText(/will ring you on 087 123 4567/)).toBeVisible()
 
   // Two live bookings at different times; ours is confirmed, nothing overlaps.
@@ -151,11 +153,9 @@ test('with the calendar disconnected the customer is offered a call-back instead
   db.connection = null
   await page.goto('/#/enquire')
   await submitEnquiry(page)
-  await expect(
-    page.getByRole('heading', { name: 'We cannot show available times right now' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your enquiry is saved' })).toBeVisible()
   await shot(page, 'b7-contact-path')
-  await page.getByRole('button', { name: 'Ask us to contact me' }).click()
-  await expect(page.getByRole('heading', { name: 'We will be in touch' })).toBeVisible()
+  await page.getByRole('button', { name: 'Request a call back' }).click()
+  await expect(page.getByRole('heading', { name: 'We’ve received your enquiry' })).toBeVisible()
   expect([...db.enquiries.values()][0]?.contact_requested_at).not.toBeNull()
 })

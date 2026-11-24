@@ -48,7 +48,7 @@ export const defaultTypes = (): AppointmentType[] => [
   },
   {
     id: 'site_visit',
-    label: 'Estimate visit at your home',
+    label: 'Site visit',
     description: 'We visit to see the space and give you an estimated range.',
     what_to_prepare: 'Make sure we can get into the rooms involved.',
     mode: 'on_site',

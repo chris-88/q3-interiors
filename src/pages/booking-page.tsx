@@ -76,21 +76,18 @@ function ContactPath({
   if (context.contactRequested || request.isSuccess) {
     return (
       <section aria-live="polite">
-        <Heading>We will be in touch</Heading>
+        <Heading>We’ve received your enquiry</Heading>
         <p className="text-muted-foreground mt-2">
-          We have your enquiry and will contact you by phone or email to arrange a time. You do not
-          need to do anything else.
+          Our team will review the details and get in touch. You do not need to do anything else.
         </p>
       </section>
     )
   }
   return (
     <section>
-      <Heading>We cannot show available times right now</Heading>
+      <Heading>Your enquiry is saved</Heading>
+      <p className="text-muted-foreground mt-2">There are no times available to book online.</p>
       <p className="text-muted-foreground mt-2">{reason}</p>
-      <p className="text-muted-foreground mt-2">
-        Your enquiry is saved. If you like, we will contact you to arrange a time instead.
-      </p>
       {request.isError && (
         <Alert variant="destructive" className="mt-4" role="alert">
           <AlertDescription>That did not go through. Please try again.</AlertDescription>
@@ -102,7 +99,7 @@ function ContactPath({
         disabled={request.isPending}
         onClick={() => request.mutate(reason)}
       >
-        {request.isPending ? 'Sending…' : 'Ask us to contact me'}
+        {request.isPending ? 'Sending…' : 'Request a call back'}
       </Button>
     </section>
   )
@@ -352,7 +349,7 @@ export function BookingPage() {
         <ContactPath
           token={token}
           context={ctx}
-          reason="Our booking calendar is not available at the moment."
+          reason="Our booking calendar is not available at the moment. We can ring you instead."
         />
       </PublicLayout>
     )
@@ -365,7 +362,7 @@ export function BookingPage() {
         void context.refetch()
         return
       case 'slot_unavailable':
-        setNotice('Sorry, that time has just gone. Here are the nearest times still free.')
+        setNotice('That time has just been booked. Pick another time.')
         setAlternatives(result.alternatives)
         setSlot(null)
         setKey(null)
@@ -410,7 +407,7 @@ export function BookingPage() {
         <ContactPath
           token={token}
           context={ctx}
-          reason="We could not check our calendar just now."
+          reason="We could not check our calendar just now. We can ring you instead."
         />
       ) : step === 'type' ? (
         <TypeStep
@@ -436,7 +433,9 @@ export function BookingPage() {
         />
       ) : step === 'slot' ? (
         <section>
-          <Heading>Choose a time</Heading>
+          <Heading>
+            Choose a time for your {type?.mode === 'on_site' ? 'site visit' : 'call'}
+          </Heading>
           <p className="text-muted-foreground mt-2">
             {type?.label}, about {type?.durationMinutes} minutes. Times are Irish time
             (Europe/Dublin).
@@ -490,13 +489,13 @@ export function BookingPage() {
               <ContactPath
                 token={token}
                 context={ctx}
-                reason="We could not check our calendar just now."
+                reason="We could not check our calendar just now. We can ring you instead."
               />
             ) : availability.data.slots.length === 0 ? (
               <ContactPath
                 token={token}
                 context={ctx}
-                reason="There are no free times in the next few weeks."
+                reason="Nothing is free in the next few weeks. We can ring you instead."
               />
             ) : (
               <SlotPicker

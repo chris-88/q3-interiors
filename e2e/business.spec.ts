@@ -25,6 +25,11 @@ test('business details reach the public pages, and stay available when the serve
   // An admin fills them in.
   await page.goto('/#/staff/settings/business')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
+  // Saving with most boxes still empty works and says so.
+  await page.getByLabel('Service area').fill('Dublin')
+  await page.getByRole('button', { name: 'Save details' }).click()
+  await expect(page.getByText('Saved. The website shows the new details now.')).toBeVisible()
+  expect(world.business.service_area).toBe('Dublin')
   await page.getByLabel('Legal name').fill('Q3 Interiors Test Ltd')
   await page.getByLabel('Postal address').fill('1 Example Road, Dublin 7')
   await page.getByLabel('Contact phone').fill('call me')

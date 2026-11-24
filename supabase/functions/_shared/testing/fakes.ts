@@ -395,14 +395,15 @@ export class FakeDb implements Db {
     if (c.state === 'sent') return
     c.state = 'sent'
     c.provider_message_id = providerId
-    this.events.push({ enquiryId: c.enquiry_id, kind: 'email_sent' })
+    if (c.enquiry_id) this.events.push({ enquiryId: c.enquiry_id, kind: 'email_sent' })
   }
   async communicationRetry(id: string, error: string, delaySeconds: number, final: boolean) {
     const c = this.comms.find((x) => x.id === id)!
     c.state = final ? 'failed' : 'queued'
     c.last_error = error
     c.next_attempt_at = this.now() + delaySeconds * 1000
-    if (final) this.events.push({ enquiryId: c.enquiry_id, kind: 'email_failed', detail: error })
+    if (final && c.enquiry_id)
+      this.events.push({ enquiryId: c.enquiry_id, kind: 'email_failed', detail: error })
   }
   async markDisconnected(_staff: string, error: string) {
     if (this.connection) this.connection = { ...this.connection, status: 'disconnected' }

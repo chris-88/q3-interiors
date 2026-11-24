@@ -6,6 +6,7 @@ import { createDb } from './db.ts'
 import { createResendMailer, type Mailer } from './email.ts'
 import { createGoogleCalendar, type CalendarApi } from './google.ts'
 import { addressHash, clientAddress, type Limiter } from './limits.ts'
+import { createAuthAdmin, type AuthAdmin } from './gotrue.ts'
 import type { Db } from './types.ts'
 
 const env = (name: string) => Deno.env.get(name)?.trim() || null
@@ -24,6 +25,8 @@ export const config = {
   emailFrom: env('Q3_EMAIL_FROM') ?? 'Q3 Interiors <bookings@q3interiors.ie>',
   supabaseUrl: env('SUPABASE_URL') ?? 'http://api-gw:8000',
   anonKey: env('SUPABASE_ANON_KEY'),
+  // Only for GoTrue admin calls (staff accounts); never leaves the functions container.
+  serviceKey: env('SUPABASE_SERVICE_ROLE_KEY'),
 }
 
 export type Runtime = {
@@ -52,6 +55,18 @@ export function runtime(): Runtime {
     ? createResendMailer({ apiKey: config.resendKey, from: config.emailFrom })
     : null
   return { db, calendar, accessToken, mailer }
+}
+
+/** GoTrue admin, or null when the service key is not configured. */
+export function authAdmin(): AuthAdmin | null {
+  return config.serviceKey
+    ? createAuthAdmin({ url: config.supabaseUrl, serviceKey: config.serviceKey })
+    : null
+}
+
+/** Keyed hash of the caller's address (the same secret as the other limiters). */
+export async function callerHash(req: Request): Promise<string> {
+  return addressHash(clientAddress(req.headers), config.workerSecret ?? '')
 }
 
 /** The per-address limiter for one request (addresses are hashed, never stored). */

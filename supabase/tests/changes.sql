@@ -195,7 +195,8 @@ select pg_temp.expect((select count(*) from public.enquiry_events
 -- camp_one: A (booked, cancelled, lost) and B (booked, attended, won).
 select pg_temp.expect((select enquiries = 2 and booked = 2 and attended = 1 and won = 1 and cancelled = 1 and no_shows = 0 and won_value = 12500
   from public.funnel_report(current_date, current_date) where campaign = 'camp_one'), 'funnel for camp_one');
-select pg_temp.expect((select enquiries >= 1 and booked = 0 from public.funnel_report(current_date, current_date) where campaign = '(unknown)'),
+select pg_temp.expect(-- Live enquiries from today may also be untagged (and booked), so only the grouping is checked.
+  (select enquiries >= 1 from public.funnel_report(current_date, current_date) where campaign = '(unknown)'),
   'untagged enquiries grouped as unknown');
 select pg_temp.expect_error('select * from public.funnel_report(current_date, current_date - 1)', '22023');
 update public.booking_settings set reminder_lead_minutes = 60;

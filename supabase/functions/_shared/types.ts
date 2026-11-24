@@ -73,12 +73,21 @@ export type Template =
   | 'booking_rescheduled'
   | 'staff_new_enquiry'
   | 'staff_callback_request'
+  | 'staff_invite'
+  | 'staff_password_reset'
 
-export type CustomerTemplate = Exclude<Template, 'staff_new_enquiry' | 'staff_callback_request'>
+export type StaffAccountTemplate = 'staff_invite' | 'staff_password_reset'
+
+export type CustomerTemplate = Exclude<
+  Template,
+  'staff_new_enquiry' | 'staff_callback_request' | StaffAccountTemplate
+>
 
 export type Communication = {
   id: string
-  enquiry_id: string
+  /** Null for staff account emails (invite, password reset). */
+  enquiry_id: string | null
+  staff_user_id?: string | null
   booking_id: string | null
   template: Template
   /** For reminders and reschedule notices: the start time the message is about. */

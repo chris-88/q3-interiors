@@ -21,6 +21,7 @@ import type {
   ReserveResult,
   StaffAvailability,
 } from './types.ts'
+import type { AccountStore, StaffAccount } from './staff-accounts.ts'
 
 let shared: ReturnType<typeof postgres> | null = null
 
@@ -146,7 +147,7 @@ export function createDb(): Db {
       await q`select private.fail_calendar_job(${jobId}, ${error}, ${outcomeUnknown})`
     },
     async claimCommunications(limit, bookingId) {
-      return (await q`select id, enquiry_id, booking_id, template, recipient, dedupe_key, attempts, max_attempts,
+      return (await q`select id, enquiry_id, staff_user_id, booking_id, template, recipient, dedupe_key, attempts, max_attempts,
         to_jsonb(about_start) #>> '{}' as about_start
         from private.claim_communications(${limit}, ${bookingId ?? null})`) as unknown as Communication[]
     },
@@ -278,8 +279,46 @@ export const oauthStore = {
   async remove(staffId: string) {
     await sql()`select private.remove_calendar_connection(${staffId})`
   },
+  /** Active staff only: a deactivated person is refused at their next request. */
   async isStaff(userId: string): Promise<boolean> {
-    const [row] = await sql()`select 1 as ok from public.staff where user_id = ${userId}`
+    const [row] = await sql()`select 1 as ok from public.staff where user_id = ${userId} and active`
     return Boolean(row)
+  },
+}
+
+/** Staff account administration (the staff-accounts function and the worker). */
+export const accountStore: AccountStore = {
+  async staffMember(userId) {
+    const [row] = await sql()`select user_id, email, display_name, role, active
+      from public.staff where user_id = ${userId}`
+    return (row as unknown as StaffAccount | undefined) ?? null
+  },
+  async authUserIdByEmail(email) {
+    const [row] = await sql()`select id from auth.users where lower(email) = ${email.toLowerCase()}`
+    return (row?.id as string | undefined) ?? null
+  },
+  async addStaff(userId, email, name, role) {
+    await sql()`select private.add_staff(${userId}, ${email}, ${name}, ${role})`
+  },
+  async setActive(userId, active) {
+    await sql()`select private.set_staff_active(${userId}, ${active})`
+  },
+  async setRole(userId, role) {
+    await sql()`select private.set_staff_role(${userId}, ${role})`
+  },
+  async queueAccountEmail(userId, template, requestId) {
+    await sql()`select private.queue_staff_account_email(${userId}, ${template}, ${requestId})`
+  },
+  async activeStaffByEmail(email) {
+    const [row] = await sql()`select private.active_staff_by_email(${email}) as id`
+    return (row?.id as string | null | undefined) ?? null
+  },
+  async rateLimitTake(addrHash, limit) {
+    const [row] =
+      await sql()`select private.rate_limit_take('password_reset', ${addrHash}, ${null}, ${limit}) as ok`
+    return Boolean(row?.ok)
+  },
+  async kickWorker() {
+    await sql()`select private.kick_worker()`
   },
 }

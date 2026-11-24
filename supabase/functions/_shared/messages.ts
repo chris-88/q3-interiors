@@ -3,7 +3,12 @@
 // an enquiry; a call or a site visit (the appointment); an estimate is a price range; a quote
 // covers an agreed scope. Each message has a plain-text part and a branded HTML part.
 import { formatLocal } from './time.ts'
-import type { BookingContext, CustomerTemplate, EnquirySummary } from './types.ts'
+import type {
+  BookingContext,
+  CustomerTemplate,
+  EnquirySummary,
+  StaffAccountTemplate,
+} from './types.ts'
 
 export type MessageInput = {
   ctx: BookingContext
@@ -277,6 +282,61 @@ export function renderStaffAlert(
         ],
       ],
       action,
+    },
+    { siteUrl: input.siteUrl },
+  )
+}
+
+export type AccountEmailInput = {
+  displayName: string
+  /** The single-use set-password link (never logged). */
+  link: string
+  siteUrl?: string | null
+}
+
+/** Staff account emails: the invitation and the password reset. Same branded frame. */
+export function renderAccountEmail(
+  template: StaffAccountTemplate,
+  input: AccountEmailInput,
+): RenderedMessage {
+  const hello = `Hello ${firstName(input.displayName)},`
+  const signIn = input.siteUrl ? `${input.siteUrl}/#/staff` : null
+  const expired = signIn
+    ? `If the link has expired or was already used, choose "Forgot password" on the sign-in page: ${signIn}`
+    : 'If the link has expired or was already used, choose "Forgot password" on the sign-in page.'
+  if (template === 'staff_invite') {
+    return compose(
+      {
+        subject: 'Your Q3 Interiors staff account',
+        paragraphs: [
+          [hello],
+          [
+            'You have been added to the Q3 Interiors staff workspace, where enquiries and appointments are handled.',
+          ],
+          [
+            'Choose a password to finish setting up your account. The link works once, within 24 hours.',
+          ],
+        ],
+        action: { label: 'Choose your password', url: input.link },
+        after: [[expired], ['Q3 Interiors']],
+      },
+      { siteUrl: input.siteUrl },
+    )
+  }
+  return compose(
+    {
+      subject: 'Reset your Q3 Interiors password',
+      paragraphs: [
+        [hello],
+        ['Someone asked to reset the password for your Q3 Interiors staff account.'],
+        ['Choose a new password with the link below. It works once, within 24 hours.'],
+      ],
+      action: { label: 'Choose a new password', url: input.link },
+      after: [
+        ['If you did not ask for this, you can ignore this email. Your password stays the same.'],
+        [expired],
+        ['Q3 Interiors'],
+      ],
     },
     { siteUrl: input.siteUrl },
   )

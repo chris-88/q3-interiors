@@ -162,7 +162,7 @@ export function FormFieldInput({ field, control, error, onEdit }: Props) {
               {...common}
               {...inputProps(field)}
               onChange={onChange}
-              className="h-11 text-base"
+              className="h-12 text-base"
             />
           )
         }}
@@ -185,7 +185,7 @@ function ChoiceRow({
 }) {
   return (
     <FieldLabel htmlFor={optionId(fieldId, option)} className="w-full">
-      <Field orientation="horizontal" className="min-h-11 items-center">
+      <Field orientation="horizontal" className="min-h-12 items-center">
         {children}
         <FieldContent>
           <FieldTitle className="text-base font-normal">{option.label}</FieldTitle>

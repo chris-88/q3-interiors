@@ -30,14 +30,21 @@ export function useCurrentStaff(): StaffMember {
 function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }) {
   const signOut = useSignOut()
   return (
-    <div className="bg-muted/40 text-foreground min-h-svh">
+    <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">
-        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-3 px-4">
-          <Link
-            to="/staff"
-            className="focus-visible:ring-ring/50 text-sm font-semibold tracking-tight focus-visible:rounded-sm focus-visible:ring-3 focus-visible:outline-none"
-          >
-            Q3 Interiors <span className="text-muted-foreground font-normal">Staff</span>
+        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
+          <Link to="/staff" className="inline-flex items-center gap-2 rounded-sm text-sm font-bold">
+            {/* Decorative: the link text names it. */}
+            <img
+              src="/brand/q3-round-colour.svg"
+              width={40}
+              height={40}
+              alt=""
+              className="size-10"
+            />
+            <span>
+              Q3 Interiors <span className="text-muted-foreground font-normal">Staff</span>
+            </span>
           </Link>
           {staff && (
             <div className="flex items-center gap-3">

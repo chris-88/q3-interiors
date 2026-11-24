@@ -46,7 +46,7 @@ function Heading({ children }: { children: React.ReactNode }) {
     <h1
       ref={ref}
       tabIndex={-1}
-      className="text-2xl font-semibold tracking-tight text-balance outline-none"
+      className="text-section text-ink font-bold text-balance outline-none"
     >
       {children}
     </h1>
@@ -454,7 +454,7 @@ export function BookingPage() {
                     type="button"
                     variant={slot?.start === alt.start ? 'default' : 'outline'}
                     aria-pressed={slot?.start === alt.start}
-                    className="h-11 w-full justify-start text-base"
+                    className="h-12 w-full justify-start text-base"
                     onClick={() => {
                       setSlot(alt)
                       setKey(null)

@@ -16,7 +16,7 @@ export function ConfirmationPage() {
   if (!reference) {
     return (
       <PublicLayout>
-        <h1 className="text-2xl font-semibold tracking-tight">No enquiry to show</h1>
+        <h1 className="text-section text-ink font-bold">No enquiry to show</h1>
         <p className="text-muted-foreground mt-2">
           This page shows your reference after you send an enquiry. If you have not sent one yet,
           you can start now.
@@ -31,9 +31,7 @@ export function ConfirmationPage() {
   return (
     <PublicLayout>
       <CircleCheck className="text-foreground size-8" aria-hidden="true" />
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
-        Thank you, we have your enquiry
-      </h1>
+      <h1 className="text-section text-ink mt-4 font-bold">Thank you, we have your enquiry</h1>
       <p className="text-muted-foreground mt-2">
         Your reference is below. Keep it handy if you contact us about this project.
       </p>
@@ -44,7 +42,7 @@ export function ConfirmationPage() {
         </span>
       </p>
 
-      <h2 className="mt-10 text-lg font-semibold tracking-tight">What happens next</h2>
+      <h2 className="text-title text-ink mt-10 font-bold">What happens next</h2>
       <ul className="text-muted-foreground mt-4 flex list-disc flex-col gap-3 pl-5">
         <li>We will read your enquiry and get in touch by phone or email to talk it through.</li>
         <li>

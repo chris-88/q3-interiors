@@ -220,7 +220,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-2xl font-semibold tracking-tight outline-none"
+            className="text-section text-ink font-bold outline-none"
           >
             Check your answers
           </h1>
@@ -287,7 +287,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-2xl font-semibold tracking-tight text-balance outline-none"
+            className="text-section text-ink font-bold text-balance outline-none"
           >
             {current.title}
           </h1>

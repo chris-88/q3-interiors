@@ -19,13 +19,17 @@ function renderAt(path: string) {
 beforeEach(() => window.sessionStorage.clear())
 
 describe('App', () => {
-  it('shows the landing page with one enquiry action and the estimate disclaimer', () => {
+  it('shows the landing page: guide heading, one action (repeated), how it works, no "Our work"', () => {
     renderAt('/')
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('renovation')
-    expect(screen.getByRole('link', { name: 'Tell us about your project' })).toHaveAttribute(
-      'href',
-      '/enquire',
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Planning a home renovation?',
     )
+    const actions = screen.getAllByRole('link', { name: 'Tell us about your project' })
+    expect(actions.length).toBeGreaterThan(0)
+    for (const a of actions) expect(a).toHaveAttribute('href', '/enquire')
+    expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
+    expect(screen.queryByText(/our work/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Q3 Interiors home' })).toHaveAttribute('href', '/')
     expect(screen.getByText(/does not commit you to a quote/)).toBeInTheDocument()
   })
 

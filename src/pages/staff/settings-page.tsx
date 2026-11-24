@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { ApiError } from '@/api/errors'
 import {
   WEEKDAYS,
@@ -16,6 +16,7 @@ import {
   useRetentionPreview,
   type StaffAvailability,
 } from '@/api/staff-booking'
+import { useBookablePerson } from '@/api/staff-accounts'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -513,63 +514,104 @@ function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
   )
 }
 
+const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
+  {
+    to: '/staff/settings/people',
+    label: 'People',
+    hint: 'Add staff, switch accounts off, who takes bookings',
+  },
+]
+
+function SetupLinks() {
+  return (
+    <nav aria-labelledby="setup-heading" className="bg-background rounded-md border p-4">
+      <h2 id="setup-heading" className="text-base font-bold">
+        Set-up (admins)
+      </h2>
+      <ul className="mt-2 flex flex-col">
+        {SETUP_LINKS.map((l) => (
+          <li key={l.to}>
+            <Link
+              to={l.to}
+              className="hover:bg-muted flex min-h-12 flex-col justify-center rounded-md px-2 py-2"
+            >
+              <span className="text-primary font-medium underline">{l.label}</span>
+              <span className="text-muted-foreground text-sm">{l.hint}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
 export function SettingsPage() {
   const staff = useCurrentStaff()
-  const availability = useStaffAvailability(staff.user_id)
+  const isAdmin = staff.role === 'admin'
+  const bookable = useBookablePerson()
+  // Admins edit the hours of whoever takes bookings; staff edit their own.
+  const hoursFor = isAdmin ? (bookable.data ?? undefined) : staff.user_id
+  const availability = useStaffAvailability(hoursFor)
   const types = useAppointmentTypes()
   const bookingSettings = useBookingSettings()
   return (
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
-      <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+      <h1 className="text-section text-ink font-bold">Settings</h1>
+      {isAdmin && <SetupLinks />}
       <CalendarCard />
-      <Card title="Changes and reminders" id="changes-heading">
-        <p className="text-muted-foreground mb-3 text-sm">
-          Placeholder values until confirmed with Q3 Interiors.
-        </p>
-        {bookingSettings.isPending ? (
-          <Skeleton className="h-32 w-full" />
-        ) : bookingSettings.isError || !bookingSettings.data ? (
-          <Alert variant="destructive">
-            <AlertDescription>Could not load these settings.</AlertDescription>
-          </Alert>
-        ) : (
-          <BookingSettingsForm initial={bookingSettings.data} />
-        )}
-      </Card>
-      <Card title="Availability" id="availability-heading">
-        <p className="text-muted-foreground mb-3 text-sm">
-          Placeholder values until confirmed with Q3 Interiors.
-        </p>
-        {availability.isPending ? (
+      <Card title="Hours for bookings" id="availability-heading">
+        {availability.isPending && hoursFor !== undefined ? (
           <Skeleton className="h-40 w-full" />
         ) : availability.isError ? (
           <Alert variant="destructive">
-            <AlertDescription>Could not load availability.</AlertDescription>
+            <AlertDescription>Could not load the hours.</AlertDescription>
           </Alert>
         ) : availability.data ? (
-          <AvailabilityForm initial={availability.data} />
+          <>
+            <p className="text-muted-foreground mb-3 text-sm">
+              {hoursFor === staff.user_id
+                ? 'Your hours: customers can book inside these times.'
+                : 'The hours of the person who takes bookings (see People).'}
+            </p>
+            <AvailabilityForm key={availability.data.staff_user_id} initial={availability.data} />
+          </>
         ) : (
           <p className="text-muted-foreground text-sm">
-            You do not take bookings. Availability is set up for the person who does.
+            You do not take bookings, so there are no hours to set here.
           </p>
         )}
       </Card>
-      <Card title="Appointment types" id="types-heading">
-        {types.isPending ? (
-          <Skeleton className="h-40 w-full" />
-        ) : types.isError ? (
-          <Alert variant="destructive">
-            <AlertDescription>Could not load appointment types.</AlertDescription>
-          </Alert>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {types.data.map((t) => (
-              <TypeForm key={t.id} initial={t} />
-            ))}
-          </div>
-        )}
-      </Card>
+      {isAdmin && (
+        <Card title="Changes and reminders" id="changes-heading">
+          {bookingSettings.isPending ? (
+            <Skeleton className="h-32 w-full" />
+          ) : bookingSettings.isError || !bookingSettings.data ? (
+            <Alert variant="destructive">
+              <AlertDescription>Could not load these settings.</AlertDescription>
+            </Alert>
+          ) : (
+            <BookingSettingsForm initial={bookingSettings.data} />
+          )}
+        </Card>
+      )}
+      {isAdmin && (
+        <Card title="Appointment types" id="types-heading">
+          {types.isPending ? (
+            <Skeleton className="h-40 w-full" />
+          ) : types.isError ? (
+            <Alert variant="destructive">
+              <AlertDescription>Could not load appointment types.</AlertDescription>
+            </Alert>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {types.data.map((t) => (
+                <TypeForm key={t.id} initial={t} />
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   )
 }

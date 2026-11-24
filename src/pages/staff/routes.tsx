@@ -4,6 +4,12 @@ import { EnquiryListPage } from './enquiry-list-page'
 import { AppointmentsPage } from './appointments-page'
 import { ReportPage } from './report-page'
 import { SettingsPage } from './settings-page'
+import { PeoplePage } from './people-page'
+// oxlint-disable-next-line react/only-export-components
+export {
+  ForgotPasswordPage as StaffForgotRoute,
+  SetPasswordPage as StaffSetPasswordRoute,
+} from './account-pages'
 
 // Loaded lazily from App so customers never download the staff workspace.
 
@@ -43,6 +49,14 @@ export function StaffReportRoute() {
   return (
     <StaffArea>
       <ReportPage />
+    </StaffArea>
+  )
+}
+
+export function StaffPeopleRoute() {
+  return (
+    <StaffArea>
+      <PeoplePage />
     </StaffArea>
   )
 }

@@ -145,7 +145,9 @@ function SignInForm() {
               <AlertDescription>
                 {signIn.error.message === 'Invalid login credentials'
                   ? 'That email and password do not match.'
-                  : 'Something went wrong. Try again in a moment.'}
+                  : /banned/i.test(signIn.error.message)
+                    ? 'This account is switched off. Ask an admin if that is a mistake.'
+                    : 'Something went wrong. Try again in a moment.'}
               </AlertDescription>
             </Alert>
           )}

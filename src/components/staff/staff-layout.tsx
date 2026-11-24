@@ -68,15 +68,15 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
         <nav aria-label="Staff" className="bg-background border-b">
           <ul className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-2">
             {[
-              ['/staff', 'Enquiries'],
-              ['/staff/appointments', 'Appointments'],
-              ['/staff/report', 'Report'],
-              ['/staff/settings', 'Settings'],
-            ].map(([to, label]) => (
-              <li key={to}>
+              ['/staff', 'Enquiries', true],
+              ['/staff/appointments', 'Appointments', true],
+              ['/staff/report', 'Report', true],
+              ['/staff/settings', 'Settings', false],
+            ].map(([to, label, end]) => (
+              <li key={String(to)}>
                 <NavLink
-                  to={to ?? '/staff'}
-                  end
+                  to={String(to)}
+                  end={end === true}
                   className={({ isActive }) =>
                     `focus-visible:ring-ring/50 inline-flex h-11 items-center border-b-2 px-3 text-sm focus-visible:ring-3 focus-visible:outline-none ${
                       isActive
@@ -149,9 +149,15 @@ function SignInForm() {
               </AlertDescription>
             </Alert>
           )}
-          <Button type="submit" size="lg" className="h-11 text-base" disabled={signIn.isPending}>
+          <Button type="submit" size="lg" className="h-12 text-base" disabled={signIn.isPending}>
             {signIn.isPending ? 'Signing in…' : 'Sign in'}
           </Button>
+          <Link
+            to="/staff/forgot"
+            className="text-primary inline-flex min-h-12 items-center text-sm underline"
+          >
+            Forgot your password?
+          </Link>
         </FieldGroup>
       </form>
     </div>
@@ -166,6 +172,11 @@ function Loading() {
       <Skeleton className="h-20 w-full" />
     </div>
   )
+}
+
+/** The staff header without the navigation, for sign-in help pages outside <StaffArea>. */
+export function StaffPublicShell({ children }: { children: ReactNode }) {
+  return <Shell>{children}</Shell>
 }
 
 /**
@@ -215,6 +226,22 @@ export function StaffArea({ children }: { children: ReactNode }) {
             </Button>
           </AlertDescription>
         </Alert>
+      </Shell>
+    )
+  }
+  if (staff.data && !staff.data.active) {
+    return (
+      <Shell>
+        <div className="bg-background mx-auto max-w-sm rounded-md border p-6">
+          <h1 className="text-title text-ink font-bold">Your account is switched off</h1>
+          <p className="text-muted-foreground mt-2 text-sm">
+            An admin has switched off this staff account. If you think that is a mistake, ask them
+            to switch it back on.
+          </p>
+          <Button variant="outline" className="mt-4 h-12" onClick={() => signOut.mutate()}>
+            Sign out
+          </Button>
+        </div>
       </Shell>
     )
   }

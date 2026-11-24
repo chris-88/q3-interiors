@@ -35,6 +35,7 @@ const staffSchema = z.object({
   user_id: z.string(),
   role: z.enum(['admin', 'staff']),
   display_name: z.string(),
+  active: z.boolean(),
 })
 
 export type StaffMember = z.infer<typeof staffSchema>
@@ -47,7 +48,7 @@ export function useStaffMember(userId: string | undefined) {
     queryFn: async (): Promise<StaffMember | null> => {
       const { data, error } = await supabase
         .from('staff')
-        .select('user_id, role, display_name')
+        .select('user_id, role, display_name, active')
         .eq('user_id', userId ?? '')
         .maybeSingle()
       if (error) throw toApiError(error)

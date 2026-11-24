@@ -19,6 +19,15 @@ const StaffSettingsRoute = lazy(() =>
 const StaffReportRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffReportRoute })),
 )
+const StaffPeopleRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffPeopleRoute })),
+)
+const StaffForgotRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffForgotRoute })),
+)
+const StaffSetPasswordRoute = lazy(() =>
+  import('@/pages/staff/routes').then((m) => ({ default: m.StaffSetPasswordRoute })),
+)
 const StaffDetailRoute = lazy(() =>
   import('@/pages/staff/routes').then((m) => ({ default: m.StaffDetailRoute })),
 )
@@ -58,6 +67,9 @@ export default function App() {
         <Route path="/staff/appointments" element={<StaffAppointmentsRoute />} />
         <Route path="/staff/settings" element={<StaffSettingsRoute />} />
         <Route path="/staff/report" element={<StaffReportRoute />} />
+        <Route path="/staff/settings/people" element={<StaffPeopleRoute />} />
+        <Route path="/staff/forgot" element={<StaffForgotRoute />} />
+        <Route path="/staff/set-password" element={<StaffSetPasswordRoute />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

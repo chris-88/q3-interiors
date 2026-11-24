@@ -40,6 +40,7 @@ export type StaffWorld = {
   business: Record<string, unknown>
   /** Rows returned by the funnel_report RPC. */
   funnel: Record<string, unknown>[]
+  testCalendar: { email: string | null }
 }
 
 export function staffWorld(): StaffWorld {
@@ -72,6 +73,7 @@ export function staffWorld(): StaffWorld {
     rpcCalls: [],
     tables: {},
     funnel: [],
+    testCalendar: { email: null },
     business: {
       trading_name: 'Q3 Interiors',
       legal_name: null,
@@ -225,6 +227,60 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         })
       }
       if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      if (table === 'rpc/go_live_checklist') {
+        if (caller?.role !== 'admin')
+          return json(route, 403, { code: '42501', message: 'not allowed' })
+        const biz = world.business as Record<string, string | null>
+        const labels: [string, string][] = [
+          ['legal_name', 'legal name'],
+          ['postal_address', 'postal address'],
+          ['contact_phone', 'contact phone'],
+          ['contact_email', 'contact email'],
+          ['service_area', 'service area'],
+          ['privacy_contact', 'privacy contact'],
+        ]
+        const conn = (
+          (world.tables.calendar_connections ?? []) as {
+            staff_user_id: string
+            status: string
+            google_email: string
+          }[]
+        ).find((c) => c.staff_user_id === world.bookable.id)
+        return json(route, 200, {
+          business_missing: labels.filter(([k]) => !biz[k]).map(([, l]) => l),
+          bookable_name: world.staff.get(world.bookable.id ?? '')?.display_name ?? null,
+          calendar_connected: conn?.status === 'connected',
+          calendar_healthy: conn?.status === 'connected',
+          calendar_email: conn?.google_email ?? null,
+          test_calendar_email: world.testCalendar.email,
+          retention_months: null,
+          privacy_reviewed: biz.privacy_reviewed_at !== null,
+          privacy_reviewable: Boolean(biz.legal_name && biz.postal_address && biz.privacy_contact),
+          form_version: 1,
+          last_booking_at: null,
+          campaign_links: 0,
+          ticks: Object.fromEntries(
+            (
+              (world.tables.setup_ticks ?? []) as {
+                key: string
+                created_at: string
+                ticked_by_name: string
+              }[]
+            ).map((t) => [t.key, { at: t.created_at, by: t.ticked_by_name }]),
+          ),
+        })
+      }
+      if (table === 'rpc/mark_test_calendar') {
+        const clear = (req.postDataJSON() as { p_clear?: boolean }).p_clear
+        const conn = (
+          (world.tables.calendar_connections ?? []) as {
+            staff_user_id: string
+            google_email: string
+          }[]
+        ).find((c) => c.staff_user_id === world.bookable.id)
+        world.testCalendar.email = clear ? null : (conn?.google_email ?? null)
+        return json(route, 200, world.testCalendar.email)
+      }
       if (table === 'rpc/mark_campaign_link_used') {
         const id = (req.postDataJSON() as { p_campaign_id: string }).p_campaign_id
         for (const c of (world.tables.campaigns ?? []) as Record<string, unknown>[])
@@ -263,7 +319,13 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       return json(route, 200, null)
     }
     const admin = Boolean(caller?.active && caller.role === 'admin')
-    const ADMIN_TABLES = ['campaigns', 'campaign_creatives', 'campaign_spend', 'message_blocks']
+    const ADMIN_TABLES = [
+      'campaigns',
+      'campaign_creatives',
+      'campaign_spend',
+      'message_blocks',
+      'setup_ticks',
+    ]
     if (req.method() === 'POST' && ADMIN_TABLES.includes(table)) {
       if (!admin)
         return json(route, 403, {

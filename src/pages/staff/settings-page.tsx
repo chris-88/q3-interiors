@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router'
 import { ApiError } from '@/api/errors'
 import {
   WEEKDAYS,
-  useAppointmentTypes,
   useCalendarAction,
   useCalendarConnection,
   useStaffAvailability,
@@ -11,7 +10,6 @@ import {
   useUpdateAvailability,
   type AppointmentTypeSettings,
   type BookingSettings,
-  useBookingSettings,
   useUpdateBookingSettings,
   useRetentionPreview,
   type StaffAvailability,
@@ -338,7 +336,7 @@ function AvailabilityForm({ initial }: { initial: StaffAvailability }) {
   )
 }
 
-function TypeForm({ initial }: { initial: AppointmentTypeSettings }) {
+export function TypeForm({ initial }: { initial: AppointmentTypeSettings }) {
   const [value, setValue] = useState(initial)
   const update = useUpdateAppointmentType()
   return (
@@ -447,7 +445,7 @@ function RetentionField({
   )
 }
 
-function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
+export function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
   const [value, setValue] = useState(initial)
   const update = useUpdateBookingSettings()
   return (
@@ -520,6 +518,16 @@ const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
     label: 'Campaigns',
     hint: 'Tagged links for ads, creatives and spend',
   },
+  {
+    to: '/staff/settings/booking',
+    label: 'Booking rules and data',
+    hint: 'Changes and reminders, appointment types, retention, request limits',
+  },
+  {
+    to: '/staff/settings/checklist',
+    label: 'Go-live checklist',
+    hint: 'What is left before a paid campaign',
+  },
 ]
 
 function SetupLinks() {
@@ -552,8 +560,6 @@ export function SettingsPage() {
   // Admins edit the hours of whoever takes bookings; staff edit their own.
   const hoursFor = isAdmin ? (bookable.data ?? undefined) : staff.user_id
   const availability = useStaffAvailability(hoursFor)
-  const types = useAppointmentTypes()
-  const bookingSettings = useBookingSettings()
   return (
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
@@ -582,36 +588,6 @@ export function SettingsPage() {
           </p>
         )}
       </Card>
-      {isAdmin && (
-        <Card title="Changes and reminders" id="changes-heading">
-          {bookingSettings.isPending ? (
-            <Skeleton className="h-32 w-full" />
-          ) : bookingSettings.isError || !bookingSettings.data ? (
-            <Alert variant="destructive">
-              <AlertDescription>Could not load these settings.</AlertDescription>
-            </Alert>
-          ) : (
-            <BookingSettingsForm initial={bookingSettings.data} />
-          )}
-        </Card>
-      )}
-      {isAdmin && (
-        <Card title="Appointment types" id="types-heading">
-          {types.isPending ? (
-            <Skeleton className="h-40 w-full" />
-          ) : types.isError ? (
-            <Alert variant="destructive">
-              <AlertDescription>Could not load appointment types.</AlertDescription>
-            </Alert>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {types.data.map((t) => (
-                <TypeForm key={t.id} initial={t} />
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
     </div>
   )
 }

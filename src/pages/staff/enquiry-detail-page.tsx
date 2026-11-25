@@ -22,6 +22,7 @@ import { BookingActions } from '@/components/staff/booking-actions'
 import { OutcomeForm } from '@/components/staff/outcome-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import { eventLine } from '@/components/staff/event-text'
+import { EnquiryFlags } from '@/components/staff/enquiry-flags'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -336,6 +337,16 @@ export function EnquiryDetailPage() {
           ? ` · Unsuitable: ${data.status_reason}`
           : ''}
       </p>
+      <EnquiryFlags answers={data.answers} contactRequestedAt={data.contact_requested_at} />
+      {data.contact_requested_at && (
+        <Alert variant="destructive">
+          <AlertTitle>Contact request: the customer asked us to contact them</AlertTitle>
+          <AlertDescription>
+            {formatDateTime(data.contact_requested_at)}
+            {data.contact_request_reason ? `: ${data.contact_request_reason}` : ''}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {forms.isPending ? (
         <Skeleton className="h-40 w-full" />
@@ -346,15 +357,6 @@ export function EnquiryDetailPage() {
       )}
 
       <BookingsSection enquiryId={data.id} />
-      {data.contact_requested_at && (
-        <Alert>
-          <AlertTitle>Asked to be contacted</AlertTitle>
-          <AlertDescription>
-            {formatDateTime(data.contact_requested_at)}
-            {data.contact_request_reason ? `: ${data.contact_request_reason}` : ''}
-          </AlertDescription>
-        </Alert>
-      )}
       {data.site_details && (
         <SiteDetails
           answers={data.site_details}

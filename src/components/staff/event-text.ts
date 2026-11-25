@@ -16,6 +16,7 @@ const EVENT_TEXT: Partial<Record<EnquiryEvent['kind'], string>> = {
   attendance_recorded: 'Attendance recorded',
   outcome_recorded: 'Outcome recorded',
   outcome_cleared: 'Outcome cleared',
+  details_updated: 'Customer changed their details',
 }
 
 /** An `email_sent` event's detail is the message template. */

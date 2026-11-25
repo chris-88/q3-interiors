@@ -63,14 +63,19 @@ export function ManageBooking({
   booking,
   reference,
   onCancelled,
+  initialAction = null,
 }: {
   token: string
   booking: CustomerBooking
   reference: string
   /** Lets the page start a fresh booking once this one is cancelled. */
   onCancelled: () => void
+  /** From the email's "Change time" / "Cancel appointment" links (`?do=change|cancel`). */
+  initialAction?: 'change' | 'cancel' | null
 }) {
-  const [mode, setMode] = useState<Mode>('view')
+  const [mode, setMode] = useState<Mode>(() =>
+    !booking.canChange || !initialAction ? 'view' : initialAction === 'change' ? 'move' : 'cancel',
+  )
   const [slot, setSlot] = useState<Slot | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [alternatives, setAlternatives] = useState<Slot[] | null>(null)
@@ -205,7 +210,7 @@ export function ManageBooking({
                         backToView()
                       } else if (result.status === 'slot_unavailable') {
                         setNotice(
-                          'That time has just been booked. Pick another time. Your appointment is unchanged.',
+                          'That time has just been booked. Choose another time. Your appointment is unchanged.',
                         )
                         setAlternatives(result.alternatives)
                         setSlot(null)
@@ -321,41 +326,41 @@ export function ManageBooking({
           </AlertDescription>
         </Alert>
       )}
-      <BookingConfirmed booking={booking} reference={reference} />
-      <section aria-labelledby="change-heading" className="mt-10">
-        <h2 id="change-heading" className="text-title text-ink font-medium">
-          Change or cancel
-        </h2>
-        {booking.canChange ? (
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="h-12 text-base"
-              onClick={() => {
-                setNotice(null)
-                setMode('move')
-              }}
-            >
-              Choose another time
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="lg"
-              className="h-12 text-base"
-              onClick={() => setMode('cancel')}
-            >
-              Cancel appointment
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-2">
-            <RingUs phone={booking.businessPhone} />
-          </div>
-        )}
-      </section>
+      <BookingConfirmed
+        booking={booking}
+        reference={reference}
+        actions={
+          booking.canChange ? (
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-12 text-base"
+                onClick={() => {
+                  setNotice(null)
+                  setMode('move')
+                }}
+              >
+                Change time
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                className="h-12 text-base underline underline-offset-4"
+                onClick={() => setMode('cancel')}
+              >
+                Cancel appointment
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-6">
+              <RingUs phone={booking.businessPhone} />
+            </div>
+          )
+        }
+      />
     </>
   )
 }

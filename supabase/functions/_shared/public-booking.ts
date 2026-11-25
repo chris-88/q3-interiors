@@ -39,6 +39,20 @@ const requestSchema = z.discriminatedUnion('action', [
     start: z.iso.datetime(),
     idempotencyKey: z.uuid(),
   }),
+  z.object({
+    action: z.literal('update_details'),
+    token,
+    // The time screen's editable line, and a change between call and visit after the save.
+    details: z
+      .object({
+        phone: z.string().max(30).optional(),
+        appointment_preference: z.enum(['phone', 'on_site']).optional(),
+        site_street: z.string().max(150).optional(),
+        site_unit: z.string().max(60).optional(),
+      })
+      .strict()
+      .refine((d) => Object.keys(d).length > 0),
+  }),
   z.object({ action: z.literal('status'), token }),
   z.object({ action: z.literal('request_contact'), token, reason: z.string().max(200).optional() }),
   z.object({ action: z.literal('cancel'), token, reason: z.string().max(300).optional() }),
@@ -187,10 +201,17 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
       const latest = await db.latestBooking(enquiryId)
       const staff = await db.bookableStaff()
       const connection = staff ? await db.getConnection(staff) : null
-      const name = enquiry.answers.name
+      const { name, phone, location, appointment_preference: preference } = enquiry.answers
+      const text = (v: unknown) => (typeof v === 'string' ? v : null)
       return ok({
         reference: enquiry.reference,
         firstName: typeof name === 'string' ? name.split(/\s+/)[0] : null,
+        phone: text(phone),
+        location: text(location),
+        // Form v2 saves the customer's choice from the landing page; v1 enquiries have none.
+        preference: preference === 'phone' || preference === 'on_site' ? preference : null,
+        siteStreet: text(enquiry.answers.site_street),
+        siteUnit: text(enquiry.answers.site_unit),
         siteAddress:
           typeof enquiry.site_details?.site_address === 'string'
             ? enquiry.site_details.site_address
@@ -224,6 +245,20 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
       } catch (error) {
         if ((error as { code?: string }).code === '22023')
           return { status: 400, body: { error: 'invalid_answers' } }
+        throw error
+      }
+      return ok({ status: 'saved' })
+    }
+
+    case 'update_details': {
+      // Only before a booking exists: a live booking's calendar event already carries them.
+      if (await db.liveBookingFor(enquiryId))
+        return { status: 409, body: { error: 'booking_live' } }
+      try {
+        await db.updateDetails(enquiryId, req.details)
+      } catch (error) {
+        if ((error as { code?: string }).code === '22023')
+          return { status: 400, body: { error: 'invalid_details' } }
         throw error
       }
       return ok({ status: 'saved' })

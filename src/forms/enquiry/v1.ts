@@ -162,6 +162,3 @@ export const enquiryV1: FormDefinition = {
     },
   ],
 }
-
-/** The version new enquiries are made with. */
-export const currentEnquiryForm: FormDefinition = enquiryV1

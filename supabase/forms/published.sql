@@ -286,3 +286,199 @@ select public.publish_form_version(
   ]
 }$form$::jsonb
 );
+
+select public.publish_form_version(
+  'enquiry',
+  2,
+  $form${
+  "formId": "enquiry",
+  "version": 2,
+  "title": "Let’s talk about your renovation",
+  "steps": [
+    {
+      "id": "appointment",
+      "title": "Phone call or site visit",
+      "fields": [
+        {
+          "id": "appointment_preference",
+          "type": "single",
+          "label": "Appointment preference",
+          "required": true,
+          "options": [
+            {
+              "value": "phone",
+              "label": "Phone call"
+            },
+            {
+              "value": "on_site",
+              "label": "Site visit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project",
+      "title": "What work are you planning?",
+      "fields": [
+        {
+          "id": "project_type",
+          "type": "single",
+          "label": "Project type",
+          "required": true,
+          "options": [
+            {
+              "value": "kitchen",
+              "label": "Kitchen"
+            },
+            {
+              "value": "bathroom",
+              "label": "Bathroom"
+            },
+            {
+              "value": "several_rooms",
+              "label": "Several rooms"
+            },
+            {
+              "value": "whole_home",
+              "label": "Whole home renovation"
+            },
+            {
+              "value": "extension",
+              "label": "Extension"
+            },
+            {
+              "value": "attic",
+              "label": "Attic conversion"
+            },
+            {
+              "value": "other",
+              "label": "Something else"
+            }
+          ]
+        },
+        {
+          "id": "kitchen_layout",
+          "type": "single",
+          "label": "Are you keeping the layout or changing it?",
+          "required": false,
+          "visibleWhen": {
+            "field": "project_type",
+            "in": [
+              "kitchen"
+            ]
+          },
+          "options": [
+            {
+              "value": "keeping",
+              "label": "Keeping it"
+            },
+            {
+              "value": "changing",
+              "label": "Changing it"
+            },
+            {
+              "value": "guidance",
+              "label": "I’d like guidance"
+            }
+          ]
+        },
+        {
+          "id": "rooms_involved",
+          "type": "text",
+          "label": "Which rooms are involved?",
+          "required": false,
+          "maxLength": 200,
+          "visibleWhen": {
+            "field": "project_type",
+            "in": [
+              "several_rooms"
+            ]
+          }
+        },
+        {
+          "id": "project_type_other",
+          "type": "text",
+          "label": "What would you like us to look at?",
+          "required": true,
+          "maxLength": 200,
+          "visibleWhen": {
+            "field": "project_type",
+            "in": [
+              "other"
+            ]
+          }
+        },
+        {
+          "id": "location",
+          "type": "text",
+          "label": "Town or Eircode",
+          "required": true,
+          "minLength": 2,
+          "maxLength": 80,
+          "autoComplete": "postal-code"
+        }
+      ]
+    },
+    {
+      "id": "contact",
+      "title": "How can we reach you?",
+      "fields": [
+        {
+          "id": "name",
+          "type": "text",
+          "label": "Your name",
+          "required": true,
+          "maxLength": 120,
+          "autoComplete": "name"
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email",
+          "required": true,
+          "maxLength": 254,
+          "autoComplete": "email"
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Phone number",
+          "required": true,
+          "maxLength": 30,
+          "autoComplete": "tel"
+        },
+        {
+          "id": "site_street",
+          "type": "text",
+          "label": "House name or number and street",
+          "required": true,
+          "minLength": 4,
+          "maxLength": 150,
+          "autoComplete": "address-line1",
+          "visibleWhen": {
+            "field": "appointment_preference",
+            "in": [
+              "on_site"
+            ]
+          }
+        },
+        {
+          "id": "site_unit",
+          "type": "text",
+          "label": "Apartment or unit",
+          "required": false,
+          "maxLength": 60,
+          "autoComplete": "address-line2",
+          "visibleWhen": {
+            "field": "appointment_preference",
+            "in": [
+              "on_site"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}$form$::jsonb
+);

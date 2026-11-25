@@ -1,95 +1,26 @@
 import { expect, test, type Page } from '@playwright/test'
-import { GoogleError } from '../supabase/functions/_shared/google.ts'
+import { renderMessage } from '../supabase/functions/_shared/messages.ts'
+import { handlePublic } from '../supabase/functions/_shared/public-booking.ts'
 import { installFakeBackend, submitEnquiry } from './fake-backend'
 
 // Set SCREENSHOTS_DIR to keep 390px screenshots of each step.
 const shot = async (page: Page, name: string) => {
-  // Every step must fit a 390px phone without sideways scrolling.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   const dir = process.env.SCREENSHOTS_DIR
   if (dir) await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
 }
 
-test('a customer books an estimate visit straight after the enquiry, with Google faked', async ({
-  page,
-}) => {
-  const { db, calendar, clock } = await installFakeBackend(page)
-  await page.goto('/#/enquire')
-  await submitEnquiry(page)
+const suggestions = (page: Page) =>
+  page.getByRole('group', { name: 'Suggested times' }).getByRole('button')
 
-  // Appointment type.
-  await expect(
-    page.getByRole('heading', { name: 'How would you like to talk it through?' }),
-  ).toBeVisible()
-  await shot(page, 'b1-type')
-  await page.getByRole('radio', { name: /Site visit/ }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-
-  // The visit needs the address first; validation is visible.
-  await expect(page.getByRole('heading', { name: 'Where is the property?' })).toBeVisible()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('alert').first()).toContainText('required')
-  await page
-    .getByLabel('Address of the property')
-    .fill('12 Example Road, Phibsborough, Dublin 7, D07 X2Y3')
-  await page.getByLabel(/Anything we should know/).fill('Side gate, ring the bell')
-  await shot(page, 'b2-address')
-  await page.getByRole('button', { name: 'Continue' }).click()
-
-  // Slot picker, in Irish time.
-  await expect(
-    page.getByRole('heading', { name: 'Choose a time for your site visit' }),
-  ).toBeVisible()
-  await expect(page.getByText('Irish time (Europe/Dublin)')).toBeVisible()
-  const times = page.getByRole('group', { name: /^Time on/ }).getByRole('button')
-  await expect(times.first()).toBeVisible()
-  const firstTime = (await times.first().textContent())?.trim() ?? ''
-  await times.first().click()
-  await shot(page, 'b3-slots')
-
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('heading', { name: 'Check and book' })).toBeVisible()
-  await expect(page.getByText(new RegExp(` at ${firstTime}`))).toBeVisible()
-
-  // Make the first insert time out after Google created the event, to show the pending state.
-  calendar.script.insertError = {
-    error: new GoogleError('timeout', 'no answer'),
-    createAnyway: true,
-  }
-  await page.getByRole('button', { name: 'Book this time' }).click()
-
-  await expect(page.getByRole('heading', { name: 'Confirming your appointment…' })).toBeVisible()
-  await shot(page, 'b4-pending')
-  // The retry becomes due; the next status poll reconciles the existing event.
-  clock.offset = 31_000
-  await expect(page.getByRole('heading', { name: 'Your site visit is booked' })).toBeVisible({
-    timeout: 15_000,
-  })
-  await expect(page.getByText('Irish time (Europe/Dublin)')).toBeVisible()
-  await expect(page.getByText(/will visit you at/)).toBeVisible()
-  await expect(page.getByText('12 Example Road, Phibsborough, Dublin 7, D07 X2Y3')).toBeVisible()
-  await shot(page, 'b5-confirmed')
-
-  expect(calendar.events.size).toBe(1)
-  expect(calendar.insertCalls).toBe(1)
-  expect(db.bookings).toHaveLength(1)
-  expect(db.bookings[0]?.state).toBe('confirmed')
-  // test@example.com is a reserved test address: the email is recorded, never sent.
-  expect(db.comms.filter((c) => c.template === 'booking_confirmation')).toHaveLength(1)
-})
-
-test('two customers want the same time: the second gets fresh alternatives and books one', async ({
+test('someone else takes the slot: the customer is told and books another time', async ({
   page,
 }) => {
   const { db, calendar } = await installFakeBackend(page)
-  await page.goto('/#/enquire')
   await submitEnquiry(page)
-  await page.getByRole('radio', { name: /Phone consultation/ }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  const times = page.getByRole('group', { name: /^Time on/ }).getByRole('button')
-  await times.first().click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('heading', { name: 'Check and book' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Choose a time for your call' })).toBeVisible()
+  await suggestions(page).first().click()
+  const firstLabel = (await suggestions(page).first().textContent())?.trim()
 
   // Another customer books the same time first.
   const ours = [...db.enquiries.keys()][0] ?? ''
@@ -97,65 +28,142 @@ test('two customers want the same time: the second gets fresh alternatives and b
     { name: 'Other', email: 'o@example.com', phone: '0870000000' },
     'tok-other-customer-0000000000',
   )
-  const startOfFirst = await (async () => {
-    // The first offered phone slot is the one the customer picked.
-    const { handlePublic } = await import('../supabase/functions/_shared/public-booking.ts')
-    const res = await handlePublic(
-      {
-        action: 'availability',
-        token: 'tok-other-customer-0000000000',
-        typeId: 'phone_consultation',
-      },
-      {
-        db,
-        calendar,
-        accessToken: async () => 't',
-        mailer: null,
-        appUrl: 'x',
-        now: () => Date.now(),
-      },
-    )
-    return (res.body as { slots: { start: string }[] }).slots[0]?.start ?? ''
-  })()
+  const res = await handlePublic(
+    {
+      action: 'availability',
+      token: 'tok-other-customer-0000000000',
+      typeId: 'phone_consultation',
+    },
+    {
+      db,
+      calendar,
+      accessToken: async () => 't',
+      mailer: null,
+      appUrl: 'x',
+      now: () => Date.now(),
+    },
+  )
+  const taken = (res.body as { slots: { start: string }[] }).slots[0]?.start ?? ''
   expect(
-    (
-      await db.reserve(
-        other,
-        'phone_consultation',
-        startOfFirst,
-        '00000000-0000-4000-8000-0000000000ff',
-      )
-    ).status,
+    (await db.reserve(other, 'phone_consultation', taken, '00000000-0000-4000-8000-0000000000ff'))
+      .status,
   ).toBe('reserved')
 
-  await page.getByRole('button', { name: 'Book this time' }).click()
-  await expect(page.getByText('That time has just been booked. Pick another time.')).toBeVisible()
-  await shot(page, 'b6-alternatives')
-  const alternatives = page.getByRole('list', { name: 'Nearest free times' }).getByRole('button')
-  await expect(alternatives.first()).toBeVisible()
-  await alternatives.first().click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Book this time' }).click()
+  await page.getByRole('button', { name: /^Book call · / }).click()
+  await expect(page.getByRole('alert')).toHaveText(
+    'That time has just been booked. Choose another time.',
+  )
+  // The options are refreshed and the enquiry kept; the taken time is no longer offered.
+  await expect(suggestions(page).first()).not.toHaveText(firstLabel ?? '')
+  await expect(page.getByRole('button', { name: 'Book call', exact: true })).toBeVisible()
+  await shot(page, 'b1-slot-taken')
+  await suggestions(page).first().click()
+  await page.getByRole('button', { name: /^Book call · / }).click()
   await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
-  await expect(page.getByText(/will ring you on 087 123 4567/)).toBeVisible()
 
-  // Two live bookings at different times; ours is confirmed, nothing overlaps.
   const live = db.bookings.filter((b) => b.state !== 'failed')
   expect(live).toHaveLength(2)
   expect(new Set(live.map((b) => b.starts_at)).size).toBe(2)
   expect(live.find((b) => b.enquiry_id === ours)?.state).toBe('confirmed')
 })
 
-test('with the calendar disconnected the customer is offered a call-back instead', async ({
+test('a double tap on Book makes one booking and one calendar event', async ({ page }) => {
+  const { db, calendar } = await installFakeBackend(page)
+  await submitEnquiry(page)
+  await suggestions(page).nth(2).click()
+  await page.getByRole('button', { name: /^Book call · / }).dblclick()
+  await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
+  expect(db.bookings).toHaveLength(1)
+  expect(calendar.insertCalls).toBe(1)
+  expect(calendar.events.size).toBe(1)
+  expect(db.comms.filter((c) => c.template === 'booking_confirmation')).toHaveLength(1)
+})
+
+test('the number to ring can be corrected on the time screen before booking', async ({ page }) => {
+  const { db } = await installFakeBackend(page)
+  await submitEnquiry(page)
+  await page.getByRole('button', { name: 'Change the number' }).click()
+  await page.getByLabel('Number we should ring').fill('x')
+  await suggestions(page).first().click()
+  await page.getByRole('button', { name: /^Book call · / }).click()
+  await expect(page.getByRole('alert')).toHaveText('Enter a phone number, e.g. 087 123 4567.')
+  await page.getByLabel('Number we should ring').fill('01 234 5678')
+  await page.getByRole('button', { name: /^Book call · / }).click()
+  await expect(page.getByText(/will ring you on 01 234 5678\./)).toBeVisible()
+  expect([...db.enquiries.values()][0]?.answers.phone).toBe('01 234 5678')
+})
+
+test('no times to offer: the enquiry is saved and the customer asks Q3 to contact them', async ({
+  page,
+}) => {
+  const { db } = await installFakeBackend(page)
+  db.availabilityRow = { ...db.availabilityRow, working_hours: {} }
+  await submitEnquiry(page)
+  await expect(page.getByRole('heading', { name: 'Your enquiry is saved' })).toBeVisible()
+  await expect(page.getByText(/no times free for a call/)).toBeVisible()
+  await shot(page, '10-no-times')
+  await page.getByRole('button', { name: 'Ask Q3 to contact me' }).click()
+  await expect(page.getByRole('heading', { name: 'We’ll be in touch' })).toBeVisible()
+  const enquiry = [...db.enquiries.values()][0]
+  expect(enquiry?.contact_requested_at).not.toBeNull()
+  expect(db.events).toContainEqual(
+    expect.objectContaining({ kind: 'contact_requested', detail: 'No times available online' }),
+  )
+})
+
+test('none of the times suit: the customer can ask Q3 to contact them instead', async ({
+  page,
+}) => {
+  const { db } = await installFakeBackend(page)
+  await submitEnquiry(page)
+  await page.getByRole('button', { name: 'None of these suit? Ask Q3 to contact me' }).click()
+  await page.getByRole('button', { name: 'Ask Q3 to contact me' }).click()
+  await expect(page.getByRole('heading', { name: 'We’ll be in touch' })).toBeVisible()
+  expect(db.events).toContainEqual(
+    expect.objectContaining({ kind: 'contact_requested', detail: 'No suitable time online' }),
+  )
+  expect(db.bookings).toHaveLength(0)
+})
+
+test('with the calendar disconnected the customer is offered a contact request', async ({
   page,
 }) => {
   const { db } = await installFakeBackend(page)
   db.connection = null
-  await page.goto('/#/enquire')
   await submitEnquiry(page)
   await expect(page.getByRole('heading', { name: 'Your enquiry is saved' })).toBeVisible()
-  await shot(page, 'b7-contact-path')
-  await page.getByRole('button', { name: 'Request a call back' }).click()
-  await expect(page.getByRole('heading', { name: 'We’ve received your enquiry' })).toBeVisible()
+  await page.getByRole('button', { name: 'Ask Q3 to contact me' }).click()
+  await expect(page.getByRole('heading', { name: 'We’ll be in touch' })).toBeVisible()
   expect([...db.enquiries.values()][0]?.contact_requested_at).not.toBeNull()
+})
+
+test('the confirmation email leads with the time and what will happen', async ({ page }) => {
+  const { db } = await installFakeBackend(page)
+  await submitEnquiry(page, 'on_site')
+  await suggestions(page).first().click()
+  await page.getByRole('button', { name: /^Book site visit · / }).click()
+  await expect(page.getByRole('heading', { name: 'Your site visit is booked' })).toBeVisible()
+  const ctx = await db.bookingContext(db.bookings[0]?.id ?? '')
+  if (!ctx) throw new Error('no booking')
+  const origin = new URL(page.url()).origin
+  const email = renderMessage('booking_confirmation', {
+    ctx,
+    manageUrl: `${origin}/#/book/example-token`,
+    businessPhone: null,
+    privacyUrl: `${origin}/#/privacy`,
+    siteUrl: origin,
+  })
+  expect(email.text).toMatch(
+    /\(Irish time\)\nAbout 60 minutes\n\n.+ will meet you at 12 Example Road, D07 X2Y3\.\n\nYour enquiry reference is Q3-/,
+  )
+  await page.setContent(email.html)
+  await expect(page.getByRole('link', { name: 'Change time' })).toHaveAttribute(
+    'href',
+    `${origin}/#/book/example-token?do=change`,
+  )
+  await expect(page.getByRole('link', { name: 'Cancel appointment' })).toHaveAttribute(
+    'href',
+    `${origin}/#/book/example-token?do=cancel`,
+  )
+  await shot(page, '12-confirmation-email')
 })

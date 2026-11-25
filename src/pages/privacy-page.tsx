@@ -25,7 +25,7 @@ export function PrivacyPage() {
   const name = business.trading_name
   const requests = business.privacy_contact ?? business.contact_email
   return (
-    <PublicLayout>
+    <PublicLayout width="prose">
       <h1 className="text-section text-ink font-medium">How we use your details</h1>
       {!business.privacy_reviewed && (
         <Alert className="mt-4">

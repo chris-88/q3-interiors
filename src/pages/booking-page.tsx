@@ -1,43 +1,52 @@
-import { useEffect, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { Link, useParams } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router'
 import {
+  InvalidDetailsError,
   InvalidLinkError,
   useAvailability,
-  useBook,
   useBookingContext,
   useBookingStatus,
+  useCommitBooking,
   useRequestContact,
-  useSaveSiteDetails,
-  type AppointmentTypeOption,
   type BookResult,
   type BookingContext,
+  type DetailsPatch,
   type Slot,
 } from '@/api/booking'
 import { BookingPending } from '@/components/booking/booking-outcome'
 import { ManageBooking } from '@/components/booking/manage-booking'
 import { SlotPicker } from '@/components/booking/slot-picker'
-import { FormFieldInput } from '@/components/enquiry/form-field'
+import { ChoiceCards, JourneyProgress } from '@/components/journey/journey-parts'
 import { PublicLayout } from '@/components/public-layout'
 import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  FieldTitle,
-} from '@/components/ui/field'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { allFields, cleanAnswers, validateFields } from '@/forms/logic'
-import { siteDetailsV1 } from '@/forms/site-details/v1'
-import type { Answers } from '@/forms/types'
+import { enquiryV2 } from '@/forms/enquiry/v2'
+import { findField, validateFields } from '@/forms/logic'
+import type { FormField } from '@/forms/types'
 import { formatClock, formatLongDate } from '@/lib/format'
+import {
+  ROUTE_COPY,
+  ROUTES,
+  bookLabel,
+  formatSlotShort,
+  otherRoute,
+  routeTitle,
+  suggestSlots,
+  type Route,
+} from '@/lib/journey'
+import { cn } from '@/lib/utils'
 
-type Step = 'type' | 'address' | 'slot' | 'confirm'
+/*
+ * The time screen (journey screen 4) and, once booked, the receipt with change and cancel. One
+ * page per enquiry token: links in emails and the "Change time" / "Cancel appointment" actions
+ * (`?do=change|cancel`) land here too, for v1 enquiries as well as v2.
+ */
+
+const SLOT_TAKEN = 'That time has just been booked. Choose another time.'
 
 function Heading({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLHeadingElement>(null)
@@ -53,32 +62,26 @@ function Heading({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SavedBanner({ reference }: { reference: string }) {
-  return (
-    <p className="bg-muted text-muted-foreground mb-6 rounded-lg px-4 py-3 text-sm">
-      Enquiry received. Your reference is{' '}
-      <span className="text-foreground font-mono">{reference}</span>.
-    </p>
-  )
-}
-
-/** The truthful fallback when we cannot offer times: we contact the customer instead. */
+/** Shown when no time can be offered or none suits: the request goes to the staff queue. */
 function ContactPath({
   token,
   context,
   reason,
+  intro,
 }: {
   token: string
   context: BookingContext
   reason: string
+  intro: string
 }) {
   const request = useRequestContact(token)
   if (context.contactRequested || request.isSuccess) {
     return (
-      <section aria-live="polite">
-        <Heading>We’ve received your enquiry</Heading>
+      <section>
+        <Heading>We’ll be in touch</Heading>
         <p className="text-muted-foreground mt-2">
-          Our team will review the details and get in touch. You do not need to do anything else.
+          Your enquiry is saved and we have your request. We will contact you to arrange a time. You
+          do not need to do anything else.
         </p>
       </section>
     )
@@ -86,169 +89,513 @@ function ContactPath({
   return (
     <section>
       <Heading>Your enquiry is saved</Heading>
-      <p className="text-muted-foreground mt-2">There are no times available to book online.</p>
-      <p className="text-muted-foreground mt-2">{reason}</p>
+      <p className="text-muted-foreground mt-2">{intro}</p>
       {request.isError && (
-        <Alert variant="destructive" className="mt-4" role="alert">
-          <AlertDescription>That did not go through. Please try again.</AlertDescription>
-        </Alert>
+        <TroubleMessage
+          error={request.error}
+          title="Your request has not gone through"
+          keptNote="Your enquiry is saved."
+        />
       )}
       <Button
         size="lg"
-        className="mt-6 h-12 w-full text-base sm:w-auto sm:px-6"
+        className="mt-6 h-auto min-h-12 w-full py-3 text-base whitespace-normal"
         disabled={request.isPending}
         onClick={() => request.mutate(reason)}
       >
-        {request.isPending ? 'Sending…' : 'Request a call back'}
+        {request.isPending ? 'Sending…' : request.isError ? 'Try again' : 'Ask Q3 to contact me'}
       </Button>
     </section>
   )
 }
 
-function TypeStep({
-  types,
-  selected,
-  onChoose,
+const phoneField = findField(enquiryV2, 'phone') as FormField
+const streetField = findField(enquiryV2, 'site_street') as FormField
+const unitField = findField(enquiryV2, 'site_unit') as FormField
+
+function LineInput({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+  type = 'text',
+  autoComplete,
+  optional,
 }: {
-  types: AppointmentTypeOption[]
-  selected: string | null
-  onChoose: (id: string) => void
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  error?: string
+  type?: 'text' | 'tel'
+  autoComplete: string
+  optional?: boolean
 }) {
-  const [value, setValue] = useState<string | null>(selected)
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (value) onChoose(value)
-      }}
-    >
-      <Heading>How would you like to talk it through?</Heading>
-      <p className="text-muted-foreground mt-2">
-        Pick one. Both are free and there is no obligation.
-      </p>
-      <RadioGroup
-        aria-label="Appointment type"
+    <div className="flex flex-col gap-2" data-field={id}>
+      <label htmlFor={id} className="text-ink text-base font-medium">
+        {label}
+        {optional && <span className="text-muted-foreground font-normal"> (optional)</span>}
+      </label>
+      <Input
+        id={id}
+        type={type}
+        inputMode={type === 'tel' ? 'tel' : undefined}
+        autoComplete={autoComplete}
         value={value}
-        onValueChange={(v) => setValue(String(v))}
-        className="mt-6 gap-3"
-      >
-        {types.map((type) => (
-          <FieldLabel key={type.id} htmlFor={`type-${type.id}`} className="w-full">
-            <Field orientation="horizontal" className="items-start">
-              <RadioGroupItem value={type.id} id={`type-${type.id}`} className="mt-1" />
-              <FieldContent>
-                <FieldTitle className="text-base">{type.label}</FieldTitle>
-                <FieldDescription>
-                  {type.description} About {type.durationMinutes} minutes.
-                </FieldDescription>
-              </FieldContent>
-            </Field>
-          </FieldLabel>
-        ))}
-      </RadioGroup>
-      <Button
-        type="submit"
-        size="lg"
-        className="mt-8 h-12 w-full text-base sm:w-auto sm:px-6"
-        disabled={!value}
-      >
-        Continue
-      </Button>
-    </form>
+        onChange={(e) => onChange(e.target.value)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className="h-12 text-base md:text-base"
+      />
+      {error && (
+        <p id={`${id}-error`} role="alert" className="text-destructive text-sm">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 
-function AddressStep({
+function TimeScreen({
   token,
-  initialAddress,
-  onDone,
-  onBack,
+  ctx,
+  onBooked,
 }: {
   token: string
-  initialAddress: string | null
-  onDone: () => void
-  onBack: () => void
+  ctx: BookingContext
+  onBooked: () => void
 }) {
-  const save = useSaveSiteDetails(token)
-  const fields = allFields(siteDetailsV1)
-  const { control, getValues, setError, clearErrors, formState } = useForm<Answers>({
-    defaultValues: { site_address: initialAddress ?? '', access_notes: '' },
-  })
-  const submit = () => {
-    const errors = validateFields(fields, getValues())
-    clearErrors()
-    const ids = Object.keys(errors)
-    if (ids.length) {
-      for (const id of ids) setError(id, { type: 'validate', message: errors[id] })
-      document.getElementById(`field-${ids[0]}`)?.focus()
+  const routes = ROUTES.filter((r) => ctx.types.some((t) => t.mode === r))
+  const [route, setRoute] = useState<Route | null>(() =>
+    ctx.preference && routes.includes(ctx.preference) ? ctx.preference : null,
+  )
+  const type = ctx.types.find((t) => t.mode === route) ?? null
+  const availability = useAvailability(token, type?.id ?? null)
+  const commit = useCommitBooking(token)
+  const [slot, setSlot] = useState<Slot | null>(null)
+  const [key, setKey] = useState<string | null>(null)
+  const [showAll, setShowAll] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [slotError, setSlotError] = useState<string | null>(null)
+  const [askContact, setAskContact] = useState(false)
+  const [unavailable, setUnavailable] = useState(false)
+  const [waiting, setWaiting] = useState(false)
+  // The editable line: null while showing the saved value.
+  const [phone, setPhone] = useState<string | null>(null)
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [editAddress, setEditAddress] = useState(false)
+  const [street, setStreet] = useState(ctx.siteStreet ?? '')
+  const [unit, setUnit] = useState(ctx.siteUnit ?? '')
+  const [addressErrors, setAddressErrors] = useState<Record<string, string>>({})
+  const inFlight = useRef(false)
+
+  const slots = useMemo(
+    () => (availability.data?.status === 'ok' ? availability.data.slots : []),
+    [availability.data],
+  )
+  const suggestions = useMemo(() => suggestSlots(slots), [slots])
+
+  // A chosen time the (new) appointment type cannot have is dropped, and the customer told.
+  const ready = availability.data?.status === 'ok' && !availability.isFetching
+  const slotFits = !slot || !ready || slots.some((s) => s.start === slot.start)
+  const chosen = slotFits ? slot : null
+  const dropped =
+    !slotFits && route
+      ? `Your chosen time is not free for a ${ROUTE_COPY[route].noun}. Choose another time.`
+      : null
+
+  const choose = (s: Slot) => {
+    setSlot(s)
+    setKey(crypto.randomUUID())
+    setSlotError(null)
+    setNotice(null)
+  }
+
+  const needsAddress = route === 'on_site' && (!ctx.siteAddress || editAddress)
+
+  const switchTo = (next: Route) => {
+    setRoute(next)
+    // A new key: the same time as a different appointment is a different booking.
+    if (slot) setKey(crypto.randomUUID())
+    setNotice(null)
+    setSlotError(null)
+    setShowAll(false)
+    commit.reset()
+  }
+
+  const handleResult = (result: BookResult) => {
+    switch (result.status) {
+      case 'booked':
+      case 'already_booked':
+        setWaiting(true)
+        onBooked()
+        return
+      case 'slot_unavailable':
+        setNotice(SLOT_TAKEN)
+        setSlot(null)
+        setKey(null)
+        void availability.refetch()
+        return
+      case 'ineligible':
+        if (result.reason === 'site_address_required') {
+          setEditAddress(true)
+          setAddressErrors({ site_street: 'Add the house name or number and street.' })
+        } else if (result.reason === 'phone_required') {
+          setPhone('')
+          setPhoneError('Add a number we can ring.')
+        }
+        return
+      case 'unavailable':
+        setUnavailable(true)
+        return
+    }
+  }
+
+  const book = () => {
+    if (!route || !type) return
+    let ok = true
+    const details: DetailsPatch = {}
+    if (phone !== null) {
+      const errors = validateFields([phoneField], { phone })
+      setPhoneError(errors.phone ?? null)
+      if (errors.phone) ok = false
+      else if (phone.trim() !== ctx.phone) details.phone = phone.trim()
+    }
+    if (needsAddress) {
+      const errors = validateFields([streetField, unitField], {
+        appointment_preference: 'on_site',
+        site_street: street,
+        site_unit: unit,
+      })
+      setAddressErrors(errors)
+      if (Object.keys(errors).length) ok = false
+      details.site_street = street.trim()
+      details.site_unit = unit.trim()
+      details.appointment_preference = 'on_site'
+    }
+    if (ctx.preference && route !== ctx.preference) details.appointment_preference = route
+    if (!chosen || !key) {
+      setSlotError('Choose a time.')
+      ok = false
+    }
+    if (!ok || !chosen || !key) {
+      // After the errors render: focus the first field that needs attention.
+      window.requestAnimationFrame(() =>
+        document
+          .querySelector<HTMLElement>('[aria-invalid="true"], [data-invalid="true"]')
+          ?.focus(),
+      )
       return
     }
-    const answers = cleanAnswers(siteDetailsV1, getValues())
-    save.mutate(Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, String(v)])), {
-      onSuccess: onDone,
-    })
+    // A second tap before the first has re-rendered the button is ignored here; the
+    // idempotency key would make it the same booking on the server anyway.
+    if (inFlight.current) return
+    inFlight.current = true
+    commit.mutate(
+      {
+        details: Object.keys(details).length ? details : null,
+        typeId: type.id,
+        start: chosen.start,
+        idempotencyKey: key,
+      },
+      { onSuccess: handleResult, onSettled: () => (inFlight.current = false) },
+    )
   }
-  const step = siteDetailsV1.steps[0]
+
+  if (!ctx.calendarAvailable || unavailable) {
+    return (
+      <ContactPath
+        token={token}
+        context={ctx}
+        reason="Booking calendar not available"
+        intro="We cannot show times to book online at the moment. We can contact you to arrange one instead."
+      />
+    )
+  }
+  if (askContact) {
+    return (
+      <ContactPath
+        token={token}
+        context={ctx}
+        reason="No suitable time online"
+        intro="Ask us to contact you and we will arrange a time that suits."
+      />
+    )
+  }
+
+  const confirming = commit.isPending || waiting
+  const minutes = type?.durationMinutes ?? null
+  const detailsRefused = commit.error instanceof InvalidDetailsError
+
   return (
-    <form
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault()
-        submit()
-      }}
-    >
-      <Heading>{step?.title}</Heading>
-      {step?.description && <p className="text-muted-foreground mt-2">{step.description}</p>}
-      <FieldGroup className="mt-6 gap-8">
-        {fields.map((field) => (
-          <FormFieldInput
-            key={field.id}
-            field={field}
-            control={control}
-            error={formState.errors[field.id]?.message}
-            onEdit={(id) => clearErrors(id)}
+    <section className="flex flex-col">
+      <Heading>
+        {route
+          ? `Choose a time for your ${ROUTE_COPY[route].noun}`
+          : 'Choose a call or a site visit'}
+      </Heading>
+      <p className="text-muted-foreground mt-2 text-sm">
+        Enquiry saved. Reference <span className="text-ink font-mono">{ctx.reference}</span>
+      </p>
+
+      {route === null ? (
+        <div className="mt-6">
+          <ChoiceCards
+            name="appointment"
+            legend="Appointment"
+            options={routes.map((r) => ({
+              value: r,
+              label: routeTitle(r, ctx.types.find((t) => t.mode === r)?.durationMinutes),
+              description: ROUTE_COPY[r].blurb,
+            }))}
+            value={null}
+            onChange={(v) => switchTo(v as Route)}
           />
-        ))}
-      </FieldGroup>
-      {save.isError && (
-        <Alert variant="destructive" className="mt-6" role="alert">
-          <AlertDescription>The address was not saved. Check it and try again.</AlertDescription>
-        </Alert>
+          <p className="text-ink mt-4 font-medium">Both are free.</p>
+        </div>
+      ) : (
+        <>
+          <p className="text-ink mt-4">
+            {routeTitle(route, minutes)} · Irish time
+            {routes.includes(otherRoute(route)) && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => switchTo(otherRoute(route))}
+                  disabled={confirming}
+                  className="inline-flex min-h-12 items-center underline underline-offset-4"
+                >
+                  Switch to a {ROUTE_COPY[otherRoute(route)].noun}
+                </button>
+              </>
+            )}
+          </p>
+
+          {(notice ?? dropped) && (
+            <Alert className="mt-4" role="alert">
+              <AlertDescription>{notice ?? dropped}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="mt-4">
+            {availability.isPending ? (
+              <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading times">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : availability.isError ? (
+              <Alert variant="destructive" role="alert">
+                <AlertTitle>We could not load the times</AlertTitle>
+                <AlertDescription>
+                  <Button
+                    variant="outline"
+                    className="mt-2 h-12"
+                    onClick={() => void availability.refetch()}
+                  >
+                    Try again
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            ) : availability.data.status === 'unavailable' ? (
+              <ContactPath
+                token={token}
+                context={ctx}
+                reason="Booking calendar not available"
+                intro="We could not check our calendar just now. We can contact you to arrange a time instead."
+              />
+            ) : slots.length === 0 ? (
+              <ContactPath
+                token={token}
+                context={ctx}
+                reason="No times available online"
+                intro={`There are no times free for a ${ROUTE_COPY[route].noun} in the next few weeks. We can contact you to arrange one.`}
+              />
+            ) : (
+              <>
+                <fieldset data-field="slot" className="min-w-0">
+                  <legend className="text-ink mb-2 text-base font-medium">Suggested times</legend>
+                  <ul className="flex flex-col gap-2">
+                    {suggestions.map((s) => {
+                      const active = chosen?.start === s.start
+                      return (
+                        <li key={s.start}>
+                          <button
+                            type="button"
+                            aria-pressed={active}
+                            data-invalid={slotError ? true : undefined}
+                            onClick={() => choose(s)}
+                            className={cn(
+                              'text-ink flex min-h-12 w-full items-center justify-between gap-3 rounded-md border px-4 py-3 text-left text-base tabular-nums transition-colors duration-150 motion-reduce:transition-none',
+                              active
+                                ? 'border-action bg-soft border-2 px-[15px] py-[11px]'
+                                : 'border-input',
+                            )}
+                          >
+                            {formatSlotShort(s.start)}
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                'flex size-6 shrink-0 items-center justify-center rounded-full border',
+                                active ? 'border-action bg-action text-white' : 'border-input',
+                              )}
+                            >
+                              {active && <Check className="size-4" />}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {slotError && (
+                    <p role="alert" className="text-destructive mt-2 text-sm">
+                      {slotError}
+                    </p>
+                  )}
+                </fieldset>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 h-auto min-h-12 w-full py-3 text-base whitespace-normal"
+                  aria-expanded={showAll}
+                  aria-controls="all-times"
+                  onClick={() => setShowAll((v) => !v)}
+                >
+                  {showAll ? 'Hide other times' : 'See more times'}
+                </Button>
+                {showAll && (
+                  <div
+                    id="all-times"
+                    className="motion-safe:animate-in motion-safe:fade-in mt-6 duration-150"
+                  >
+                    <SlotPicker slots={slots} selected={chosen} onSelect={choose} />
+                  </div>
+                )}
+                <p className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setAskContact(true)}
+                    className="text-muted-foreground inline-flex min-h-12 items-center text-sm underline underline-offset-4"
+                  >
+                    None of these suit? Ask Q3 to contact me
+                  </button>
+                </p>
+
+                <div className="border-rule mt-6 flex flex-col gap-4 border-t pt-6">
+                  {route === 'phone' ? (
+                    phone === null ? (
+                      <p className="text-ink">
+                        We’ll ring you on <span className="font-medium">{ctx.phone ?? '–'}</span>{' '}
+                        <button
+                          type="button"
+                          onClick={() => setPhone(ctx.phone ?? '')}
+                          className="inline-flex min-h-12 items-center underline underline-offset-4"
+                        >
+                          Change<span className="sr-only"> the number</span>
+                        </button>
+                      </p>
+                    ) : (
+                      <LineInput
+                        id="time-phone"
+                        label={ROUTE_COPY.phone.phoneLabel}
+                        type="tel"
+                        autoComplete="tel"
+                        value={phone}
+                        onChange={(v) => {
+                          setPhone(v)
+                          setPhoneError(null)
+                        }}
+                        error={phoneError ?? undefined}
+                      />
+                    )
+                  ) : needsAddress ? (
+                    <fieldset className="flex min-w-0 flex-col gap-4">
+                      <legend className="text-ink mb-2 text-base font-medium">Visit address</legend>
+                      <LineInput
+                        id="time-street"
+                        label={streetField.label}
+                        autoComplete="address-line1"
+                        value={street}
+                        onChange={(v) => {
+                          setStreet(v)
+                          setAddressErrors({})
+                        }}
+                        error={addressErrors.site_street}
+                      />
+                      <LineInput
+                        id="time-unit"
+                        label={unitField.label}
+                        optional
+                        autoComplete="address-line2"
+                        value={unit}
+                        onChange={setUnit}
+                        error={addressErrors.site_unit}
+                      />
+                      <p className="text-muted-foreground text-sm">
+                        Town or Eircode: <span className="text-ink">{ctx.location ?? '–'}</span>
+                      </p>
+                    </fieldset>
+                  ) : (
+                    <p className="text-ink">
+                      We’ll meet you at{' '}
+                      <span className="font-medium">{ctx.siteAddress?.replace(/\.\s*$/, '')}</span>{' '}
+                      <button
+                        type="button"
+                        onClick={() => setEditAddress(true)}
+                        className="inline-flex min-h-12 items-center underline underline-offset-4"
+                      >
+                        Change<span className="sr-only"> the address</span>
+                      </button>
+                    </p>
+                  )}
+
+                  {detailsRefused && (
+                    <Alert variant="destructive" role="alert">
+                      <AlertDescription>
+                        Those details could not be accepted. Check them and try again.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {commit.isError && !detailsRefused && (
+                    <TroubleMessage
+                      error={commit.error}
+                      title="The booking has not gone through"
+                      keptNote="Your enquiry is saved and the time is not booked yet."
+                    />
+                  )}
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="h-auto min-h-12 w-full py-3 text-base whitespace-normal"
+                    disabled={confirming}
+                    onClick={book}
+                  >
+                    {confirming
+                      ? 'Confirming your appointment…'
+                      : commit.isError && !detailsRefused
+                        ? 'Try again'
+                        : bookLabel(route, chosen)}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
       )}
-      <div className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className="h-12 text-base"
-          onClick={onBack}
-        >
-          Back
-        </Button>
-        <Button
-          type="submit"
-          size="lg"
-          className="h-12 text-base sm:px-6"
-          disabled={save.isPending}
-        >
-          {save.isPending ? 'Saving…' : 'Continue'}
-        </Button>
-      </div>
-    </form>
+    </section>
   )
 }
 
 export function BookingPage() {
   const { token = '' } = useParams()
+  const [search] = useSearchParams()
+  const doParam = search.get('do')
+  const initialAction = doParam === 'change' || doParam === 'cancel' ? doParam : null
   const context = useBookingContext(token)
-  const [step, setStep] = useState<Step>('type')
-  const [typeId, setTypeId] = useState<string | null>(null)
-  const [slot, setSlot] = useState<Slot | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [alternatives, setAlternatives] = useState<Slot[] | null>(null)
-  const [key, setKey] = useState<string | null>(null)
-  const availability = useAvailability(token, step === 'slot' || step === 'confirm' ? typeId : null)
-  const book = useBook(token)
+  const [round, setRound] = useState(0)
   const latest = context.data?.booking ?? null
   const watching =
     latest !== null && (latest.state === 'reserved' || latest.state === 'calendar_pending')
@@ -260,346 +607,106 @@ export function BookingPage() {
     return () => window.clearTimeout(id)
   }, [watching])
 
-  if (context.isPending) {
-    return (
-      <PublicLayout>
-        <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading">
-          <Skeleton className="h-10 w-3/4" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-      </PublicLayout>
-    )
-  }
-  if (context.isError) {
-    return (
-      <PublicLayout>
-        {context.error instanceof InvalidLinkError ? (
-          <>
-            <Heading>This link has expired</Heading>
-            <p className="text-muted-foreground mt-2">
-              Booking links work for 30 days. If you sent us an enquiry, we still have it and will
-              contact you.
-            </p>
-            <Link to="/" className="mt-6 inline-block underline underline-offset-4">
-              Go to the home page
-            </Link>
-          </>
-        ) : (
-          <Alert variant="destructive" role="alert">
-            <AlertTitle>We could not load your booking</AlertTitle>
-            <AlertDescription>
-              Check your connection and try again.
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={() => void context.refetch()}
-              >
-                Try again
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-      </PublicLayout>
-    )
-  }
-
-  const ctx = context.data
   const current = status.data?.booking ?? latest
+  const state = current?.state
+  // One live region for the page's booking status, kept mounted across the screens.
+  const announcement =
+    state === 'confirmed' && current
+      ? ROUTE_COPY[current.type.mode].booked
+      : state === 'reserved' || state === 'calendar_pending'
+        ? 'Confirming your appointment…'
+        : ''
 
-  // An existing booking takes over the page.
-  if (current && current.state === 'confirmed') {
-    return (
-      <PublicLayout>
-        <ManageBooking
-          token={token}
-          booking={current}
-          reference={ctx.reference}
-          onCancelled={() => {
-            book.reset()
-            setNotice(null)
-            setAlternatives(null)
-            setSlot(null)
-            setKey(null)
-            setTypeId(null)
-            setStep('type')
-          }}
-        />
-      </PublicLayout>
+  let content: React.ReactNode
+  if (context.isPending) {
+    content = (
+      <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading">
+        <Skeleton className="h-10 w-3/4" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
     )
-  }
-  if (current && (current.state === 'reserved' || current.state === 'calendar_pending')) {
-    return (
-      <PublicLayout>
-        <BookingPending booking={current} slow={slow} />
-      </PublicLayout>
+  } else if (context.isError) {
+    content =
+      context.error instanceof InvalidLinkError ? (
+        <>
+          <Heading>This link has expired</Heading>
+          <p className="text-muted-foreground mt-2">
+            Booking links work for 30 days. If you sent us an enquiry, we still have it and will
+            contact you.
+          </p>
+          <Link
+            to="/"
+            className="mt-6 inline-flex min-h-12 items-center underline underline-offset-4"
+          >
+            Go to the home page
+          </Link>
+        </>
+      ) : (
+        <Alert variant="destructive" role="alert">
+          <AlertTitle>We could not load your booking</AlertTitle>
+          <AlertDescription>
+            Check your connection and try again.
+            <Button variant="outline" className="mt-2 h-12" onClick={() => void context.refetch()}>
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )
+  } else if (current && current.state === 'confirmed') {
+    content = (
+      <ManageBooking
+        token={token}
+        booking={current}
+        reference={context.data.reference}
+        initialAction={initialAction}
+        onCancelled={() => setRound((r) => r + 1)}
+      />
     )
-  }
-
-  const failedBefore = current?.state === 'failed' && step === 'type' && !notice
-  const cancelledBefore = current?.state === 'cancelled' && step === 'type' && !notice
-  const types = ctx.types
-  const type = types.find((t) => t.id === typeId) ?? null
-
-  if (!ctx.calendarAvailable) {
-    return (
-      <PublicLayout>
-        <SavedBanner reference={ctx.reference} />
-        <ContactPath
-          token={token}
-          context={ctx}
-          reason="Our booking calendar is not available at the moment. We can ring you instead."
-        />
-      </PublicLayout>
+  } else if (current && (current.state === 'reserved' || current.state === 'calendar_pending')) {
+    content = <BookingPending booking={current} slow={slow} />
+  } else {
+    const ctx = context.data
+    content = (
+      <>
+        <JourneyProgress current={2} />
+        <div className="mt-6">
+          {current?.state === 'cancelled' && (
+            <Alert className="mb-6">
+              <AlertTitle>Your appointment is cancelled</AlertTitle>
+              <AlertDescription>
+                {current.type.label} on {formatLongDate(current.start)} at{' '}
+                {formatClock(current.start)} is cancelled and the time released. If you would like a
+                new time, choose one below.
+              </AlertDescription>
+            </Alert>
+          )}
+          {current?.state === 'failed' && (
+            <Alert className="mb-6">
+              <AlertTitle>Your last booking did not go through</AlertTitle>
+              <AlertDescription>
+                We could not add it to our calendar, so the time was released. Please choose another
+                time, or ask us to contact you.
+              </AlertDescription>
+            </Alert>
+          )}
+          <TimeScreen
+            key={`${round}-${current?.id ?? 'none'}`}
+            token={token}
+            ctx={ctx}
+            onBooked={() => void context.refetch()}
+          />
+        </div>
+      </>
     )
-  }
-
-  const handleResult = (result: BookResult) => {
-    switch (result.status) {
-      case 'booked':
-      case 'already_booked':
-        void context.refetch()
-        return
-      case 'slot_unavailable':
-        setNotice('That time has just been booked. Pick another time.')
-        setAlternatives(result.alternatives)
-        setSlot(null)
-        setKey(null)
-        setStep('slot')
-        void availability.refetch()
-        return
-      case 'ineligible':
-        setNotice(null)
-        setStep(result.reason === 'site_address_required' ? 'address' : 'type')
-        return
-      case 'unavailable':
-        setNotice('unavailable')
-        return
-    }
   }
 
   return (
     <PublicLayout>
-      <SavedBanner reference={ctx.reference} />
-
-      {cancelledBefore && current && (
-        <Alert className="mb-6">
-          <AlertTitle>Your appointment is cancelled</AlertTitle>
-          <AlertDescription>
-            {current.type.label} on {formatLongDate(current.start)} at {formatClock(current.start)}{' '}
-            is cancelled and the time released. If you would like a new time, choose one below.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {failedBefore && (
-        <Alert className="mb-6">
-          <AlertTitle>Your last booking did not go through</AlertTitle>
-          <AlertDescription>
-            We could not add it to our calendar, so the time was released. Please choose another
-            time, or ask us to contact you.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {notice === 'unavailable' ? (
-        <ContactPath
-          token={token}
-          context={ctx}
-          reason="We could not check our calendar just now. We can ring you instead."
-        />
-      ) : step === 'type' ? (
-        <TypeStep
-          types={types}
-          selected={typeId}
-          onChoose={(id) => {
-            const chosen = types.find((t) => t.id === id)
-            setTypeId(id)
-            setSlot(null)
-            setStep(
-              chosen?.requiresSiteAddress && chosen.eligibility === 'site_address_required'
-                ? 'address'
-                : 'slot',
-            )
-          }}
-        />
-      ) : step === 'address' ? (
-        <AddressStep
-          token={token}
-          initialAddress={ctx.siteAddress}
-          onBack={() => setStep('type')}
-          onDone={() => setStep('slot')}
-        />
-      ) : step === 'slot' ? (
-        <section>
-          <Heading>
-            Choose a time for your {type?.mode === 'on_site' ? 'site visit' : 'call'}
-          </Heading>
-          <p className="text-muted-foreground mt-2">
-            {type?.label}, about {type?.durationMinutes} minutes. Times are Irish time
-            (Europe/Dublin).
-          </p>
-          {notice && (
-            <Alert className="mt-4">
-              <AlertDescription>{notice}</AlertDescription>
-            </Alert>
-          )}
-          {notice && alternatives && alternatives.length > 0 && (
-            <ul aria-label="Nearest free times" className="mt-3 flex flex-col gap-2">
-              {alternatives.slice(0, 3).map((alt) => (
-                <li key={alt.start}>
-                  <Button
-                    type="button"
-                    variant={slot?.start === alt.start ? 'default' : 'outline'}
-                    aria-pressed={slot?.start === alt.start}
-                    className="h-12 w-full justify-start text-base"
-                    onClick={() => {
-                      setSlot(alt)
-                      setKey(null)
-                    }}
-                  >
-                    {formatLongDate(alt.start)}, {formatClock(alt.start)}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-6">
-            {availability.isPending ? (
-              <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading times">
-                <Skeleton className="h-16 w-full" />
-                <Skeleton className="h-32 w-full" />
-              </div>
-            ) : availability.isError ? (
-              <Alert variant="destructive" role="alert">
-                <AlertTitle>We could not load the times</AlertTitle>
-                <AlertDescription>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => void availability.refetch()}
-                  >
-                    Try again
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            ) : availability.data.status === 'unavailable' ? (
-              <ContactPath
-                token={token}
-                context={ctx}
-                reason="We could not check our calendar just now. We can ring you instead."
-              />
-            ) : availability.data.slots.length === 0 ? (
-              <ContactPath
-                token={token}
-                context={ctx}
-                reason="Nothing is free in the next few weeks. We can ring you instead."
-              />
-            ) : (
-              <SlotPicker
-                key={alternatives?.[0]?.start ?? 'all'}
-                slots={availability.data.slots}
-                selected={slot}
-                initialDate={alternatives?.[0]?.date}
-                onSelect={(s) => {
-                  setSlot(s)
-                  setKey(null)
-                }}
-              />
-            )}
-          </div>
-          <div className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="h-12 text-base"
-              onClick={() => {
-                setNotice(null)
-                setAlternatives(null)
-                setStep('type')
-              }}
-            >
-              Back
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="h-12 text-base sm:px-6"
-              disabled={!slot}
-              onClick={() => {
-                setKey((k) => k ?? crypto.randomUUID())
-                setStep('confirm')
-              }}
-            >
-              Continue
-            </Button>
-          </div>
-        </section>
-      ) : (
-        <section>
-          <Heading>Check and book</Heading>
-          {slot && type && (
-            <dl className="mt-6 flex flex-col divide-y rounded-xl border">
-              <div className="flex flex-col gap-0.5 p-4">
-                <dt className="text-muted-foreground text-sm">Appointment</dt>
-                <dd className="text-base">{type.label}</dd>
-              </div>
-              <div className="flex flex-col gap-0.5 p-4">
-                <dt className="text-muted-foreground text-sm">When</dt>
-                <dd className="text-base">
-                  {formatLongDate(slot.start)} at {formatClock(slot.start)}
-                  <span className="text-muted-foreground block text-sm">
-                    Irish time (Europe/Dublin)
-                  </span>
-                </dd>
-              </div>
-              {type.mode === 'on_site' && ctx.siteAddress && (
-                <div className="flex flex-col gap-0.5 p-4">
-                  <dt className="text-muted-foreground text-sm">Where</dt>
-                  <dd className="text-base whitespace-pre-line">{ctx.siteAddress}</dd>
-                </div>
-              )}
-            </dl>
-          )}
-          {book.isError && (
-            <TroubleMessage
-              error={book.error}
-              title="The booking has not gone through"
-              keptNote="Your enquiry is saved and the time is not booked yet."
-            />
-          )}
-          <div className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="h-12 text-base"
-              disabled={book.isPending}
-              onClick={() => setStep('slot')}
-            >
-              Back
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="h-12 text-base sm:px-6"
-              disabled={book.isPending || !slot || !key || !typeId}
-              onClick={() => {
-                if (!slot || !key || !typeId) return
-                book.mutate(
-                  { typeId, start: slot.start, idempotencyKey: key },
-                  { onSuccess: handleResult },
-                )
-              }}
-            >
-              {book.isPending ? 'Booking…' : book.isError ? 'Try again' : 'Book this time'}
-            </Button>
-          </div>
-        </section>
-      )}
+      <output aria-live="polite" className="sr-only">
+        {announcement}
+      </output>
+      {content}
     </PublicLayout>
   )
 }

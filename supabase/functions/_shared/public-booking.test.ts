@@ -294,6 +294,83 @@ describe('public booking: booking', () => {
   })
 })
 
+describe('public booking: form v2 details', () => {
+  const v2 = {
+    appointment_preference: 'phone',
+    project_type: 'kitchen',
+    location: 'Dublin 8',
+    name: 'Mary Byrne',
+    email: 'customer@example.com',
+    phone: '087 123 4567',
+  }
+
+  it('gives the time screen the preference, number and town', async () => {
+    const { db, deps } = setup()
+    db.addEnquiry(v2, TOKEN_A)
+    const ctx = await call(deps, { action: 'context', token: TOKEN_A })
+    expect(ctx.body).toMatchObject({
+      preference: 'phone',
+      phone: '087 123 4567',
+      location: 'Dublin 8',
+      siteAddress: null,
+    })
+    db.addEnquiry(answers(), TOKEN_B)
+    expect((await call(deps, { action: 'context', token: TOKEN_B })).body.preference).toBeNull()
+  })
+
+  it('switches a call to a visit with the street and carries the town forward', async () => {
+    const { db, deps } = setup()
+    db.addEnquiry(v2, TOKEN_A)
+    const missing = await call(deps, {
+      action: 'update_details',
+      token: TOKEN_A,
+      details: { appointment_preference: 'on_site' },
+    })
+    expect(missing.status).toBe(400)
+    const saved = await call(deps, {
+      action: 'update_details',
+      token: TOKEN_A,
+      details: {
+        appointment_preference: 'on_site',
+        site_street: '4 Sample Street',
+        phone: '01 234 5678',
+      },
+    })
+    expect(saved.body).toEqual({ status: 'saved' })
+    const ctx = await call(deps, { action: 'context', token: TOKEN_A })
+    expect(ctx.body).toMatchObject({
+      preference: 'on_site',
+      phone: '01 234 5678',
+      siteAddress: '4 Sample Street, Dublin 8',
+    })
+    const booked = await call(deps, {
+      action: 'book',
+      token: TOKEN_A,
+      typeId: 'site_visit',
+      start: TUESDAY_10,
+      idempotencyKey: key(30),
+    })
+    expect(booked.body.booking).toMatchObject({ address: '4 Sample Street, Dublin 8' })
+    // Once booked, the details are fixed here (the calendar event carries them).
+    const late = await call(deps, {
+      action: 'update_details',
+      token: TOKEN_A,
+      details: { phone: '087 000 0000' },
+    })
+    expect(late.status).toBe(409)
+  })
+
+  it('refuses unknown or empty details', async () => {
+    const { db, deps } = setup()
+    db.addEnquiry(v2, TOKEN_A)
+    for (const details of [{}, { email: 'x@example.com' }, { appointment_preference: 'video' }]) {
+      expect((await call(deps, { action: 'update_details', token: TOKEN_A, details })).status).toBe(
+        400,
+      )
+    }
+  })
+})
+
 describe('calendar event creation', () => {
   it('a timeout after Google created the event is reconciled, not duplicated', async () => {
     const { db, calendar, deps } = setup()

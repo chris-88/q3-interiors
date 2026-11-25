@@ -22,8 +22,8 @@ export function ConfirmationPage() {
           This page shows your reference after you send an enquiry. If you have not sent one yet,
           you can start now.
         </p>
-        <Link to="/enquire" className={buttonVariants({ size: 'lg', className: 'mt-6 h-12' })}>
-          Tell us about your project
+        <Link to="/" className={buttonVariants({ size: 'lg', className: 'mt-6 h-12' })}>
+          Book a free call or visit
         </Link>
       </PublicLayout>
     )

@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router'
 import { useEnquiries, useFormVersions, type EnquirySummary } from '@/api/enquiries'
+import { EnquiryFlags } from '@/components/staff/enquiry-flags'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { StatusBadge } from '@/components/staff/status-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -20,6 +21,16 @@ function projectSummary(enquiry: EnquirySummary, form: FormDefinition | undefine
   }
   const field = form ? findField(form, 'project_type') : undefined
   return (field ? formatAnswer(field, type) : null) ?? (typeof type === 'string' ? type : 'Project')
+}
+
+/** Form v2's project follow-up (kitchen layout or rooms), for the list line. */
+function projectFollowUp(enquiry: EnquirySummary, form: FormDefinition | undefined): string | null {
+  for (const id of ['kitchen_layout', 'rooms_involved']) {
+    const field = form ? findField(form, id) : undefined
+    const value = field ? formatAnswer(field, enquiry.answers[id]) : null
+    if (value) return id === 'kitchen_layout' ? `Layout: ${value}` : `Rooms: ${value}`
+  }
+  return null
 }
 
 export function EnquiryListPage() {
@@ -92,8 +103,17 @@ export function EnquiryListPage() {
                       <StatusBadge status={enquiry.status} />
                     </div>
                     <span className="text-muted-foreground truncate text-sm">
-                      {typeof location === 'string' ? location : 'No area given'}
+                      {[
+                        typeof location === 'string' ? location : 'No area given',
+                        projectFollowUp(enquiry, form),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </span>
+                    <EnquiryFlags
+                      answers={enquiry.answers}
+                      contactRequestedAt={enquiry.contact_requested_at}
+                    />
                     <span className="text-muted-foreground text-xs">
                       <span className="font-mono">{enquiry.reference}</span> ·{' '}
                       <time dateTime={enquiry.submitted_at}>

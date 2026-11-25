@@ -81,10 +81,21 @@ describe('wording blocks', () => {
       ctx: ctx(),
       wording: { 'booking_confirmation.closing': 'Parking is on the road.' },
     })
-    expect(m.text).toMatch(/Parking is on the road\.\n\nYour enquiry reference is Q3-ABC123\./)
+    expect(m.text).toMatch(/Parking is on the road\.\n\nQ3 Interiors/)
     expect(renderMessage('booking_confirmation', { ...base, ctx: ctx() }).text).toMatch(
-      /Or reply to this email\.\n\nYour enquiry reference/,
+      /price range\. It does not commit you to a quote, and it is not a start date\.\n\nQ3 Interiors/,
     )
+  })
+
+  it('lead the confirmation with the time, length and what will happen, then the reference', () => {
+    const visit = renderMessage('booking_confirmation', { ...base, ctx: ctx() }).text
+    expect(visit).toMatch(
+      /Thursday 4 March 2027 at 10:00 \(Irish time\)\nAbout 60 minutes\n\nPat will meet you at 12 Example Road\.\n\nYour enquiry reference is Q3-ABC123\.\n\nChange time: https:\/\/q3.example\/#\/book\/tok\?do=change\n\nCancel appointment: https:\/\/q3.example\/#\/book\/tok\?do=cancel/,
+    )
+    const call = renderMessage('booking_confirmation', { ...base, ctx: ctx('phone') })
+    expect(call.text).toContain('Pat will ring you on 087 123 4567.')
+    expect(call.html).toContain('>Change time</a>')
+    expect(call.html).toContain('>Cancel appointment</a>')
   })
 
   it.each([
@@ -106,7 +117,7 @@ describe('wording blocks', () => {
       expect(m.text).toContain('Q3-ABC123')
       expect(m.text).toContain('https://q3.example/#/book/tok')
       expect(m.text).toContain('How we use your details: https://q3.example/#/privacy')
-      expect(m.html).toContain('href="https://q3.example/#/book/tok"')
+      expect(m.html).toMatch(/href="https:\/\/q3.example\/#\/book\/tok(\?do=change)?"/)
       expect(m.html).toContain('href="https://q3.example/#/privacy"')
       // No markup gets through from a block.
       expect(m.html).not.toContain('<script>')
@@ -114,6 +125,45 @@ describe('wording blocks', () => {
       expect(m.html).toContain('&lt;script&gt;')
     },
   )
+
+  it('give staff the v2 choice and follow-ups, and mark a contact request', () => {
+    const summary = {
+      id: 'e1',
+      reference: 'Q3-ABC123',
+      answers: {
+        appointment_preference: 'on_site',
+        project_type: 'kitchen',
+        kitchen_layout: 'guidance',
+        location: 'Dublin 8',
+      },
+      schema: {
+        steps: [
+          {
+            fields: [
+              {
+                id: 'appointment_preference',
+                options: [{ value: 'on_site', label: 'Site visit' }],
+              },
+              { id: 'project_type', options: [{ value: 'kitchen', label: 'Kitchen' }] },
+              {
+                id: 'kitchen_layout',
+                options: [{ value: 'guidance', label: 'I’d like guidance' }],
+              },
+            ],
+          },
+        ],
+      },
+      contact_request_reason: 'No suitable time',
+    } as unknown as EnquirySummary
+    const alert = renderStaffAlert('staff_callback_request', {
+      summary,
+      staffUrl: 'https://staff.example/#/enquiries/e1',
+    })
+    expect(alert.subject).toBe('Call-back requested Q3-ABC123: Kitchen')
+    expect(alert.text).toContain(
+      'Project: Kitchen\nArea: Dublin 8\nAsked for: Site visit\nKitchen layout: I’d like guidance\nWhy: No suitable time',
+    )
+  })
 
   it('apply to staff alerts too, with the fixed details kept', () => {
     const summary = {

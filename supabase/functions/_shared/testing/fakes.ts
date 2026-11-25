@@ -270,6 +270,46 @@ export class FakeDb implements Db {
     e.site_details = answers
     this.events.push({ enquiryId, kind: 'site_details_added' })
   }
+  /**
+   * Mirrors `private.update_enquiry_details`: a v2 enquiry (one with an appointment preference)
+   * takes all four keys into its answers and re-derives its site details from the address lines;
+   * a v1 enquiry takes the phone, and a street goes straight into its site details.
+   */
+  async updateDetails(enquiryId: string, details: Record<string, string>) {
+    const invalid = () => Object.assign(new Error('invalid'), { code: '22023' })
+    const e = this.enquiries.get(enquiryId)!
+    const v2 = typeof e.answers.appointment_preference === 'string'
+    const next: Answers = { ...e.answers }
+    for (const [key, value] of Object.entries(details)) {
+      if (!['phone', 'appointment_preference', 'site_street', 'site_unit'].includes(key))
+        throw invalid()
+      if (key === 'phone' || v2) next[key] = value.trim()
+    }
+    if (!/^\+?[0-9 ()-]{7,30}$/.test(String(next.phone ?? ''))) throw invalid()
+    const street = v2 ? next.site_street : details.site_street
+    if (v2 && next.appointment_preference === 'on_site' && String(street ?? '').length < 4)
+      throw invalid()
+    if (v2 && next.appointment_preference !== 'on_site') {
+      delete next.site_street
+      delete next.site_unit
+    }
+    if (!next.site_unit) delete next.site_unit
+    if (JSON.stringify(next) !== JSON.stringify(e.answers)) {
+      e.answers = next
+      this.events.push({ enquiryId, kind: 'details_updated' })
+    }
+    if (typeof street === 'string' && street.trim() !== '') {
+      const unit = v2 ? next.site_unit : details.site_unit
+      const address = [street, unit, e.answers.location]
+        .map((p) => (typeof p === 'string' ? p.trim() : ''))
+        .filter(Boolean)
+        .join(', ')
+      if (e.site_details?.site_address !== address) {
+        e.site_details = { ...(e.site_details ?? {}), site_address: address }
+        this.events.push({ enquiryId, kind: 'site_details_added' })
+      }
+    }
+  }
   async requestContact(enquiryId: string, reason: string) {
     this.enquiries.get(enquiryId)!.contact_requested_at = new Date(this.now()).toISOString()
     this.events.push({ enquiryId, kind: 'contact_requested', detail: reason })

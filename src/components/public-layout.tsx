@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { buttonVariants } from '@/components/ui/button'
 import { usePublicBusiness } from '@/api/business'
@@ -62,25 +62,87 @@ function Footer() {
 }
 
 /**
- * Shell for customer-facing pages. `width="form"` (default) keeps a 640px reading column;
- * `width="page"` lets the page lay out full-width sections itself (the landing page).
+ * The form screens' footer: small Contact and Privacy links instead of the black panel. Contact
+ * opens the confirmed business details in place; with none confirmed it is left out.
+ */
+function FormFooter() {
+  const business = usePublicBusiness()
+  const [open, setOpen] = useState(false)
+  const panelId = useId()
+  const phone = business.contact_phone
+  const email = business.contact_email
+  const hasContact = Boolean(phone || email)
+  return (
+    <footer className="border-rule border-t">
+      <div className="max-w-form mx-auto w-full px-6 py-4">
+        <nav aria-label="Help" className="flex flex-wrap items-center gap-x-6">
+          {hasContact && (
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={panelId}
+              onClick={() => setOpen((v) => !v)}
+              className="text-muted-foreground inline-flex min-h-12 items-center text-sm underline underline-offset-4"
+            >
+              Contact
+            </button>
+          )}
+          <Link
+            to="/privacy"
+            className="text-muted-foreground inline-flex min-h-12 items-center text-sm underline underline-offset-4"
+          >
+            Privacy
+          </Link>
+        </nav>
+        {hasContact && open && (
+          <div id={panelId} className="text-ink flex flex-col gap-1 pb-2 text-sm">
+            <p className="font-medium">{business.trading_name}</p>
+            {phone && (
+              <p>
+                Phone:{' '}
+                <a
+                  className="underline underline-offset-4"
+                  href={`tel:${phone.replace(/[^\d+]/g, '')}`}
+                >
+                  {phone}
+                </a>
+              </p>
+            )}
+            {email && (
+              <p>
+                Email:{' '}
+                <a className="underline underline-offset-4" href={`mailto:${email}`}>
+                  {email}
+                </a>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </footer>
+  )
+}
+
+/**
+ * Shell for customer-facing pages. `width="form"` (default) keeps a 640px reading column with
+ * 24px side margins and the small Contact/Privacy footer (the journey's form screens);
+ * `width="page"` lets the page lay out full-width sections itself, with the black footer (the
+ * landing page); `width="prose"` is a reading page (privacy) with the black footer.
  */
 export function PublicLayout({
   children,
   width = 'form',
 }: {
   children: ReactNode
-  width?: 'form' | 'page'
+  width?: 'form' | 'page' | 'prose'
 }) {
   const { pathname } = useLocation()
-  // The header's enquiry action is for browsing pages, not the journey itself.
-  const showAction = pathname === '/' || pathname === '/privacy'
   return (
     <div className="bg-background text-body text-foreground flex min-h-svh flex-col">
       <header className="border-rule border-b">
         <div className="max-w-page mx-auto flex w-full items-center justify-between gap-4 px-3 md:px-6">
           <HomeLink />
-          {showAction && (
+          {pathname === '/' && (
             <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
               <Link
                 to="/"
@@ -89,11 +151,12 @@ export function PublicLayout({
               >
                 How it works
               </Link>
-              <Link
-                to="/enquire"
-                className={cn(buttonVariants({ size: 'lg' }), 'h-12 px-6 text-base')}
-              >
-                Tell us about your project
+            </nav>
+          )}
+          {pathname === '/privacy' && (
+            <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
+              <Link to="/" className={cn(buttonVariants({ size: 'lg' }), 'h-12 px-6 text-base')}>
+                Book a free call or visit
               </Link>
             </nav>
           )}
@@ -102,12 +165,12 @@ export function PublicLayout({
       <main
         className={cn(
           'flex w-full flex-1 flex-col',
-          width === 'form' && 'max-w-form mx-auto px-5 pt-8 pb-16 md:pt-12',
+          width !== 'page' && 'max-w-form mx-auto px-6 pt-6 pb-12 md:pt-10',
         )}
       >
         {children}
       </main>
-      <Footer />
+      {width === 'form' ? <FormFooter /> : <Footer />}
     </div>
   )
 }

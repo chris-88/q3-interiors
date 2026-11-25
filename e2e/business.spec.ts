@@ -49,14 +49,17 @@ test('business details reach the public pages, and stay available when the serve
   const footer = page.getByRole('contentinfo')
   await expect(footer).toContainText('Contact: 01 555 0100 · hello@example.com')
   await expect(footer).toContainText('We work in Dublin and north Kildare.')
+  // On the form screens, Contact opens the confirmed details in place.
+  await page.getByRole('link', { name: /^Phone call/ }).click()
+  await page.getByRole('button', { name: 'Contact' }).click()
+  await expect(page.getByRole('contentinfo')).toContainText('Phone: 01 555 0100')
+  await expect(page.getByRole('contentinfo')).toContainText('Email: hello@example.com')
   await page.goto('/#/privacy')
   await expect(page.getByText('Q3 Interiors Test Ltd, trading as Q3 Interiors, is')).toBeVisible()
   await expect(page.getByText('Contact us at privacy@example.com')).toBeVisible()
 
   // The server goes away: the last copy this browser saw still gives the customer a way through.
   await page.route('**/rest/v1/rpc/**', (route) => route.abort('internetdisconnected'))
-  await page.goto('/#/enquire')
-  await page.reload()
   await submitEnquiry(page)
   const alert = page.getByRole('alert').filter({ hasText: 'could not reach our system' })
   await expect(alert).toContainText('You can also contact us on 01 555 0100 or hello@example.com.')

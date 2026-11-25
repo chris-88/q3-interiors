@@ -1,24 +1,31 @@
 import { useEffect, useRef } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router'
+import { minutesFor, usePublicAppointmentTypes } from '@/api/appointment-types'
 import { PublicLayout } from '@/components/public-layout'
-import { buttonVariants } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { ROUTE_COPY, ROUTES, routeTitle, type Route } from '@/lib/journey'
 
 /*
- * Landing page per the brand guide, section 4: a text-led introduction (no project photography
- * until approved photos exist, so no "Our work" section or link), how it works from the real
- * journey, and the action repeated at the end.
+ * Landing page, enquiry form v2: the appointment choice comes first. Each choice starts its
+ * route at once (`/#/enquire?type=…`); lengths come from the live appointment types. Campaign
+ * tags on the landing URL are captured by `initAttribution` at load, as before.
  */
+
+/**
+ * A real Q3 project photo goes under the choices once one is approved (brand rule: no project
+ * photography until approved photos exist). Set it here; while null nothing is shown, not even
+ * an empty slot. `src` should be a file in `public/`.
+ */
+const LANDING_PHOTO: { src: string; alt: string; width: number; height: number } | null = null
 
 const steps = [
   {
-    title: 'Tell us about your project',
-    body: 'Describe the work you have in mind, where it is and when you would like it done. It takes two or three minutes and there is no account to create.',
+    title: 'Choose a call or a site visit',
+    body: 'A phone call to talk through your plans, or a visit so we can see the space and measure up. Both are free.',
   },
   {
-    title: 'Arrange a call or a site visit',
-    body: 'Choose a time for a phone call to talk it through, or for us to visit, see the space and take measurements.',
+    title: 'Tell us about the project and pick a time',
+    body: 'A few quick questions, then choose a time that suits you. There is no account to create.',
   },
   {
     title: 'Discuss the estimate',
@@ -26,18 +33,17 @@ const steps = [
   },
 ]
 
-function MainAction({ className }: { className?: string }) {
+function RouteChoice({ route, minutes }: { route: Route; minutes: number | null }) {
   return (
     <Link
-      to="/enquire"
-      className={cn(
-        buttonVariants({ size: 'lg' }),
-        'h-auto min-h-12 px-6 py-3 text-base whitespace-normal',
-        className,
-      )}
+      to={`/enquire?type=${route}`}
+      className="border-action bg-background hover:bg-soft flex min-h-12 items-center gap-4 rounded-md border-2 px-5 py-4 transition-colors duration-150 motion-reduce:transition-none"
     >
-      Tell us about your project
-      <ArrowRight data-icon="inline-end" aria-hidden="true" />
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="text-title text-ink font-medium">{routeTitle(route, minutes)}</span>
+        <span className="text-muted-foreground">{ROUTE_COPY[route].blurb}</span>
+      </span>
+      <ArrowRight className="text-ink size-5 shrink-0" aria-hidden="true" />
     </Link>
   )
 }
@@ -45,6 +51,10 @@ function MainAction({ className }: { className?: string }) {
 export function LandingPage() {
   const location = useLocation()
   const howRef = useRef<HTMLHeadingElement>(null)
+  const types = usePublicAppointmentTypes()
+  // A route with no active appointment type is left out, once we know (never both).
+  const offered = ROUTES.filter((r) => !types.data || minutesFor(types.data, r) !== null)
+  const routes = offered.length > 0 ? offered : ROUTES
 
   // "How it works" in the header links here with state; move to the section and its heading.
   useEffect(() => {
@@ -57,22 +67,33 @@ export function LandingPage() {
   return (
     <PublicLayout width="page">
       <section aria-labelledby="intro-heading" className="bg-soft">
-        <div className="max-w-page mx-auto flex flex-col gap-6 px-5 py-12 md:px-10 md:py-24">
-          <h1 id="intro-heading" className="text-display text-ink max-w-prose font-medium">
-            Planning a home renovation?
+        <div className="max-w-page mx-auto flex flex-col gap-6 px-6 py-10 md:px-10 md:py-20">
+          <h1
+            id="intro-heading"
+            className="text-display text-ink max-w-prose font-medium break-words hyphens-auto"
+          >
+            Let’s talk about your renovation.
           </h1>
-          <p className="text-body text-ink max-w-prose">
-            We coordinate the trades, visit your home and prepare an estimate for the work you have
-            in mind.
-          </p>
-          <div>
-            <MainAction />
-          </div>
+          <nav aria-label="Book a free appointment" className="max-w-form flex flex-col gap-3">
+            {routes.map((route) => (
+              <RouteChoice key={route} route={route} minutes={minutesFor(types.data, route)} />
+            ))}
+          </nav>
+          <p className="text-body text-ink font-medium">Both are free.</p>
+          {LANDING_PHOTO && (
+            <img
+              src={LANDING_PHOTO.src}
+              alt={LANDING_PHOTO.alt}
+              width={LANDING_PHOTO.width}
+              height={LANDING_PHOTO.height}
+              className="max-w-form h-auto w-full rounded-md"
+            />
+          )}
         </div>
       </section>
 
       <section aria-labelledby="how-it-works" className="bg-background">
-        <div className="max-w-page mx-auto px-5 py-12 md:px-10 md:py-24">
+        <div className="max-w-page mx-auto px-6 py-12 md:px-10 md:py-24">
           <h2
             id="how-it-works"
             ref={howRef}
@@ -101,15 +122,6 @@ export function LandingPage() {
             A site visit is for us to assess and price the work. Booking one does not commit you to
             a quote, and it is not a start date.
           </p>
-        </div>
-      </section>
-
-      <section aria-labelledby="final-heading" className="border-rule bg-background border-t">
-        <div className="max-w-page mx-auto flex flex-col items-start gap-6 px-5 py-12 md:px-10 md:py-16">
-          <h2 id="final-heading" className="text-section text-ink font-medium">
-            Ready to tell us about it?
-          </h2>
-          <MainAction />
         </div>
       </section>
     </PublicLayout>

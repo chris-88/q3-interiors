@@ -23,10 +23,11 @@ expect_absent dist 'request_ad_change'
 expect_absent dist 'Download the image'
 expect_absent dist 'Download the video'
 # The customer journey must not reach the staff site.
-expect_absent dist-staff 'Planning a home renovation?'
+expect_absent dist-staff 'Show us the space so we can measure up'
+expect_absent dist-staff 'What work are you planning?'
 expect_absent dist-staff 'What kind of project is it?'
 # Each has its own.
-expect_present dist 'Planning a home renovation?'
+expect_present dist 'Show us the space so we can measure up'
 expect_present dist-staff 'Who takes bookings'
 expect_present dist-staff 'ad_variants'
 expect_present dist-staff/CNAME 'staff.q3interiors.ie'

@@ -83,6 +83,16 @@ check() { # what, expected, actual
 check "public-booking refuses an unknown token" '{"error":"invalid_token"}' \
   "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
     -d '{"action":"context","token":"not-a-real-token-0000000000"}')"
+check "public-booking refuses a details change without a valid token" '{"error":"invalid_token"}' \
+  "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
+    -d '{"action":"update_details","token":"not-a-real-token-0000000000","details":{"phone":"0871234567"}}')"
+types="$(curl -s -X POST "$rest/rpc/public_appointment_types" "${headers[@]}" -d '{}')"
+if [[ "$types" == "["*"duration_minutes"* && "$types" != *what_to_prepare* && "$types" != *buffer* ]]; then
+  echo "ok    anon reads only the appointment lengths"
+else
+  echo "FAIL  public_appointment_types: ${types:0:160}"
+  fail=1
+fi
 check "booking-worker refuses a call without the worker secret" '{"error":"forbidden"}' \
   "$(curl -s -X POST "$functions/booking-worker" "${headers[@]}" -d '{}')"
 check "calendar-admin refuses a caller who is not staff" '{"error":"forbidden"}' \

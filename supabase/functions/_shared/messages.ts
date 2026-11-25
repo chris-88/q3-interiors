@@ -39,7 +39,7 @@ export const WORDING = {
   },
   'booking_confirmation.closing': {
     label: 'Extra paragraph (optional)',
-    where: 'Booking confirmation email, before the reference',
+    where: 'Booking confirmation email, before the sign-off',
     default: '',
     max: 600,
     optional: true,
@@ -206,6 +206,8 @@ type Draft = {
   /** Paragraphs; each is one or more lines. */
   paragraphs: string[][]
   action?: { label: string; url: string }
+  /** Further links written under the button (e.g. "Cancel appointment"). */
+  links?: { label: string; url: string }[]
   after?: string[][]
 }
 
@@ -225,6 +227,7 @@ function toText(d: Draft, footer: string[]): string {
   const blocks = [
     ...d.paragraphs.map((p) => p.join('\n')),
     ...(d.action ? [`${d.action.label}: ${d.action.url}`] : []),
+    ...(d.links ?? []).map((l) => `${l.label}: ${l.url}`),
     ...(d.after ?? []).map((p) => p.join('\n')),
     ...footer,
   ]
@@ -243,6 +246,12 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
   const button = d.action
     ? `<p style="margin:8px 0 24px"><a href="${escapeHtml(d.action.url)}" style="display:inline-block;background:${BRAND.action};color:#ffffff;font:500 16px/1.4 Roboto,Arial,sans-serif;text-decoration:none;padding:12px 24px;border-radius:4px">${escapeHtml(d.action.label)}</a></p>`
     : ''
+  const links = (d.links ?? [])
+    .map(
+      (l) =>
+        `<p style="margin:0 0 24px;font:16px/1.55 Roboto,Arial,sans-serif"><a href="${escapeHtml(l.url)}" style="color:${BRAND.action}">${escapeHtml(l.label)}</a></p>`,
+    )
+    .join('\n')
   const privacy = opts.privacyUrl
     ? `<p style="margin:24px 0 0;font:14px/1.5 Roboto,Arial,sans-serif;color:${BRAND.muted}"><a href="${escapeHtml(opts.privacyUrl)}" style="color:${BRAND.action}">How we use your details</a></p>`
     : ''
@@ -250,7 +259,7 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
 <body style="margin:0;padding:0;background:#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff"><tr><td style="padding:24px 16px">
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto"><tr><td>
-${badge}${d.paragraphs.map(p).join('\n')}${button}${(d.after ?? []).map(p).join('\n')}${privacy}
+${badge}${d.paragraphs.map(p).join('\n')}${button}${links}${(d.after ?? []).map(p).join('\n')}${privacy}
 </td></tr></table></td></tr></table></body></html>`
 }
 
@@ -285,8 +294,7 @@ function parts(input: MessageInput) {
       ctx.type.mode === 'phone'
         ? [`${staff} will ring you on ${phone}.`]
         : [
-            `${staff} will visit you at:`,
-            typeof address === 'string' ? address : 'the address you gave us',
+            `${staff} will meet you at ${typeof address === 'string' ? address : 'the address you gave us'}.`,
           ],
     reference: ctx.enquiry.reference,
   }
@@ -319,19 +327,31 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
 
   switch (template) {
     case 'booking_confirmation':
+      // Form v2 receipt order: date, time and length, what will happen, then the reference;
+      // "Change time" and "Cancel appointment" follow.
       return compose(
         {
           subject: `Booked: your ${p.event} on ${p.whenShort}`,
           paragraphs: [
             [p.hello],
             [block(wording, 'booking_confirmation.intro', values)],
-            [`When: ${p.when}`, `Length: about ${ctx.type.duration_minutes} minutes`],
+            [p.when, `About ${ctx.type.duration_minutes} minutes`],
             p.where,
+            [`Your enquiry reference is ${p.reference}.`],
+          ],
+          action: input.manageUrl
+            ? { label: 'Change time', url: `${input.manageUrl}?do=change` }
+            : undefined,
+          links: input.manageUrl
+            ? [{ label: 'Cancel appointment', url: `${input.manageUrl}?do=cancel` }]
+            : undefined,
+          after: [
+            ...(change ? ringUs(input) : []),
             [`To prepare: ${ctx.type.what_to_prepare}`],
             [disclaimer],
+            ...closing('booking_confirmation.closing'),
+            [block(wording, 'sign_off')],
           ],
-          action: change,
-          after: [...(change ? ringUs(input) : []), ...reference('booking_confirmation.closing')],
         },
         input,
       )
@@ -427,6 +447,16 @@ export function renderStaffAlert(
   const project = other ?? choiceLabel(summary, 'project_type') ?? 'Project'
   const area = typeof summary.answers.location === 'string' ? summary.answers.location : 'not given'
   const timing = choiceLabel(summary, 'timing')
+  // Form v2: the call-or-visit choice and the project follow-ups (no contact details).
+  const preference = choiceLabel(summary, 'appointment_preference')
+  const layout = choiceLabel(summary, 'kitchen_layout')
+  const rooms =
+    typeof summary.answers.rooms_involved === 'string' ? summary.answers.rooms_involved : null
+  const extra = [
+    ...(preference ? [`Asked for: ${preference}`] : []),
+    ...(layout ? [`Kitchen layout: ${layout}`] : []),
+    ...(rooms ? [`Rooms: ${rooms}`] : []),
+  ]
   const action = { label: 'Open the enquiry', url: input.staffUrl }
   if (template === 'staff_new_enquiry') {
     return compose(
@@ -438,6 +468,7 @@ export function renderStaffAlert(
             `Reference: ${summary.reference}`,
             `Project: ${project}`,
             `Area: ${area}`,
+            ...extra,
             ...(timing ? [`Timing: ${timing}`] : []),
           ],
         ],
@@ -458,6 +489,7 @@ export function renderStaffAlert(
           `Reference: ${summary.reference}`,
           `Project: ${project}`,
           `Area: ${area}`,
+          ...extra,
           ...(summary.contact_request_reason ? [`Why: ${summary.contact_request_reason}`] : []),
         ],
       ],

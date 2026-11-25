@@ -291,16 +291,17 @@ describe('messages', () => {
     })
     expect(m.subject).toMatch(/^Booked: your call on /)
     // Plain text keeps every link written out.
-    expect(m.text).toContain('Change or cancel: https://q3.example/#/book/t')
+    expect(m.text).toContain('Change time: https://q3.example/#/book/t?do=change')
+    expect(m.text).toContain('Cancel appointment: https://q3.example/#/book/t?do=cancel')
     expect(m.text).toContain('How we use your details: https://q3.example/#/privacy')
     expect(m.text).not.toContain('<a ')
     // HTML: the wordmark from the site, one black button for the main action, the privacy link.
     expect(m.html).toContain('src="https://q3.example/brand/q3-email-logo.png"')
     expect(m.html).toContain('alt="Q3 Interiors"')
     expect(m.html).toMatch(
-      /<a href="https:\/\/q3.example\/#\/book\/t" style="[^"]*background:#000000/,
+      /<a href="https:\/\/q3.example\/#\/book\/t\?do=change" style="[^"]*background:#000000/,
     )
-    expect(m.html).toContain('>Change or cancel</a>')
+    expect(m.html).toContain('>Change time</a>')
     expect(m.html).toContain('href="https://q3.example/#/privacy"')
     expect(m.html).toContain('Hello &lt;b&gt;Ann&lt;/b&gt;,')
     expect(m.html).not.toContain('<b>Ann</b>')
@@ -315,6 +316,7 @@ describe('messages', () => {
     expect(m.subject).toMatch(/^Booked: your site visit on /)
     expect(m.text).toContain('give you an estimate, which is a price range')
     expect(m.text).toContain('does not commit you to a quote')
-    expect(m.html).not.toContain('Change or cancel')
+    expect(m.html).not.toContain('Change time')
+    expect(m.html).not.toContain('Cancel appointment')
   })
 })

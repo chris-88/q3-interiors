@@ -41,6 +41,12 @@ export type CustomerBooking = z.infer<typeof bookingSchema>
 const contextSchema = z.object({
   reference: z.string(),
   firstName: z.string().nullable(),
+  // Defaults keep this page working against a function deployed before form v2.
+  phone: z.string().nullable().default(null),
+  location: z.string().nullable().default(null),
+  preference: z.enum(['phone', 'on_site']).nullable().default(null),
+  siteStreet: z.string().nullable().default(null),
+  siteUnit: z.string().nullable().default(null),
   siteAddress: z.string().nullable(),
   contactRequested: z.boolean(),
   calendarAvailable: z.boolean(),
@@ -120,19 +126,66 @@ export function useAvailability(token: string, typeId: string | null) {
   })
 }
 
-export function useSaveSiteDetails(token: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (answers: Record<string, string>) =>
-      call({ action: 'site_details', token, answers }, z.object({ status: z.literal('saved') })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['booking', token, 'context'] }),
-  })
+export type DetailsPatch = {
+  phone?: string
+  appointment_preference?: 'phone' | 'on_site'
+  site_street?: string
+  site_unit?: string
 }
 
-export function useBook(token: string) {
+/** The server refused the details as invalid: the field needs attention, not a retry. */
+export class InvalidDetailsError extends Error {
+  constructor() {
+    super('The details were not accepted')
+    this.name = 'InvalidDetailsError'
+  }
+}
+
+/** The time screen's editable line, and a change between call and visit, before booking. */
+export async function updateDetails(token: string, details: DetailsPatch): Promise<void> {
+  try {
+    await call(
+      { action: 'update_details', token, details },
+      z.object({ status: z.literal('saved') }),
+    )
+  } catch (error) {
+    if (error instanceof ApiError && error.code === '400') throw new InvalidDetailsError()
+    throw error
+  }
+}
+
+/**
+ * The time screen's one action: save any changed details (number, address, call or visit), then
+ * book. The booking idempotency key makes a double tap or a retry land on the same booking.
+ */
+export function useCommitBooking(token: string) {
   return useMutation({
-    mutationFn: (input: { typeId: string; start: string; idempotencyKey: string }) =>
-      call({ action: 'book', token, ...input }, bookResultSchema),
+    mutationFn: async (input: {
+      details: DetailsPatch | null
+      typeId: string
+      start: string
+      idempotencyKey: string
+    }) => {
+      if (input.details) {
+        try {
+          await updateDetails(token, input.details)
+        } catch (error) {
+          // 409: a booking already exists (a retry after a lost reply). The book call below
+          // returns it through the same idempotency key.
+          if (!(error instanceof ApiError && error.code === '409')) throw error
+        }
+      }
+      return call(
+        {
+          action: 'book',
+          token,
+          typeId: input.typeId,
+          start: input.start,
+          idempotencyKey: input.idempotencyKey,
+        },
+        bookResultSchema,
+      )
+    },
     retry: false,
   })
 }

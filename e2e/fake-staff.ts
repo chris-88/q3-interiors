@@ -13,8 +13,9 @@ import {
 export type FakeStaff = StaffAccount & { created_at: string }
 
 /** The two local builds under test (see playwright.config.ts). */
-export const PUBLIC_URL = 'http://127.0.0.1:4173'
-export const STAFF_URL_LOCAL = 'http://127.0.0.1:4174'
+const PORT = Number(process.env.E2E_PORT ?? 4173)
+export const PUBLIC_URL = `http://127.0.0.1:${PORT}`
+export const STAFF_URL_LOCAL = `http://127.0.0.1:${PORT + 1}`
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url')
 /** An unsigned token in JWT shape: the browser only reads its claims. */

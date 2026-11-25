@@ -20,6 +20,10 @@ const variantSchema = z.object({
   html_path: z.string(),
   export_path: z.string(),
   export_bytes: z.number().nullable(),
+  /** image: a PNG (still ad); video: an MP4 with its loop length and a poster PNG. */
+  export_type: z.enum(['image', 'video']).default('image'),
+  duration_ms: z.number().nullable().default(null),
+  poster_path: z.string().nullable().default(null),
 })
 
 const versionSchema = z.object({
@@ -93,7 +97,14 @@ const listSchema = z.array(
     name: z.string(),
     status,
     created_at: z.string(),
-    ad_versions: z.array(z.object({ version: z.number() })),
+    ad_versions: z.array(
+      z.object({
+        version: z.number(),
+        ad_variants: z
+          .array(z.object({ duration_ms: z.number().nullable().default(null) }))
+          .default([]),
+      }),
+    ),
     ad_requests: z.array(z.object({ state: z.string() })).default([]),
   }),
 )
@@ -106,7 +117,9 @@ export function useAds() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ads')
-        .select('id, name, status, created_at, ad_versions(version), ad_requests(state)')
+        .select(
+          'id, name, status, created_at, ad_versions(version, ad_variants(duration_ms)), ad_requests(state)',
+        )
         .order('created_at', { ascending: false })
       if (error) throw toApiError(error)
       return listSchema.parse(data)
@@ -121,7 +134,7 @@ export function useAd(id: string) {
       const { data, error } = await supabase
         .from('ads')
         .select(
-          'id, name, status, created_at, created_by_name, campaign_creatives(label, slug, campaigns(name, slug, utm_source, utm_medium, landing_route)), ad_versions(id, version, caption, headline, button_label, notes, created_at, approved_at, approved_by_name, ad_variants(id, size, width, height, html_path, export_path, export_bytes)), ad_requests(id, version_id, size, body, state, done_in_version, created_by, created_by_name, created_at)',
+          'id, name, status, created_at, created_by_name, campaign_creatives(label, slug, campaigns(name, slug, utm_source, utm_medium, landing_route)), ad_versions(id, version, caption, headline, button_label, notes, created_at, approved_at, approved_by_name, ad_variants(id, size, width, height, html_path, export_path, export_bytes, export_type, duration_ms, poster_path)), ad_requests(id, version_id, size, body, state, done_in_version, created_by, created_by_name, created_at)',
         )
         .eq('id', id)
         .maybeSingle()

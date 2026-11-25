@@ -21,6 +21,7 @@ expect_absent dist 'staff-accounts'
 expect_absent dist 'ad_variants'
 expect_absent dist 'request_ad_change'
 expect_absent dist 'Download the image'
+expect_absent dist 'Download the video'
 # The customer journey must not reach the staff site.
 expect_absent dist-staff 'Planning a home renovation?'
 expect_absent dist-staff 'What kind of project is it?'

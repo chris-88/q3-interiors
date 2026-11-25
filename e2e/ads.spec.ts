@@ -171,3 +171,120 @@ test('the staff header shows the wordmark with a Staff label and the Ads tab fit
   ).toBeVisible()
   await shot(page, 'a4-staff-header')
 })
+
+// An animated ad: CSS moves the dot; the script must not run in the frame.
+const animatedHtml = `<!doctype html><html><head><style>
+  body{margin:0} .ad{width:1440px;height:100vh;position:relative;background:#fff;color:#171717;
+  font:500 120px sans-serif} .dot{position:absolute;left:100px;top:600px;width:200px;height:200px;
+  background:#000;animation:move 2s linear infinite}
+  @keyframes move{50%{transform:translateX(900px)}}</style>
+  <script>parent.document.title="taken"</script></head>
+  <body><main class="ad">Animated<div class="dot"></div></main></body></html>`
+const MP4 = Buffer.from('00000020667479706973366d', 'hex')
+
+test('an animated ad plays in the frame without scripts, pauses, replays and downloads as video', async ({
+  page,
+}) => {
+  const world = await installFakeStaff(page)
+  seed(world)
+  const ads = world.tables.ads as Record<string, unknown>[]
+  ads.unshift({
+    id: 'ad-2',
+    name: 'Sample (animated): Planning a home renovation?',
+    status: 'new',
+    created_at: '2026-11-26T10:00:00Z',
+    created_by_name: 'Ad studio (Claude session)',
+    campaign_creatives: null,
+    ad_versions: [
+      {
+        id: 'ver-2',
+        version: 1,
+        caption: 'Planning a home renovation? Tell us about your project.',
+        headline: 'Tell us about your project',
+        button_label: 'Learn more',
+        notes: null,
+        created_at: '2026-11-26T10:00:00Z',
+        ad_variants: (['portrait', 'vertical'] as const).map((size) => ({
+          id: `var2-${size}`,
+          size,
+          width: 1440,
+          height: size === 'portrait' ? 1800 : 2560,
+          html_path: `ad-2/v1/${size}.html`,
+          export_path: `ad-2/v1/${size}.mp4`,
+          export_bytes: MP4.length,
+          export_type: 'video',
+          duration_ms: 2000,
+          poster_path: `ad-2/v1/${size}.poster.png`,
+        })),
+      },
+    ],
+  })
+  for (const size of ['portrait', 'vertical']) {
+    world.adFiles.set(`ad-2/v1/${size}.html`, { body: animatedHtml, type: 'text/html' })
+    world.adFiles.set(`ad-2/v1/${size}.mp4`, { body: MP4, type: 'video/mp4' })
+    world.adFiles.set(`ad-2/v1/${size}.poster.png`, { body: PNG, type: 'image/png' })
+  }
+  await page.goto('/#/ads')
+  await signIn(page, 'staff@example.com', 'another long password')
+  const items = page.getByRole('main').getByRole('listitem')
+  await expect(items.first()).toContainText('Animated, 2 seconds')
+  await expect(items.nth(1)).not.toContainText('Animated')
+  await shot(page, 'c1-ads-list')
+
+  await items.first().getByRole('link').click()
+  await expect(page.getByText('Animated: 2 seconds, then it starts again.')).toBeVisible()
+  const frame = page.locator('iframe[title$="Feed 4:5"]')
+  await expect(frame).toHaveAttribute('sandbox', '')
+  const playState = () =>
+    frame
+      .contentFrame()
+      .locator('.dot')
+      .evaluate((el) => el.getAnimations()[0]?.playState)
+  const at = () =>
+    frame
+      .contentFrame()
+      .locator('.dot')
+      .evaluate((el) => Number(el.getAnimations()[0]?.currentTime ?? -1))
+  // CSS runs in the frame; the script does not.
+  await expect.poll(playState).toBe('running')
+  expect(await page.title()).toBe('Q3 Interiors Staff')
+  expect(await frame.evaluate((f: HTMLIFrameElement) => f.contentDocument === null)).toBe(true)
+  expect(await frame.getAttribute('srcdoc')).toContain("default-src 'none'")
+  await page.waitForTimeout(400)
+  await shot(page, 'c2-ad-animated')
+
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await expect.poll(playState).toBe('paused')
+  const held = await at()
+  expect(held).toBeGreaterThan(0)
+  await page.waitForTimeout(300)
+  expect(await at()).toBe(held)
+  await shot(page, 'c3-ad-paused')
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await expect.poll(playState).toBe('running')
+
+  await page.waitForTimeout(1200)
+  await page.getByRole('button', { name: 'Replay' }).click()
+  await expect.poll(at).toBeLessThan(1000)
+
+  await expect(page.getByRole('button', { name: /Download the image/ })).toHaveCount(0)
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download the video (Feed 4:5)' }).click()
+  const file = await download
+  expect(file.suggestedFilename()).toBe(
+    'q3-sample-animated-planning-a-home-renovation-v1-4x5-1440x1800.mp4',
+  )
+  expect(fs.readFileSync((await file.path()) ?? '')).toEqual(MP4)
+  const still = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download a still of the last frame (Feed 4:5)' }).click()
+  expect((await still).suggestedFilename()).toBe(
+    'q3-sample-animated-planning-a-home-renovation-v1-4x5-1440x1800-still.png',
+  )
+
+  // The review loop is the same for an animated ad.
+  await expect(page.getByRole('heading', { name: 'Change requests on version 1' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Stories and Reels 9:16' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Download the video (Stories and Reels 9:16)' }),
+  ).toBeVisible()
+})

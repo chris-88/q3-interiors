@@ -15,21 +15,36 @@ export function withFrameCsp(html: string): string {
 }
 
 /**
+ * Pausing without scripts: the frame is made one pixel wider than the ad (the extra column is
+ * clipped), and this rule in the frame pauses every animation at that width. The animations hold
+ * where they are, and narrowing the frame again lets them carry on.
+ */
+export function withPauseRule(html: string, width: number): string {
+  const rule = `<style>@media (min-width: ${width + 1}px) { *, *::before, *::after { animation-play-state: paused !important; } }</style>`
+  return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${rule}</head>`) : `${html}${rule}`
+}
+
+/**
  * An ad at its true proportions, scaled to the width available. Isolation: the HTML goes in as
  * srcdoc of a sandboxed frame with no allowances, so it runs no scripts and has an opaque origin
  * (it cannot read this page, its storage or the staff session), and its own CSP blocks every
- * network request.
+ * network request. CSS animations run without scripts; `paused` holds them (see withPauseRule) and
+ * a new `run` number reloads the frame, which starts the loop again.
  */
 export function AdFrame({
   html,
   width,
   height,
   title,
+  paused = false,
+  run = 0,
 }: {
   html: string
   width: number
   height: number
   title: string
+  paused?: boolean
+  run?: number
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.25)
@@ -49,11 +64,12 @@ export function AdFrame({
       style={{ aspectRatio: `${width} / ${height}` }}
     >
       <iframe
+        key={run}
         title={title}
         sandbox=""
         referrerPolicy="no-referrer"
-        srcDoc={withFrameCsp(html)}
-        width={width}
+        srcDoc={withPauseRule(withFrameCsp(html), width)}
+        width={paused ? width + 1 : width}
         height={height}
         className="absolute top-0 left-0 border-0"
         style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }}

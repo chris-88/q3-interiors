@@ -1,37 +1,28 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { buttonVariants } from '@/components/ui/button'
-import { BRAND_NAME, usePublicBusiness } from '@/api/business'
+import { usePublicBusiness } from '@/api/business'
 import { cn } from '@/lib/utils'
 
 /**
- * Home link per the brand guide (v2.0): the compact Q at 44px high on phones, inside a 48x48 hit
- * area, with "Q3 Interiors" as visible text beside it; the full wordmark at 160px wide from 768px.
- * The link is named "Q3 Interiors home" and the image is decorative.
+ * Home link per the brand guide (v2.0): the full wordmark only, about 144px wide on phones (the
+ * guide's minimum for a legible name) and 160px from 768px, inside a link at least 48px high. The
+ * link is named "Q3 Interiors home" and the image is decorative.
  */
 function HomeLink() {
   return (
     <Link
       to="/"
       aria-label="Q3 Interiors home"
-      className="inline-flex min-h-12 min-w-12 items-center gap-3 rounded-sm p-2 md:p-3"
+      className="inline-flex min-h-12 items-center rounded-sm p-2 md:p-3"
     >
-      <picture>
-        <source
-          media="(min-width: 48rem)"
-          srcSet="/brand/q3-full-black.svg"
-          width={160}
-          height={61}
-        />
-        <img
-          src="/brand/q3-mark-black.svg"
-          width={36}
-          height={44}
-          alt=""
-          className="block h-11 w-auto md:h-[61px]"
-        />
-      </picture>
-      <span className="text-title text-ink font-medium md:sr-only">{BRAND_NAME}</span>
+      <img
+        src="/brand/q3-full-black.svg"
+        width={160}
+        height={61}
+        alt=""
+        className="block h-auto w-36 md:w-40"
+      />
     </Link>
   )
 }

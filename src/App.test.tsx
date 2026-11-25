@@ -30,6 +30,11 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
     expect(screen.queryByText(/our work/i)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Q3 Interiors home' })).toHaveAttribute('href', '/')
+    // The header is the full wordmark alone: decorative image, no visible name beside it.
+    const home = screen.getByRole('link', { name: 'Q3 Interiors home' })
+    expect(home).toHaveTextContent('')
+    expect(home.querySelector('img')).toHaveAttribute('src', '/brand/q3-full-black.svg')
+    expect(home.querySelector('img')).toHaveAttribute('alt', '')
     expect(screen.getByText(/does not commit you to a quote/)).toBeInTheDocument()
   })
 

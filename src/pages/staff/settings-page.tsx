@@ -16,6 +16,7 @@ import {
 } from '@/api/staff-booking'
 import { useBookablePerson } from '@/api/staff-accounts'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
+import { InstallHint } from '@/components/staff/install-hint'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -503,28 +504,28 @@ export function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
 
 const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
   {
-    to: '/staff/settings/people',
+    to: '/settings/people',
     label: 'People',
     hint: 'Add staff, switch accounts off, who takes bookings',
   },
   {
-    to: '/staff/settings/business',
+    to: '/settings/business',
     label: 'Business details',
     hint: 'Name, contact details, service area, privacy contact',
   },
-  { to: '/staff/settings/wording', label: 'Wording', hint: 'Reword the emails, with a preview' },
+  { to: '/settings/wording', label: 'Wording', hint: 'Reword the emails, with a preview' },
   {
-    to: '/staff/settings/campaigns',
+    to: '/settings/campaigns',
     label: 'Campaigns',
     hint: 'Tagged links for ads, creatives and spend',
   },
   {
-    to: '/staff/settings/booking',
+    to: '/settings/booking',
     label: 'Booking rules and data',
     hint: 'Changes and reminders, appointment types, retention, request limits',
   },
   {
-    to: '/staff/settings/checklist',
+    to: '/settings/checklist',
     label: 'Go-live checklist',
     hint: 'What is left before a paid campaign',
   },
@@ -564,6 +565,7 @@ export function SettingsPage() {
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
       <h1 className="text-section text-ink font-medium">Settings</h1>
+      <InstallHint />
       {isAdmin && <SetupLinks />}
       <CalendarCard />
       <Card title="Hours for bookings" id="availability-heading">

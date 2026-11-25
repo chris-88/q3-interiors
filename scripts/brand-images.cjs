@@ -6,6 +6,7 @@
 //   public/apple-touch-icon.png                          180x180, compact Q with both rules
 //   public/og/q3-og.png                                  1200x630 link preview, white card
 //   public/brand/q3-email-logo.png                       wordmark for HTML emails (2x of 160px)
+//   staff-pwa/icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png  staff app
 // Uses Playwright's Chromium, with the self-hosted Roboto inlined for the preview text.
 const { chromium } = require('@playwright/test')
 const fs = require('node:fs')
@@ -84,6 +85,13 @@ const icon = (size, svg, pad) =>
   await shot(faviconPage(16), 16, 16, 'public/favicon-16.png', { transparent: true })
   await shot(faviconPage(32), 32, 32, 'public/favicon-32.png', { transparent: true })
   await shot(icon(180, mark, 30), 180, 180, 'public/apple-touch-icon.png')
+  // Staff app icons (copied into dist-staff/icons by scripts/staff-site-files.cjs). The maskable
+  // icon keeps the Q at 40% of the tile, well inside the 80% safe zone of any mask shape.
+  fs.mkdirSync(path.join(root, 'staff-pwa'), { recursive: true })
+  await shot(icon(192, mark, 32), 192, 192, 'staff-pwa/icon-192.png')
+  await shot(icon(512, mark, 84), 512, 512, 'staff-pwa/icon-512.png')
+  await shot(icon(512, mark, 154), 512, 512, 'staff-pwa/icon-maskable-512.png')
+  await shot(icon(180, mark, 30), 180, 180, 'staff-pwa/apple-touch-icon.png')
   await shot(og, 1200, 630, 'public/og/q3-og.png')
   await shot(
     page(`<div class="logo">${full}</div>`, `.logo svg { width: 320px; height: 122px; }`),

@@ -74,7 +74,7 @@ export function checklistItems(d: ChecklistData): ChecklistItem[] {
         d.business_missing.length === 0
           ? 'All filled in.'
           : `Still to fill in: ${list(d.business_missing)}.`,
-      link: { to: '/staff/settings/business', label: 'Business details' },
+      link: { to: '/settings/business', label: 'Business details' },
     },
     {
       id: 'bookable',
@@ -87,7 +87,7 @@ export function checklistItems(d: ChecklistData): ChecklistItem[] {
           : !d.calendar_healthy
             ? `${d.bookable_name}'s calendar reported an error. Reconnect it in Settings while signed in as them.`
             : `${d.bookable_name} takes bookings; the calendar is working.`,
-      link: { to: '/staff/settings/people', label: 'People' },
+      link: { to: '/settings/people', label: 'People' },
     },
     {
       id: 'test_account',
@@ -104,7 +104,7 @@ export function checklistItems(d: ChecklistData): ChecklistItem[] {
         d.retention_months !== null
           ? `Enquiries are deleted ${d.retention_months} months after they arrive, unless won.`
           : 'Choose how long enquiries are kept. The privacy notice states it once set.',
-      link: { to: '/staff/settings/booking', label: 'Booking rules and data' },
+      link: { to: '/settings/booking', label: 'Booking rules and data' },
     },
     {
       id: 'privacy',
@@ -134,7 +134,7 @@ export function checklistItems(d: ChecklistData): ChecklistItem[] {
       detail:
         ticked('types_hours_reviewed') ||
         'Check the lengths, buffers, visits per day and working hours with the person who takes bookings, then tick.',
-      link: { to: '/staff/settings/booking', label: 'Booking rules and data' },
+      link: { to: '/settings/booking', label: 'Booking rules and data' },
       manual: 'types_hours_reviewed',
     },
     {
@@ -153,7 +153,7 @@ export function checklistItems(d: ChecklistData): ChecklistItem[] {
         d.campaign_links > 0
           ? 'A tagged link has been copied or tested.'
           : 'Create the campaign and copy its link for the ad.',
-      link: { to: '/staff/settings/campaigns', label: 'Campaigns' },
+      link: { to: '/settings/campaigns', label: 'Campaigns' },
     },
     {
       id: 'google_app',

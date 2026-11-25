@@ -1,3 +1,4 @@
+import { STAFF_URL } from './site.ts'
 import { GoogleError, type CalendarApi, type CalendarEventInput } from './google.ts'
 import { decryptSecret } from './crypto.ts'
 import { BUSINESS_TZ } from './time.ts'
@@ -50,7 +51,7 @@ export function accessTokenProvider(
   }
 }
 
-export function eventFor(ctx: BookingContext, appUrl: string): CalendarEventInput {
+export function eventFor(ctx: BookingContext, _appUrl: string): CalendarEventInput {
   const a = ctx.enquiry.answers
   const name = typeof a.name === 'string' ? a.name : 'Customer'
   const phone = typeof a.phone === 'string' ? a.phone : ''
@@ -73,7 +74,7 @@ export function eventFor(ctx: BookingContext, appUrl: string): CalendarEventInpu
     ctx.type.mode === 'on_site' && address ? `Address: ${address}` : null,
     ctx.type.mode === 'on_site' && notes ? `Access notes: ${notes}` : null,
     '',
-    `Full enquiry: ${appUrl}/#/staff/enquiries/${ctx.enquiry.id}`,
+    `Full enquiry: ${STAFF_URL}/#/enquiries/${ctx.enquiry.id}`,
   ].filter((line): line is string => line !== null)
   return {
     id: ctx.booking.calendar_event_id,

@@ -472,6 +472,8 @@ export type AccountEmailInput = {
   /** The single-use set-password link (never logged). */
   link: string
   siteUrl?: string | null
+  /** The staff console, for "Forgot password" on its sign-in page. */
+  staffUrl?: string | null
 }
 
 /** Staff account emails: the invitation and the password reset. Same branded frame. */
@@ -480,7 +482,7 @@ export function renderAccountEmail(
   input: AccountEmailInput,
 ): RenderedMessage {
   const hello = `Hello ${firstName(input.displayName)},`
-  const signIn = input.siteUrl ? `${input.siteUrl}/#/staff` : null
+  const signIn = input.staffUrl ? `${input.staffUrl}/#/` : null
   const expired = signIn
     ? `If the link has expired or was already used, choose "Forgot password" on the sign-in page: ${signIn}`
     : 'If the link has expired or was already used, choose "Forgot password" on the sign-in page.'

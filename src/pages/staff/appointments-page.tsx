@@ -17,7 +17,7 @@ function Row({ booking, actions }: { booking: StaffBooking; actions?: boolean })
   return (
     <li>
       <Link
-        to={`/staff/enquiries/${booking.enquiry_id}`}
+        to={`/enquiries/${booking.enquiry_id}`}
         className="bg-background hover:bg-muted/50 focus-visible:ring-ring/50 flex items-center gap-3 rounded-xl border p-4 transition-colors focus-visible:ring-3 focus-visible:outline-none"
       >
         <div className="flex min-w-0 flex-1 flex-col gap-1">

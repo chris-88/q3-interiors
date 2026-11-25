@@ -68,6 +68,6 @@ check "staff-accounts refuses a password change from anon" '{"error":"forbidden"
 check "forgot password validates the address" '{"error":"invalid_email"}' \
   "$(curl -s -X POST "$functions/staff-accounts" "${headers[@]}" -d '{"action":"forgot","email":"nope"}')"
 check "the OAuth callback is reachable without a JWT and refuses a bad state" \
-  "https://book.q3interiors.ie/#/staff/settings?calendar=error&reason=expired" \
+  "https://staff.q3interiors.ie/#/settings?calendar=error&reason=expired" \
   "$(curl -s -o /dev/null -w '%{redirect_url}' "$functions/google-oauth-callback?state=bad&code=x")"
 exit "$fail"

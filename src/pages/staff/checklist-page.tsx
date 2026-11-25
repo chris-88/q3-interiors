@@ -1,5 +1,6 @@
 import { CircleAlert, CircleCheck } from 'lucide-react'
 import { Link } from 'react-router'
+import { SITE_URL } from '../../../supabase/functions/_shared/site.ts'
 import { useChecklist, useMarkTestCalendar, useSetPrivacyReviewed, useTick } from '@/api/checklist'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { AdminOnly, BackToSettings } from '@/components/staff/settings-ui'
@@ -19,7 +20,7 @@ function ItemActions({ item, data }: { item: ChecklistItem; data: ChecklistData 
       {item.link &&
         (item.link.to === '/privacy' ? (
           <a
-            href="#/privacy"
+            href={`${SITE_URL}/#/privacy`}
             target="_blank"
             rel="noopener"
             className="text-primary inline-flex min-h-12 items-center underline"

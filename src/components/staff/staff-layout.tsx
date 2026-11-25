@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useOnline, useUpdateReady } from '@/staff-pwa'
 
 const StaffContext = createContext<StaffMember | null>(null)
 
@@ -27,14 +28,45 @@ export function useCurrentStaff(): StaffMember {
   return staff
 }
 
+function Offline() {
+  return (
+    <div className="bg-background mx-auto max-w-sm rounded-md border p-6" aria-live="polite">
+      <h1 className="text-title text-ink font-medium">You’re offline</h1>
+      <p className="text-muted-foreground mt-2 text-sm">
+        The staff console needs a connection: nothing is kept on this device. It comes back by
+        itself when you are online again.
+      </p>
+    </div>
+  )
+}
+
+function UpdateBar() {
+  return (
+    <div className="bg-panel text-on-panel on-panel" aria-live="polite">
+      <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+        <span>A new version of the staff console is ready.</span>
+        <Button
+          size="sm"
+          className="bg-on-panel text-ink hover:bg-on-panel-hover h-10 px-4"
+          onClick={() => window.location.reload()}
+        >
+          Reload
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }) {
   const signOut = useSignOut()
+  const online = useOnline()
+  const updateReady = useUpdateReady()
   return (
     <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
           <Link
-            to="/staff"
+            to="/"
             className="inline-flex min-h-12 items-center gap-2 rounded-sm text-sm font-medium"
           >
             {/* Decorative: the link text names it. */}
@@ -71,10 +103,10 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
         <nav aria-label="Staff" className="bg-background border-b">
           <ul className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-2">
             {[
-              ['/staff', 'Enquiries', true],
-              ['/staff/appointments', 'Appointments', true],
-              ['/staff/report', 'Report', true],
-              ['/staff/settings', 'Settings', false],
+              ['/', 'Enquiries', true],
+              ['/appointments', 'Appointments', true],
+              ['/report', 'Report', true],
+              ['/settings', 'Settings', false],
             ].map(([to, label, end]) => (
               <li key={String(to)}>
                 <NavLink
@@ -95,7 +127,8 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
           </ul>
         </nav>
       )}
-      <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+      {updateReady && <UpdateBar />}
+      <main className="mx-auto max-w-3xl px-4 py-6">{online ? children : <Offline />}</main>
     </div>
   )
 }
@@ -158,7 +191,7 @@ function SignInForm() {
             {signIn.isPending ? 'Signing in…' : 'Sign in'}
           </Button>
           <Link
-            to="/staff/forgot"
+            to="/forgot"
             className="text-primary inline-flex min-h-12 items-center text-sm underline"
           >
             Forgot your password?

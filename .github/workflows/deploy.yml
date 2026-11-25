@@ -60,6 +60,10 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
+      # The customer bundle must carry no staff screens, and the staff bundle no customer journey.
+      - name: Check the two surfaces are split
+        run: npm run check:surfaces
+
       # The enquiry journey end to end at 390px against the built bundle (RPC stubbed).
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -75,6 +79,15 @@ jobs:
         with:
           path: ./dist
 
+      # The staff console, published by the staff job to its own Pages repo.
+      - name: Upload the staff site
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-site
+          path: ./dist-staff
+          include-hidden-files: true
+          retention-days: 7
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -85,3 +98,45 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # The staff console (staff.q3interiors.ie) lives in chris-88/q3-interiors-staff, served by GitHub
+  # Pages from its main branch. Each deploy commits the new build on top (never a force-push); the
+  # deploy key (secret STAFF_DEPLOY_KEY) can write to that repository only.
+  deploy-staff:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staff-pages
+      cancel-in-progress: false
+    steps:
+      - name: Download the staff site
+        uses: actions/download-artifact@v4
+        with:
+          name: staff-site
+          path: site
+
+      - name: Publish to chris-88/q3-interiors-staff
+        env:
+          DEPLOY_KEY: ${{ secrets.STAFF_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/staff_deploy
+          chmod 600 ~/.ssh/staff_deploy
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/staff_deploy -o IdentitiesOnly=yes"
+          git clone --quiet git@github.com:chris-88/q3-interiors-staff.git repo
+          cd repo
+          git checkout -q main 2>/dev/null || git checkout -q -b main
+          # Replace everything but the repository itself with the new build.
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a ../site/. .
+          test -f CNAME && test -f .nojekyll && test -f robots.txt
+          git add -A
+          if git diff --cached --quiet; then
+            echo "staff site unchanged"
+            exit 0
+          fi
+          git -c user.name='q3-interiors deploy' -c user.email='noreply@github.com' \
+            commit -q -m "Deploy ${GITHUB_SHA::7} from chris-88/q3-interiors"
+          git push -q origin main

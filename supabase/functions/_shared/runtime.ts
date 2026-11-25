@@ -1,7 +1,7 @@
 // Wiring for the Edge Functions (Deno only). Reads configuration from the functions container's
 // environment, set by the stack's docker-compose.q3-interiors.yml from pass.
 import { accessTokenProvider } from './calendar-job.ts'
-import { SITE_URL } from './site.ts'
+import { SITE_URL, STAFF_URL } from './site.ts'
 import { createDb } from './db.ts'
 import { createResendMailer, type Mailer } from './email.ts'
 import { createGoogleCalendar, type CalendarApi } from './google.ts'
@@ -14,6 +14,8 @@ const env = (name: string) => Deno.env.get(name)?.trim() || null
 export const config = {
   // One value for every absolute URL (see site.ts); Q3_APP_URL in the stack env is no longer read.
   appUrl: SITE_URL,
+  // The staff console: staff alerts, account emails, the Google Calendar return.
+  staffUrl: STAFF_URL,
   redirectUri:
     env('Q3_GOOGLE_REDIRECT_URI') ??
     'https://api.chrisquinn.ie/q3-interiors/functions/v1/google-oauth-callback',

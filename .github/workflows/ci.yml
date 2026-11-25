@@ -36,6 +36,8 @@ jobs:
       - run: npm run format:check
       - run: npm run test
       - run: npm run build
+      # Both surfaces built; prove neither carries the other.
+      - run: npm run check:surfaces
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Upload the Playwright traces

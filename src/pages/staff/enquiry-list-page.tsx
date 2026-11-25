@@ -83,7 +83,7 @@ export function EnquiryListPage() {
             return (
               <li key={enquiry.id}>
                 <Link
-                  to={`/staff/enquiries/${enquiry.id}`}
+                  to={`/enquiries/${enquiry.id}`}
                   className="bg-background hover:bg-muted/50 focus-visible:ring-ring/50 flex items-center gap-3 rounded-xl border p-4 transition-colors focus-visible:ring-3 focus-visible:outline-none"
                 >
                   <div className="flex min-w-0 flex-1 flex-col gap-1">

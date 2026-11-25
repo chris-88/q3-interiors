@@ -11,7 +11,7 @@ const shot = async (page: Page, name: string) => {
 
 test('an admin adds a person, who chooses a password from the emailed link', async ({ page }) => {
   const world = await installFakeStaff(page)
-  await page.goto('/#/staff/settings/people')
+  await page.goto('/#/settings/people')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   await expect(page.getByRole('heading', { name: 'People', level: 1 })).toBeVisible()
 
@@ -30,7 +30,7 @@ test('an admin adds a person, who chooses a password from the emailed link', asy
 
   // Pat opens the link (in a fresh session).
   await page.evaluate(() => window.localStorage.clear())
-  await page.goto(`/#/staff/set-password?token_hash=hash-${pat?.user_id}&type=recovery&welcome=1`)
+  await page.goto(`/#/set-password?token_hash=hash-${pat?.user_id}&type=recovery&welcome=1`)
   await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
   // The single-use token is no longer in the address bar.
   expect(page.url()).not.toContain('token_hash')
@@ -50,14 +50,14 @@ test('an admin adds a person, who chooses a password from the emailed link', asy
 
   // The same link again (a new page load, as from the email): used up.
   await page.goto('about:blank')
-  await page.goto(`/#/staff/set-password?token_hash=hash-${pat?.user_id}&type=recovery`)
+  await page.goto(`/#/set-password?token_hash=hash-${pat?.user_id}&type=recovery`)
   await expect(page.getByRole('heading', { name: 'This link no longer works' })).toBeVisible()
   await shot(page, 's3-link-used')
 })
 
 test('forgot password answers the same for anyone', async ({ page }) => {
   const world = await installFakeStaff(page)
-  await page.goto('/#/staff')
+  await page.goto('/#/')
   await page.getByRole('link', { name: 'Forgot your password?' }).click()
   await expect(page.getByRole('heading', { name: 'Forgot your password?' })).toBeVisible()
   await page.getByLabel('Email').fill('nobody@example.com')
@@ -81,7 +81,7 @@ test('an admin hands bookings to someone, is warned about the calendar, and can 
   world.tables.calendar_connections = [
     { staff_user_id: 'u-admin', status: 'connected', google_email: 'admin@example.com' },
   ]
-  await page.goto('/#/staff/settings/people')
+  await page.goto('/#/settings/people')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   await page.getByRole('radio', { name: /Sam Staff/ }).check()
   await expect(page.getByText('Sam Staff has not connected a Google Calendar')).toBeVisible()
@@ -100,10 +100,10 @@ test('an admin hands bookings to someone, is warned about the calendar, and can 
 
 test('staff cannot open admin screens, and a switched-off account is told so', async ({ page }) => {
   const world = await installFakeStaff(page)
-  await page.goto('/#/staff/settings/people')
+  await page.goto('/#/settings/people')
   await signIn(page, 'staff@example.com', 'another long password')
   await expect(page.getByRole('heading', { name: 'Admins only' })).toBeVisible()
-  await page.goto('/#/staff/settings')
+  await page.goto('/#/settings')
   await expect(page.getByRole('navigation', { name: 'Set-up (admins)' })).toHaveCount(0)
 
   world.staff.get('u-staff')!.active = false

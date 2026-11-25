@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { installFakeStaff, signIn } from './fake-staff'
+import { installFakeStaff, PUBLIC_URL, signIn } from './fake-staff'
 
 const shot = async (page: Page, name: string) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
@@ -12,7 +12,7 @@ test('the go-live checklist shows what is left and takes the admin ticks', async
   world.tables.calendar_connections = [
     { staff_user_id: 'u-admin', status: 'connected', google_email: 'test-account@example.com' },
   ]
-  await page.goto('/#/staff/settings')
+  await page.goto('/#/settings')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   await page.getByRole('link', { name: /Go-live checklist/ }).click()
   await expect(page.getByRole('heading', { name: 'Go-live checklist' })).toBeVisible()
@@ -23,7 +23,7 @@ test('the go-live checklist shows what is left and takes the admin ticks', async
   )
   await expect(
     item('Business details are complete').getByRole('link', { name: 'Business details' }),
-  ).toHaveAttribute('href', '#/staff/settings/business')
+  ).toHaveAttribute('href', '#/settings/business')
   await expect(item('Someone takes bookings')).toContainText('Done: ')
   await expect(item('The enquiry form has Q3’s real options')).toContainText('still version 1')
 
@@ -52,7 +52,7 @@ test('the go-live checklist shows what is left and takes the admin ticks', async
   await privacy.getByRole('button', { name: 'Mark reviewed' }).click()
   await expect(privacy).toContainText('Done:')
   await shot(page, 'k1-checklist')
-  await page.goto('/#/privacy')
+  await page.goto(`${PUBLIC_URL}/#/privacy`)
   await expect(
     page.getByRole('heading', { name: 'How we use your details', level: 1 }),
   ).toBeVisible()
@@ -61,7 +61,7 @@ test('the go-live checklist shows what is left and takes the admin ticks', async
 
 test('staff cannot see the checklist', async ({ page }) => {
   await installFakeStaff(page)
-  await page.goto('/#/staff/settings/checklist')
+  await page.goto('/#/settings/checklist')
   await signIn(page, 'staff@example.com', 'another long password')
   await expect(page.getByRole('heading', { name: 'Admins only' })).toBeVisible()
 })

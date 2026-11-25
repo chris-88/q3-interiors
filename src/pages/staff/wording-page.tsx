@@ -25,6 +25,7 @@ import {
   type WordingKey,
 } from '../../../supabase/functions/_shared/messages.ts'
 import type { BookingContext, EnquirySummary } from '../../../supabase/functions/_shared/types.ts'
+import { SITE_URL, STAFF_URL } from '../../../supabase/functions/_shared/site.ts'
 
 /** The emails, each with the blocks inside it, in the order a customer meets them. */
 const GROUPS: { title: string; keys: WordingKey[] }[] = [
@@ -75,7 +76,8 @@ function sampleContext(mode: 'phone' | 'on_site', prepare: string): BookingConte
 }
 
 function render(kind: PreviewKind, wording: Wording, prepare: Record<string, string>) {
-  const site = window.location.origin
+  // Customer links point at the public site; staff links at the staff site.
+  const site = SITE_URL
   const common = {
     manageUrl: `${site}/#/book/sample-link`,
     businessPhone: null,
@@ -112,7 +114,7 @@ function render(kind: PreviewKind, wording: Wording, prepare: Record<string, str
         kind === 'staff_new' ? 'staff_new_enquiry' : 'staff_callback_request',
         {
           summary,
-          staffUrl: `${site}/#/staff`,
+          staffUrl: `${STAFF_URL}/#/`,
           siteUrl: site,
           wording,
         },

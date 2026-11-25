@@ -22,7 +22,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings ads ad_versions ad_variants; do
+  booking_settings ads ad_versions ad_variants ad_requests ad_events; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -44,6 +44,15 @@ expect_code "anon cannot run the funnel report" 42501 \
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
 
+# Ad review: every write path refuses anon (each with its exact arguments).
+ad_rpc() {
+  expect_code "anon cannot call $1" 42501 "$(curl -s -X POST "$rest/rpc/$1" "${headers[@]}" -d "$2")"
+}
+ad_rpc request_ad_change '{"p_ad_id":"00000000-0000-4000-8000-000000000000","p_body":"Make it bigger","p_size":"both"}'
+ad_rpc withdraw_ad_request '{"p_request_id":"00000000-0000-4000-8000-000000000000"}'
+ad_rpc approve_ad '{"p_ad_id":"00000000-0000-4000-8000-000000000000","p_version":1,"p_despite_open":true}'
+ad_rpc archive_ad '{"p_ad_id":"00000000-0000-4000-8000-000000000000","p_archived":true}'
+ad_rpc record_ad_version '{"p_version_id":"00000000-0000-4000-8000-000000000000","p_request_ids":[],"p_actor":"anon"}'
 # Ad files: the bucket is private (no public URL) and anon lists nothing.
 ad_public="$(curl -s -o /dev/null -w '%{http_code}' "$url/storage/v1/object/public/ads/x.png")"
 if [[ "$ad_public" == 400 || "$ad_public" == 404 ]]; then echo "ok    the ads bucket has no public URLs ($ad_public)"; else echo "FAIL  public ad URL answered $ad_public"; fail=1; fi

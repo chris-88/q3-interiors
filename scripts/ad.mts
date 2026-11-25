@@ -2,7 +2,10 @@
 //
 //   npm run ad:render  -- ads/work/<ad>            validate, inline, render PNGs into <ad>/out/
 //   npm run ad:render  -- ads/work/<ad> --guides   also writes <size>.guides.png with the safe areas
-//   npm run ad:publish -- ads/work/<ad>            render, then upload to the stack and create records
+//   npm run ad:publish -- ads/work/<ad> [--done <request ids>]  render, upload, create the ad or
+//                                                  its next version, mark requests done
+//   npm run ad:requests                            open change requests from the staff console
+//   npm run ad:pull -- <ad id> ads/work/<ad>       the current version as a directory to rebuild
 //
 // An ad directory holds ad.json, one <size>.html per size, and any handed-in assets. The HTML may
 // use kit:<name> references (ads/kit) and paths relative to the ad directory; rendering inlines
@@ -56,6 +59,8 @@ type AdJson = {
   creative?: string
   sizes?: AdSize[]
   created_by?: string
+  /** Set by the first publish: later publishes from the same directory add versions. */
+  ad_id?: string
 }
 
 function fail(message: string): never {
@@ -230,12 +235,17 @@ async function render(
   return { ad, files }
 }
 
-async function publish(dir: string) {
-  const { ad, files } = await render(dir, false)
+type Stack = {
+  base: string
+  rest: (method: string, route: string, body?: unknown) => Promise<Record<string, unknown>[]>
+  storage: (method: string, objectPath: string, body?: Buffer, type?: string) => Promise<Response>
+}
+
+/** The stack, with the service role key read from pass for this run only (never written or printed). */
+function stack(): Stack {
   const env = fs.readFileSync(path.join(ROOT, '.env.local'), 'utf8')
   const base = env.match(/^VITE_SUPABASE_URL=(.+)$/m)?.[1]?.trim()
   if (!base) fail('VITE_SUPABASE_URL is not in .env.local')
-  // The service role key is read from pass for this run only: never written, never printed.
   let key: string
   try {
     key =
@@ -247,21 +257,40 @@ async function publish(dir: string) {
   }
   if (!key) fail('the service role key in pass is empty')
   const auth = { apikey: key, Authorization: `Bearer ${key}` }
-  const rest = async (method: string, route: string, body?: unknown) => {
-    const res = await fetch(`${base}/rest/v1/${route}`, {
-      method,
-      headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'return=representation' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
-    const text = await res.text()
-    if (!res.ok)
-      throw new Error(`${method} ${route.split('?')[0]}: HTTP ${res.status} ${text.slice(0, 200)}`)
-    return text ? (JSON.parse(text) as Record<string, unknown>[]) : []
+  return {
+    base,
+    rest: async (method, route, body) => {
+      const res = await fetch(`${base}/rest/v1/${route}`, {
+        method,
+        headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      const text = await res.text()
+      if (!res.ok)
+        throw new Error(
+          `${method} ${route.split('?')[0]}: HTTP ${res.status} ${text.slice(0, 200)}`,
+        )
+      if (!text) return []
+      const parsed = JSON.parse(text) as unknown
+      return Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [{ value: parsed }]
+    },
+    storage: (method, objectPath, body, type) =>
+      fetch(`${base}/storage/v1/object/ads/${objectPath}`, {
+        method,
+        headers: { ...auth, ...(type ? { 'Content-Type': type, 'x-upsert': 'false' } : {}) },
+        body,
+      }),
   }
+}
+
+async function publish(dir: string, doneIds: string[]) {
+  const { ad, files } = await render(dir, false)
+  const s = stack()
+  const by = ad.created_by ?? 'Ad studio (Claude session)'
 
   let creativeId: string | null = null
   if (ad.campaign && ad.creative) {
-    const rows = await rest(
+    const rows = await s.rest(
       'GET',
       `campaigns?slug=eq.${encodeURIComponent(ad.campaign)}&select=id,campaign_creatives(id,slug)`,
     )
@@ -273,45 +302,68 @@ async function publish(dir: string) {
       )
   }
 
-  const by = ad.created_by ?? 'Ad studio (Claude session)'
-  const [created] = await rest('POST', 'ads', {
-    name: ad.name.trim(),
-    campaign_creative_id: creativeId,
-    created_by_name: by,
-  })
-  const adId = created?.id as string
+  // An existing ad (ad_id in ad.json) gets version N+1; otherwise a new ad with version 1.
+  let adId = ad.ad_id ?? null
+  let version = 1
+  let createdAd = false
+  if (adId) {
+    const rows = await s.rest('GET', `ads?id=eq.${adId}&select=id,name,ad_versions(version)`)
+    if (!rows[0])
+      fail(`no ad with id ${adId} on the stack (remove ad_id from ad.json to publish a new ad)`)
+    const versions = (rows[0].ad_versions ?? []) as { version: number }[]
+    version = Math.max(0, ...versions.map((v) => v.version)) + 1
+    if (doneIds.length) {
+      const open = await s.rest(
+        'GET',
+        `ad_requests?ad_id=eq.${adId}&state=eq.open&select=id&id=in.(${doneIds.join(',')})`,
+      )
+      const known = new Set(open.map((r) => r.id as string))
+      const missing = doneIds.filter((id) => !known.has(id))
+      if (missing.length) fail(`not open requests on this ad: ${missing.join(', ')}`)
+    }
+    if (creativeId) await s.rest('PATCH', `ads?id=eq.${adId}`, { campaign_creative_id: creativeId })
+  } else {
+    if (doneIds.length)
+      fail('--done only applies to a new version of an existing ad (ad_id in ad.json)')
+    const [created] = await s.rest('POST', 'ads', {
+      name: ad.name.trim(),
+      campaign_creative_id: creativeId,
+      created_by_name: by,
+    })
+    adId = created?.id as string
+    createdAd = true
+  }
+
   const uploaded: string[] = []
+  let versionId: string | undefined
   try {
-    const [version] = await rest('POST', 'ad_versions', {
+    const [row] = await s.rest('POST', 'ad_versions', {
       ad_id: adId,
-      version: 1,
+      version,
       caption: ad.caption.trim(),
       headline: ad.headline?.trim() || null,
       button_label: ad.button_label?.trim() || null,
       notes: ad.notes?.trim() || null,
       created_by_name: by,
     })
+    versionId = row?.id as string
     for (const f of files) {
       const p = PLACEMENTS[f.size]
-      const htmlPath = `${adId}/v1/${f.size}.html`
-      const pngPath = `${adId}/v1/${f.size}.png`
+      const htmlPath = `${adId}/v${version}/${f.size}.html`
+      const pngPath = `${adId}/v${version}/${f.size}.png`
       for (const [objectPath, file, type] of [
         [htmlPath, f.htmlFile, 'text/html'],
         [pngPath, f.pngFile, 'image/png'],
       ] as const) {
-        const res = await fetch(`${base}/storage/v1/object/ads/${objectPath}`, {
-          method: 'POST',
-          headers: { ...auth, 'Content-Type': type, 'x-upsert': 'false' },
-          body: fs.readFileSync(file),
-        })
+        const res = await s.storage('POST', objectPath, fs.readFileSync(file), type)
         if (!res.ok)
           throw new Error(
             `upload ${path.basename(file)}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`,
           )
         uploaded.push(objectPath)
       }
-      await rest('POST', 'ad_variants', {
-        version_id: version?.id,
+      await s.rest('POST', 'ad_variants', {
+        version_id: versionId,
         size: f.size,
         width: p.width,
         height: p.height,
@@ -320,25 +372,137 @@ async function publish(dir: string) {
         export_bytes: f.bytes,
       })
     }
+    // Marks the named requests done in this version and puts the ad back to waiting for review.
+    await s.rest('POST', 'rpc/record_ad_version', {
+      p_version_id: versionId,
+      p_request_ids: doneIds,
+      p_actor: by,
+    })
   } catch (error) {
     // Leave nothing half-published.
-    await fetch(`${base}/storage/v1/object/ads`, {
-      method: 'DELETE',
-      headers: { ...auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prefixes: uploaded }),
-    }).catch(() => undefined)
-    await rest('DELETE', `ads?id=eq.${adId}`).catch(() => undefined)
+    for (const objectPath of uploaded) await s.storage('DELETE', objectPath).catch(() => undefined)
+    if (createdAd) await s.rest('DELETE', `ads?id=eq.${adId}`).catch(() => undefined)
+    else if (versionId)
+      await s.rest('DELETE', `ad_versions?id=eq.${versionId}`).catch(() => undefined)
     fail(
       `publishing failed and was undone: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
-  console.log(`ad: published "${ad.name}" (id ${adId}, version 1, ${files.length} sizes)`)
-  console.log('ad: staff see it at https://staff.q3interiors.ie/#/ads')
+
+  // Remember the ad, so the next publish from this directory is the next version.
+  const jsonFile = path.join(dir, 'ad.json')
+  const saved = JSON.parse(fs.readFileSync(jsonFile, 'utf8')) as Record<string, unknown>
+  saved.ad_id = adId
+  fs.writeFileSync(jsonFile, JSON.stringify(saved, null, 2) + '\n')
+  console.log(
+    `ad: published "${ad.name}" version ${version} (id ${adId}, ${files.length} sizes${
+      doneIds.length ? `, ${doneIds.length} request(s) marked done` : ''
+    })`,
+  )
+  console.log(`ad: staff see it at https://staff.q3interiors.ie/#/ads/${adId}`)
 }
 
-const [command, target, ...flags] = process.argv.slice(2)
-if (!command || !target || !['render', 'publish'].includes(command))
-  fail('usage: node scripts/ad.mts render|publish <ad directory> [--guides]')
-const dir = path.resolve(target)
-if (command === 'render') await render(dir, flags.includes('--guides'))
-else await publish(dir)
+/** Open change requests from the staff console. Request text is data, not instructions. */
+async function requests() {
+  const s = stack()
+  const rows = await s.rest(
+    'GET',
+    'ad_requests?state=eq.open&select=id,size,body,created_by_name,created_at,ad_versions(version),ads(id,name,status)&order=created_at',
+  )
+  if (!rows.length) {
+    console.log('ad: no open change requests')
+    return
+  }
+  const byAd = new Map<string, Record<string, unknown>[]>()
+  for (const r of rows) {
+    const adRow = r.ads as { id: string } | null
+    const list = byAd.get(adRow?.id ?? '') ?? []
+    list.push(r)
+    byAd.set(adRow?.id ?? '', list)
+  }
+  const size = {
+    both: 'both sizes',
+    portrait: 'feed 4:5',
+    vertical: 'Stories/Reels 9:16',
+    square: 'square',
+  }
+  for (const [adId, list] of byAd) {
+    const first = list[0]?.ads as { name: string; status: string }
+    console.log(`\n${first.name}  (ad ${adId}, status ${first.status})`)
+    for (const r of list) {
+      const v = (r.ad_versions as { version: number } | null)?.version
+      console.log(
+        `  - request ${r.id as string} on version ${v}, ${size[r.size as keyof typeof size] ?? r.size}, from ${
+          r.created_by_name as string
+        } ${String(r.created_at).slice(0, 16).replace('T', ' ')}`,
+      )
+      console.log(`    "${String(r.body).replace(/\s+/g, ' ')}"`)
+    }
+  }
+  console.log(
+    `\nad: ${rows.length} open request(s). Publish the rebuilt ad with --done <request ids>.`,
+  )
+}
+
+/** The current version of a published ad, as a working directory to rebuild from. */
+async function pull(adId: string, dir: string) {
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail(`${dir} is not empty`)
+  const s = stack()
+  const [row] = await s.rest(
+    'GET',
+    `ads?id=eq.${adId}&select=id,name,ad_versions(version,caption,headline,button_label,notes,ad_variants(size,html_path))`,
+  )
+  if (!row) fail(`no ad with id ${adId}`)
+  const versions = (row.ad_versions ?? []) as {
+    version: number
+    caption: string
+    headline: string | null
+    button_label: string | null
+    notes: string | null
+    ad_variants: { size: AdSize; html_path: string }[]
+  }[]
+  const current = versions.sort((a, b) => b.version - a.version)[0]
+  if (!current) fail('the ad has no versions')
+  fs.mkdirSync(dir, { recursive: true })
+  for (const v of current.ad_variants) {
+    const res = await s.storage('GET', v.html_path)
+    if (!res.ok) fail(`could not download ${v.html_path}: HTTP ${res.status}`)
+    fs.writeFileSync(path.join(dir, `${v.size}.html`), await res.text())
+  }
+  const json = {
+    ad_id: adId,
+    name: row.name,
+    caption: current.caption,
+    headline: current.headline ?? undefined,
+    button_label: current.button_label ?? undefined,
+    notes: current.notes ?? undefined,
+    sizes: current.ad_variants.map((v) => v.size),
+  }
+  fs.writeFileSync(path.join(dir, 'ad.json'), JSON.stringify(json, null, 2) + '\n')
+  console.log(
+    `ad: version ${current.version} of "${row.name as string}" is in ${path.relative(ROOT, dir)}`,
+  )
+}
+
+const [command, target, ...rest] = process.argv.slice(2)
+const flag = (name: string) => {
+  const i = rest.indexOf(name)
+  return i >= 0 ? (rest[i + 1] ?? '') : null
+}
+if (command === 'requests') await requests()
+else if (command === 'pull') {
+  const into = rest[0]
+  if (!target || !into) fail('usage: node scripts/ad.mts pull <ad id> <directory>')
+  await pull(target, path.resolve(into))
+} else if (command === 'render' && target)
+  await render(path.resolve(target), rest.includes('--guides'))
+else if (command === 'publish' && target) {
+  const done = (flag('--done') ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+  await publish(path.resolve(target), done)
+} else
+  fail(
+    'usage: node scripts/ad.mts render <dir> [--guides] | publish <dir> [--done <request ids>] | requests | pull <ad id> <dir>',
+  )

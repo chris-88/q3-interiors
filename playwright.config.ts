@@ -5,7 +5,8 @@ import { defineConfig, devices } from '@playwright/test'
 // write to the real database.
 const PUBLIC_URL = 'http://127.0.0.1:4173'
 const STAFF_URL = 'http://127.0.0.1:4174'
-const STAFF_SPECS = /(staff-accounts|campaigns|checklist|staff-host|staff-pwa|ads)\.spec\.ts/
+const STAFF_SPECS =
+  /(staff-accounts|campaigns|checklist|staff-host|staff-pwa|ads|ads-review)\.spec\.ts/
 const phone = { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } }
 
 export default defineConfig({

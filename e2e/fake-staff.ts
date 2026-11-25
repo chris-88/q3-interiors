@@ -234,6 +234,103 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         })
       }
       if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      // The ad review RPCs, with the server's rules (see 20261126120000_ad_review.sql).
+      type FakeVersion = {
+        id: string
+        version: number
+        approved_at?: string | null
+        approved_by_name?: string | null
+      }
+      type FakeRequest = {
+        id: string
+        version_id: string
+        state: string
+        created_by: string | null
+        body: string
+      }
+      type FakeAd = {
+        id: string
+        status: string
+        ad_versions: FakeVersion[]
+        ad_requests?: FakeRequest[]
+      }
+      const adsTable = (world.tables.ads ?? []) as FakeAd[]
+      const current = (ad: FakeAd) => [...ad.ad_versions].sort((x, y) => y.version - x.version)[0]
+      const refuse = (message: string, code = '22023') => json(route, 400, { code, message })
+      if (
+        [
+          'rpc/request_ad_change',
+          'rpc/withdraw_ad_request',
+          'rpc/approve_ad',
+          'rpc/archive_ad',
+        ].includes(table)
+      ) {
+        if (!caller?.active) return refuse('not allowed', '42501')
+        const body = req.postDataJSON() as Record<string, unknown>
+        if (table === 'rpc/request_ad_change') {
+          const ad = adsTable.find((a) => a.id === body.p_ad_id)
+          if (!ad) return refuse('ad not found', 'P0002')
+          if (ad.status === 'archived') return refuse('ad archived')
+          const text = String(body.p_body ?? '').trim()
+          if (text.length < 3 || text.length > 1000) return refuse('request length')
+          const v = current(ad)
+          ad.ad_requests = [
+            ...(ad.ad_requests ?? []),
+            {
+              id: `req-${(ad.ad_requests ?? []).length + 1}`,
+              version_id: v?.id ?? '',
+              size: String(body.p_size ?? 'both'),
+              body: text,
+              state: 'open',
+              done_in_version: null,
+              created_by: caller.user_id,
+              created_by_name: caller.display_name,
+              created_at: new Date().toISOString(),
+            } as FakeRequest,
+          ]
+          ad.status = 'changes_requested'
+          return json(route, 200, 'ok')
+        }
+        if (table === 'rpc/withdraw_ad_request') {
+          for (const ad of adsTable) {
+            const r = (ad.ad_requests ?? []).find((x) => x.id === body.p_request_id)
+            if (!r) continue
+            if (r.created_by !== caller.user_id) return refuse('not allowed', '42501')
+            if (r.state !== 'open') return refuse('request not open')
+            r.state = 'withdrawn'
+            const v = current(ad)
+            if (
+              !(ad.ad_requests ?? []).some((x) => x.version_id === v?.id && x.state === 'open') &&
+              ad.status === 'changes_requested'
+            )
+              ad.status = 'new'
+            return json(route, 200, null)
+          }
+          return refuse('request not found', 'P0002')
+        }
+        if (caller.role !== 'admin') return refuse('not allowed', '42501')
+        const ad = adsTable.find((a) => a.id === body.p_ad_id)
+        if (!ad) return refuse('ad not found', 'P0002')
+        const v = current(ad)
+        if (table === 'rpc/approve_ad') {
+          if (ad.status === 'archived') return refuse('ad archived')
+          if (v?.version !== body.p_version) return refuse('not the current version')
+          if (
+            !body.p_despite_open &&
+            (ad.ad_requests ?? []).some((x) => x.version_id === v?.id && x.state === 'open')
+          )
+            return refuse('open requests')
+          if (v)
+            Object.assign(v, {
+              approved_at: new Date().toISOString(),
+              approved_by_name: caller.display_name,
+            })
+          ad.status = 'approved'
+          return json(route, 200, null)
+        }
+        ad.status = body.p_archived === false ? (v?.approved_at ? 'approved' : 'new') : 'archived'
+        return json(route, 200, null)
+      }
       if (table === 'rpc/go_live_checklist') {
         if (caller?.role !== 'admin')
           return json(route, 403, { code: '42501', message: 'not allowed' })
@@ -397,6 +494,17 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       rows = (world.tables[table] ?? []) as Record<string, unknown>[]
     }
     const out = select(rows, url)
+    if (req.method() === 'HEAD') {
+      return route.fulfill({
+        status: 200,
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-expose-headers': 'content-range',
+          'content-range': out.length ? `0-${out.length - 1}/${out.length}` : '*/0',
+        },
+        body: '',
+      })
+    }
     const single = (req.headers().accept ?? '').includes('vnd.pgrst.object')
     return json(route, 200, single ? (out[0] ?? null) : out)
   })

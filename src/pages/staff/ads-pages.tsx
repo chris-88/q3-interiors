@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
   AD_STATUS_LABELS,
@@ -29,7 +29,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { campaignLink } from '@/lib/campaigns'
-import { exportFilename, PLACEMENTS } from '@/lib/ads/spec'
+import { exportFilename, formatDuration, PLACEMENTS } from '@/lib/ads/spec'
 import { formatDateTime } from '@/lib/format'
 import { SITE_URL } from '../../../supabase/functions/_shared/site.ts'
 
@@ -59,7 +59,7 @@ export function AdsPage() {
       <h1 className="text-section text-ink font-medium">Ads</h1>
       <p className="text-muted-foreground -mt-2 text-sm">
         Instagram ads built in the ad studio. Open one to see it at its real size, ask for changes,
-        download the image and copy the words for the post.
+        download the image or video and copy the words for the post.
       </p>
       <div className="flex flex-col gap-1">
         <label htmlFor="ads-filter" className="text-sm font-medium">
@@ -99,6 +99,8 @@ export function AdsPage() {
         <ul className="flex flex-col gap-2">
           {shown.map((ad) => {
             const open = ad.ad_requests.filter((r) => r.state === 'open').length
+            const current = [...ad.ad_versions].sort((x, y) => y.version - x.version)[0]
+            const loop = current?.ad_variants.find((v) => v.duration_ms !== null)?.duration_ms
             return (
               <li key={ad.id}>
                 <Link
@@ -111,7 +113,8 @@ export function AdsPage() {
                       <StatusBadge status={ad.status} />
                     </span>
                     <span className="text-muted-foreground text-sm">
-                      Version {Math.max(1, ...ad.ad_versions.map((v) => v.version))}
+                      Version {current?.version ?? 1}
+                      {loop ? ` · Animated, ${formatDuration(loop)}` : ''}
                       {open > 0 && ` · ${open} open ${open === 1 ? 'request' : 'requests'}`} ·{' '}
                       {formatDateTime(ad.created_at)}
                     </span>
@@ -161,28 +164,65 @@ function CopyRow({ label, value }: { label: string; value: string | null }) {
   )
 }
 
+/** Saves a file from the private bucket under a plain name, with the staff member's session. */
+async function saveAdFile(objectPath: string, filename: string) {
+  const blob = await downloadAdFile(objectPath)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.append(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+function DownloadButton({
+  label,
+  objectPath,
+  filename,
+  variant = 'default',
+}: {
+  label: string
+  objectPath: string
+  filename: string
+  variant?: 'default' | 'outline'
+}) {
+  const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle')
+  return (
+    <div className="flex flex-col gap-1">
+      <Button
+        variant={variant}
+        className="h-12 self-start px-6"
+        disabled={state === 'busy'}
+        onClick={() => {
+          setState('busy')
+          saveAdFile(objectPath, filename).then(
+            () => setState('idle'),
+            () => setState('failed'),
+          )
+        }}
+      >
+        {state === 'busy' ? 'Preparing…' : label}
+      </Button>
+      <output className="text-sm">
+        {state === 'failed' ? 'The download did not work. Please try again.' : ''}
+      </output>
+    </div>
+  )
+}
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+
 function SizeView({ ad, version, variant }: { ad: Ad; version: number; variant: AdVariant }) {
   const html = useAdHtml(variant.html_path)
   const p = PLACEMENTS[variant.size]
-  const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle')
-  const filename = exportFilename(ad.name, version, p)
-  const download = async () => {
-    setState('busy')
-    try {
-      const blob = await downloadAdFile(variant.export_path)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.append(a)
-      a.click()
-      a.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      setState('idle')
-    } catch {
-      setState('failed')
-    }
-  }
+  const animated = variant.export_type === 'video'
+  // Someone who asked their device for less motion starts paused, on the readable first frame.
+  const [paused, setPaused] = useState(prefersReducedMotion)
+  const [run, setRun] = useState(0)
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">
@@ -190,6 +230,12 @@ function SizeView({ ad, version, variant }: { ad: Ad; version: number; variant: 
         {variant.size === 'vertical' &&
           ' Instagram covers roughly the top 14% and the bottom 35% with its own buttons.'}
       </p>
+      {animated && variant.duration_ms !== null && (
+        <p className="text-sm">
+          Animated: {formatDuration(variant.duration_ms)}, then it starts again. On Instagram it
+          runs as a video.
+        </p>
+      )}
       <div className="mx-auto w-full max-w-sm">
         {html.isPending ? (
           <Skeleton
@@ -206,19 +252,53 @@ function SizeView({ ad, version, variant }: { ad: Ad; version: number; variant: 
             width={variant.width}
             height={variant.height}
             title={`${ad.name}, version ${version}, ${p.label}`}
+            paused={animated && paused}
+            run={run}
           />
         )}
       </div>
-      <Button
-        className="h-12 self-start px-6"
-        onClick={() => void download()}
-        disabled={state === 'busy'}
-      >
-        {state === 'busy' ? 'Preparing…' : `Download the image (${p.label})`}
-      </Button>
-      <output className="text-sm">
-        {state === 'failed' ? 'The download did not work. Please try again.' : ''}
-      </output>
+      {animated && html.isSuccess && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            className="h-12"
+            onClick={() => {
+              setRun((n) => n + 1)
+              setPaused(false)
+            }}
+          >
+            <RotateCcw aria-hidden="true" />
+            Replay
+          </Button>
+          <Button variant="outline" className="h-12" onClick={() => setPaused((x) => !x)}>
+            {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
+            {paused ? 'Play' : 'Pause'}
+          </Button>
+        </div>
+      )}
+      {animated ? (
+        <>
+          <DownloadButton
+            label={`Download the video (${p.label})`}
+            objectPath={variant.export_path}
+            filename={exportFilename(ad.name, version, p, 'mp4')}
+          />
+          {variant.poster_path && (
+            <DownloadButton
+              variant="outline"
+              label={`Download a still of the last frame (${p.label})`}
+              objectPath={variant.poster_path}
+              filename={exportFilename(ad.name, version, p).replace(/\.png$/, '-still.png')}
+            />
+          )}
+        </>
+      ) : (
+        <DownloadButton
+          label={`Download the image (${p.label})`}
+          objectPath={variant.export_path}
+          filename={exportFilename(ad.name, version, p)}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,8 @@
 // The Q3 ad studio's local command (Node 24 runs this TypeScript directly).
 //
-//   npm run ad:render  -- ads/work/<ad>            validate, inline, render PNGs into <ad>/out/
+//   npm run ad:render  -- ads/work/<ad>            validate, inline, render into <ad>/out/: a PNG
+//                                                  per size, or for an animated ad (duration_ms in
+//                                                  ad.json) an MP4 and a poster PNG per size
 //   npm run ad:render  -- ads/work/<ad> --guides   also writes <size>.guides.png with the safe areas
 //   npm run ad:publish -- ads/work/<ad> [--done <request ids>]  render, upload, create the ad or
 //                                                  its next version, mark requests done
@@ -9,21 +11,29 @@
 //
 // An ad directory holds ad.json, one <size>.html per size, and any handed-in assets. The HTML may
 // use kit:<name> references (ads/kit) and paths relative to the ad directory; rendering inlines
-// them all, refuses anything that would still reach the network, and renders each PNG from the
-// exact HTML that is published.
+// them all, refuses anything that would still reach the network, and renders each file from the
+// exact HTML that is published. An animated ad moves with CSS animations only; the render pauses
+// them and seeks each to every frame's time (30 per second), so the video is the same every run
+// and never depends on how fast this machine is. ffmpeg encodes the frames.
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { chromium } from '@playwright/test'
+import { chromium, type Page } from '@playwright/test'
 import {
   BUTTON_MAX,
   CAPTION_GUIDE,
   CAPTION_MAX,
   HEADLINE_MAX,
   MAX_IMAGE_BYTES,
+  MAX_VIDEO_BYTES,
   PLACEMENTS,
+  VIDEO_FPS,
+  durationProblem,
+  formatDuration,
   htmlProblems,
+  safeArea,
   type AdSize,
+  type Placement,
 } from '../src/lib/ads/spec.ts'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -58,6 +68,8 @@ type AdJson = {
   campaign?: string
   creative?: string
   sizes?: AdSize[]
+  /** Animated ads only: the loop length. A still ad has none. */
+  duration_ms?: number
   created_by?: string
   /** Set by the first publish: later publishes from the same directory add versions. */
   ad_id?: string
@@ -80,6 +92,10 @@ function readAd(dir: string): AdJson & { sizes: AdSize[] } {
     problems.push(`headline: at most ${HEADLINE_MAX} characters`)
   if (ad.button_label && ad.button_label.length > BUTTON_MAX)
     problems.push(`button_label: at most ${BUTTON_MAX} characters`)
+  if (ad.duration_ms !== undefined) {
+    const problem = durationProblem(ad.duration_ms)
+    if (problem) problems.push(problem)
+  }
   if (Boolean(ad.campaign) !== Boolean(ad.creative))
     problems.push('campaign and creative: give both slugs or neither')
   const sizes = ad.sizes ?? ['portrait', 'vertical']
@@ -150,13 +166,172 @@ function inline(html: string, dir: string): string {
   return out
 }
 
-type Rendered = { size: AdSize; htmlFile: string; pngFile: string; bytes: number }
+type Rendered = {
+  size: AdSize
+  htmlFile: string
+  /** The PNG (still) or MP4 (animated) staff download. */
+  exportFile: string
+  exportType: 'image' | 'video'
+  bytes: number
+  /** Animated only: the end of the loop as PNG. */
+  posterFile: string | null
+  durationMs: number | null
+}
+
+type Motion = { name: string; delay: number; duration: number; iterations: number; end: number }
+
+/** Every CSS animation in the page, with its timing. */
+const readMotion = (page: Page) =>
+  page.evaluate(() =>
+    document.getAnimations().map((a) => {
+      const t = a.effect?.getComputedTiming()
+      return {
+        name: 'animationName' in a ? String(a.animationName) : a.constructor.name,
+        delay: Number(t?.delay ?? 0),
+        duration: Number(t?.duration ?? 0),
+        iterations: Number(t?.iterations ?? 1),
+        end: Number(t?.endTime ?? 0),
+      }
+    }),
+  )
+
+/** Children of .safe that reach outside it, and whether .safe sits where Meta's figures put it. */
+const safeProblems = (page: Page, expected: ReturnType<typeof safeArea>) =>
+  page.evaluate((want) => {
+    const safe = document.querySelector('.safe')
+    if (!safe) return ['no element with class "safe" (put the text, logo and key content in .safe)']
+    const s = safe.getBoundingClientRect()
+    const problems: string[] = []
+    if (
+      Math.abs(s.left - want.left) > 1 ||
+      Math.abs(s.top - want.top) > 1 ||
+      Math.abs(s.width - want.width) > 2 ||
+      Math.abs(s.height - want.height) > 2
+    )
+      problems.push(
+        `.safe is at ${Math.round(s.left)},${Math.round(s.top)} ${Math.round(s.width)} x ${Math.round(s.height)}, expected ${want.left},${want.top} ${want.width} x ${want.height}`,
+      )
+    for (const el of safe.querySelectorAll('*')) {
+      const r = el.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0) continue
+      if (
+        r.left < s.left - 1 ||
+        r.top < s.top - 1 ||
+        r.right > s.right + 1 ||
+        r.bottom > s.bottom + 1
+      )
+        problems.push(
+          `<${el.tagName.toLowerCase()}${el.className ? ` class="${String(el.className)}"` : ''}> reaches outside the safe area`,
+        )
+    }
+    return problems
+  }, expected)
+
+function ffprobe(file: string) {
+  const out = execFileSync(
+    'ffprobe',
+    [
+      '-v',
+      'error',
+      '-show_entries',
+      'stream=codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,pix_fmt,sample_aspect_ratio,field_order,nb_frames:format=duration,format_name',
+      '-of',
+      'json',
+      file,
+    ],
+    { encoding: 'utf8' },
+  )
+  return JSON.parse(out) as {
+    streams: Record<string, string | number>[]
+    format: { duration: string; format_name: string }
+  }
+}
+
+/** H.264 in MP4, yuv420p, fixed 30 fps, square pixels, progressive, no audio, no edit list. */
+function encode(framesDir: string, file: string) {
+  execFileSync(
+    'ffmpeg',
+    [
+      '-y',
+      '-loglevel',
+      'error',
+      '-framerate',
+      String(VIDEO_FPS),
+      '-i',
+      path.join(framesDir, '%05d.png'),
+      '-c:v',
+      'libx264',
+      '-preset',
+      'slow',
+      '-crf',
+      '18',
+      '-pix_fmt',
+      'yuv420p',
+      '-bf',
+      '0',
+      '-r',
+      String(VIDEO_FPS),
+      '-vf',
+      'setsar=1',
+      '-movflags',
+      '+faststart',
+      '-use_editlist',
+      '0',
+      '-an',
+      file,
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+}
+
+/** Whether the MP4's movie box carries an edit list ("elst"); Meta asks for none. */
+function hasEditList(file: string): boolean {
+  const buf = fs.readFileSync(file)
+  for (let at = 0; at + 8 <= buf.length;) {
+    const size = buf.readUInt32BE(at)
+    const type = buf.toString('latin1', at + 4, at + 8)
+    if (size < 8) break
+    if (type === 'moov') return buf.subarray(at, at + size).includes('elst')
+    at += size
+  }
+  return false
+}
+
+function checkVideo(file: string, p: Placement, durationMs: number) {
+  const probe = ffprobe(file)
+  const video = probe.streams.filter((s) => s.codec_type === 'video')
+  const v = video[0]
+  const problems: string[] = []
+  if (video.length !== 1 || !v) problems.push('expected one video stream')
+  else {
+    if (v.codec_name !== 'h264') problems.push(`codec ${v.codec_name}, expected h264`)
+    if (v.width !== p.width || v.height !== p.height)
+      problems.push(`${v.width} x ${v.height}, expected ${p.width} x ${p.height}`)
+    if (v.r_frame_rate !== `${VIDEO_FPS}/1` || v.avg_frame_rate !== `${VIDEO_FPS}/1`)
+      problems.push(
+        `frame rate ${v.r_frame_rate} (average ${v.avg_frame_rate}), expected ${VIDEO_FPS}/1`,
+      )
+    if (v.pix_fmt !== 'yuv420p') problems.push(`pixel format ${v.pix_fmt}, expected yuv420p`)
+    if (v.sample_aspect_ratio !== '1:1')
+      problems.push(`pixel aspect ${v.sample_aspect_ratio}, expected 1:1`)
+    if (Number(v.nb_frames) !== (durationMs * VIDEO_FPS) / 1000)
+      problems.push(`${v.nb_frames} frames, expected ${(durationMs * VIDEO_FPS) / 1000}`)
+  }
+  if (probe.streams.length !== 1)
+    problems.push('the file has streams besides the video (it should be silent)')
+  if (Math.abs(Number(probe.format.duration) * 1000 - durationMs) > 1000 / VIDEO_FPS)
+    problems.push(`length ${probe.format.duration} s, expected ${durationMs / 1000} s`)
+  if (hasEditList(file)) problems.push('the file has an edit list (Meta asks for none)')
+  if (problems.length)
+    fail(`${path.basename(file)} does not meet the video spec:\n  ${problems.join('\n  ')}`)
+}
 
 async function render(
   dir: string,
   guides: boolean,
 ): Promise<{ ad: ReturnType<typeof readAd>; files: Rendered[] }> {
   const ad = readAd(dir)
+  const animated = ad.duration_ms !== undefined
   const outDir = path.join(dir, 'out')
   fs.rmSync(outDir, { recursive: true, force: true })
   fs.mkdirSync(outDir, { recursive: true })
@@ -176,7 +351,8 @@ async function render(
       const htmlFile = path.join(outDir, `${size}.html`)
       fs.writeFileSync(htmlFile, html)
 
-      const shoot = async (doc: string, file: string) => {
+      /** The page loaded exactly as published: network blocked, fonts ready, size checked. */
+      const open = async (doc: string) => {
         const page = await browser.newPage({
           viewport: { width: p.width, height: p.height },
           deviceScaleFactor: 1,
@@ -209,24 +385,127 @@ async function render(
           )
         if (box.sw > p.width || box.sh > p.height)
           fail(`${size}: content overflows the ${p.width} x ${p.height} artwork`)
-        await page.screenshot({
-          path: file,
-          clip: { x: 0, y: 0, width: p.width, height: p.height },
-        })
-        await page.close()
+        return page
       }
-      const pngFile = path.join(outDir, `${size}.png`)
-      await shoot(html, pngFile)
-      const bytes = fs.statSync(pngFile).size
-      if (bytes > MAX_IMAGE_BYTES) fail(`${size}.png is ${bytes} bytes, over Instagram's 30 MB`)
-      if (guides)
-        await shoot(
-          html.replace(/<html\b/i, '<html class="guides"'),
-          path.join(outDir, `${size}.guides.png`),
+      const clip = { x: 0, y: 0, width: p.width, height: p.height }
+      const checkSafe = async (page: Page, when: string) => {
+        const outside = await safeProblems(page, safeArea(p))
+        if (outside.length) fail(`${size}${when}: ${outside.join('; ')}`)
+      }
+      /** Every animation paused and moved to t milliseconds, then one frame drawn. */
+      const seek = (page: Page, t: number) =>
+        page.evaluate(
+          (ms) =>
+            new Promise<void>((done) => {
+              for (const a of document.getAnimations()) {
+                a.pause()
+                a.currentTime = ms
+              }
+              requestAnimationFrame(() => done())
+            }),
+          t,
         )
-      files.push({ size, htmlFile, pngFile, bytes })
+
+      const page = await open(html)
+      const motion: Motion[] = await readMotion(page)
+      let rendered: Rendered
+      if (!animated) {
+        // A still: nothing may move, now or a moment later.
+        if (motion.length)
+          fail(
+            `${size}: the ad animates (${motion.map((m) => m.name).join(', ')}) but ad.json declares no duration_ms. Add duration_ms for an animated ad, or remove the animation.`,
+          )
+        await checkSafe(page, '')
+        const pngFile = path.join(outDir, `${size}.png`)
+        const first = await page.screenshot({ path: pngFile, clip })
+        await page.waitForTimeout(1000)
+        if (!first.equals(await page.screenshot({ clip })))
+          fail(
+            `${size}: the still ad changes over time (an animated image?); declare duration_ms or make it still`,
+          )
+        const bytes = fs.statSync(pngFile).size
+        if (bytes > MAX_IMAGE_BYTES) fail(`${size}.png is ${bytes} bytes, over Instagram's 30 MB`)
+        rendered = {
+          size,
+          htmlFile,
+          exportFile: pngFile,
+          exportType: 'image',
+          bytes,
+          posterFile: null,
+          durationMs: null,
+        }
+      } else {
+        const loop = ad.duration_ms as number
+        if (!motion.length)
+          fail(
+            `${size}: ad.json declares duration_ms ${loop} but nothing in the ad animates (a still ad has no duration_ms)`,
+          )
+        for (const m of motion) {
+          if (m.duration <= 0) continue
+          if (m.iterations === Infinity) {
+            const ratio = loop / m.duration
+            if (Math.abs(m.delay) > 0.5 || Math.abs(ratio - Math.round(ratio)) > 0.001)
+              fail(
+                `${size}: animation "${m.name}" repeats every ${m.duration} ms${m.delay ? ` after ${m.delay} ms` : ''}; a repeating animation must fit the ${loop} ms loop a whole number of times, with no delay (set --loop to ${loop / 1000}s)`,
+              )
+          } else if (m.end > loop + 0.5)
+            fail(`${size}: animation "${m.name}" ends at ${m.end} ms, after the ${loop} ms loop`)
+        }
+        // Step the loop frame by frame: seek every animation to each frame's time and capture it.
+        const framesDir = path.join(outDir, `${size}.frames`)
+        fs.mkdirSync(framesDir)
+        const count = (loop * VIDEO_FPS) / 1000
+        let first: Buffer | null = null
+        let moves = false
+        for (let i = 0; i < count; i++) {
+          await seek(page, (i * 1000) / VIDEO_FPS)
+          await checkSafe(page, ` at ${Math.round((i * 1000) / VIDEO_FPS)} ms`)
+          const frame = await page.screenshot({
+            path: path.join(framesDir, `${String(i).padStart(5, '0')}.png`),
+            clip,
+          })
+          if (!first) first = frame
+          else if (!moves && !frame.equals(first)) moves = true
+        }
+        if (!moves)
+          fail(`${size}: ad.json declares duration_ms ${loop} but no frame differs from the first`)
+        // The poster is the end of the loop: the settled message, and the still fallback.
+        await seek(page, loop)
+        await checkSafe(page, ' at the end')
+        const posterFile = path.join(outDir, `${size}.poster.png`)
+        await page.screenshot({ path: posterFile, clip })
+        const mp4File = path.join(outDir, `${size}.mp4`)
+        encode(framesDir, mp4File)
+        fs.rmSync(framesDir, { recursive: true })
+        checkVideo(mp4File, p, loop)
+        const bytes = fs.statSync(mp4File).size
+        if (bytes > MAX_VIDEO_BYTES)
+          fail(`${size}.mp4 is ${bytes} bytes, over the 30 MB the ad files can hold`)
+        if (fs.statSync(posterFile).size > MAX_IMAGE_BYTES) fail(`${size}.poster.png is over 30 MB`)
+        rendered = {
+          size,
+          htmlFile,
+          exportFile: mp4File,
+          exportType: 'video',
+          bytes,
+          posterFile,
+          durationMs: loop,
+        }
+      }
+      await page.close()
+      if (guides) {
+        const g = await open(html.replace(/<html\b/i, '<html class="guides"'))
+        if (animated) await seek(g, ad.duration_ms as number)
+        await g.screenshot({ path: path.join(outDir, `${size}.guides.png`), clip })
+        await g.close()
+      }
+      files.push(rendered)
       console.log(
-        `ad: ${size} ${p.width}x${p.height} -> ${path.relative(ROOT, pngFile)} (${Math.round(bytes / 1024)} KB)`,
+        `ad: ${size} ${p.width}x${p.height} -> ${path.relative(ROOT, rendered.exportFile)} (${Math.round(rendered.bytes / 1024)} KB${
+          animated
+            ? `, ${formatDuration(ad.duration_ms as number)} at ${VIDEO_FPS} fps, poster ${path.basename(rendered.posterFile ?? '')}`
+            : ''
+        })`,
       )
     }
   } finally {
@@ -362,12 +641,16 @@ async function publish(dir: string, doneIds: string[]) {
     versionId = row?.id as string
     for (const f of files) {
       const p = PLACEMENTS[f.size]
-      const htmlPath = `${adId}/v${version}/${f.size}.html`
-      const pngPath = `${adId}/v${version}/${f.size}.png`
-      for (const [objectPath, file, type] of [
+      const base = `${adId}/v${version}/${f.size}`
+      const htmlPath = `${base}.html`
+      const exportPath = f.exportType === 'video' ? `${base}.mp4` : `${base}.png`
+      const posterPath = f.posterFile ? `${base}.poster.png` : null
+      const uploads: [string, string, string][] = [
         [htmlPath, f.htmlFile, 'text/html'],
-        [pngPath, f.pngFile, 'image/png'],
-      ] as const) {
+        [exportPath, f.exportFile, f.exportType === 'video' ? 'video/mp4' : 'image/png'],
+      ]
+      if (posterPath && f.posterFile) uploads.push([posterPath, f.posterFile, 'image/png'])
+      for (const [objectPath, file, type] of uploads) {
         const res = await s.storage('POST', objectPath, fs.readFileSync(file), type)
         if (!res.ok)
           throw new Error(
@@ -381,8 +664,11 @@ async function publish(dir: string, doneIds: string[]) {
         width: p.width,
         height: p.height,
         html_path: htmlPath,
-        export_path: pngPath,
+        export_path: exportPath,
         export_bytes: f.bytes,
+        export_type: f.exportType,
+        duration_ms: f.durationMs,
+        poster_path: posterPath,
       })
     }
     // Marks the named requests done in this version and puts the ad back to waiting for review.
@@ -409,8 +695,8 @@ async function publish(dir: string, doneIds: string[]) {
   fs.writeFileSync(jsonFile, JSON.stringify(saved, null, 2) + '\n')
   console.log(
     `ad: published "${ad.name}" version ${version} (id ${adId}, ${files.length} sizes${
-      doneIds.length ? `, ${doneIds.length} request(s) marked done` : ''
-    })`,
+      ad.duration_ms ? `, animated ${formatDuration(ad.duration_ms)}` : ''
+    }${doneIds.length ? `, ${doneIds.length} request(s) marked done` : ''})`,
   )
   console.log(`ad: staff see it at https://staff.q3interiors.ie/#/ads/${adId}`)
 }
@@ -463,7 +749,7 @@ async function pull(adId: string, dir: string) {
   const s = await stack()
   const [row] = await s.rest(
     'GET',
-    `ads?id=eq.${adId}&select=id,name,ad_versions(version,caption,headline,button_label,notes,ad_variants(size,html_path))`,
+    `ads?id=eq.${adId}&select=id,name,ad_versions(version,caption,headline,button_label,notes,ad_variants(size,html_path,duration_ms))`,
   )
   if (!row) fail(`no ad with id ${adId}`)
   const versions = (row.ad_versions ?? []) as {
@@ -472,7 +758,7 @@ async function pull(adId: string, dir: string) {
     headline: string | null
     button_label: string | null
     notes: string | null
-    ad_variants: { size: AdSize; html_path: string }[]
+    ad_variants: { size: AdSize; html_path: string; duration_ms: number | null }[]
   }[]
   const current = versions.sort((a, b) => b.version - a.version)[0]
   if (!current) fail('the ad has no versions')
@@ -489,6 +775,7 @@ async function pull(adId: string, dir: string) {
     headline: current.headline ?? undefined,
     button_label: current.button_label ?? undefined,
     notes: current.notes ?? undefined,
+    duration_ms: current.ad_variants[0]?.duration_ms ?? undefined,
     sizes: current.ad_variants.map((v) => v.size),
   }
   fs.writeFileSync(path.join(dir, 'ad.json'), JSON.stringify(json, null, 2) + '\n')

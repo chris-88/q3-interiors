@@ -1,6 +1,6 @@
 ---
 name: q3-ad
-description: Build a Q3 Interiors Instagram ad from Chris's dictation and publish it to the staff console. Use when Chris describes an ad he wants ("make an ad that says...", "an Instagram ad for...", "/q3-ad"), hands in photos for an ad, or asks to republish an ad. Still ads only for now (no animation or video).
+description: Build a Q3 Interiors Instagram ad from Chris's dictation and publish it to the staff console. Use when Chris describes an ad he wants ("make an ad that says...", "an Instagram ad for...", "/q3-ad"), hands in photos for an ad, or asks to republish an ad. Still ads (PNG) or subtly animated ads (MP4 video).
 ---
 
 # Q3 ad: from dictation to the staff console
@@ -11,7 +11,8 @@ You are in the `q3-interiors` repo. Chris dictates an ad; you build it with the 
 
 - `ads/kit/RULES.md`: the rules every ad follows. Short; read it every time.
 - `ads/kit/ad.css`: brand tokens, Roboto, the placement classes and the `.safe` area.
-- `ads/kit/templates/type-only/`: starting layouts for the two sizes.
+- `ads/kit/templates/type-only/`: starting layouts for the two sizes (still).
+- `ads/kit/templates/type-only-animated/`: the same, animated (the two rules redraw), with an example `ad.json`.
 - `docs/instagram-ad-specs.md`: Meta's sizes and covered areas, with sources.
 
 ## The two sizes (every ad)
@@ -44,10 +45,20 @@ Add `square.html` (`ad ad--square`, 1440 x 1440) and `"square"` in `sizes` only 
    }
    ```
    `campaign` and `creative` are optional (both or neither). `button_label` is one of Instagram's buttons, usually "Learn more" or "Contact us".
-6. **Preview locally**: `npm run ad:render -- ads/work/<slug> --guides`. It inlines everything, checks the files, and writes `out/portrait.png`, `out/vertical.png` and `.guides.png` copies with the covered areas shaded red. Look at the guides images (Read them); nothing that matters may sit in the red. Fix and re-run until clean. Errors name the file and the problem.
+6. **Preview locally**: `npm run ad:render -- ads/work/<slug> --guides`. It inlines everything, checks the files, and writes `out/portrait.png`, `out/vertical.png` and `.guides.png` copies with the covered areas shaded red. Look at the guides images (Read them); nothing that matters may sit in the red. (An animated ad writes MP4s and posters instead of PNGs: see Animated ads.) Fix and re-run until clean. Errors name the file and the problem.
 7. **Show Chris** the two plain PNGs (`out/portrait.png`, `out/vertical.png`) and the caption, headline and button label. Change what he asks; re-run step 6.
 8. **Publish** once Chris is happy: `npm run ad:publish -- ads/work/<slug>`. The first publish writes the new `ad_id` into `ad.json`; keep it, so later changes become new versions. It re-renders, reads the service key from `pass` for that run only (never print it, never write it anywhere), uploads the HTML and PNGs to the private `ads` bucket, and creates the ad, version 1 and its variants (status "New"). If anything fails it undoes what it did.
 9. **Tell Chris**: the ad's name, that it is on the staff site under Ads (https://staff.q3interiors.ie/#/ads) as "New", that staff can preview each size there, download the images and copy the caption, headline, button label and tagged link, and whether it has a tagged link (only if it was linked to a campaign creative).
+
+## Animated ads
+
+Only when Chris asks for movement. An animated ad is the same HTML plus CSS animation, and becomes an MP4 per size.
+
+- **Start** from `ads/kit/templates/type-only-animated/` (`cp ads/kit/templates/type-only-animated/* ads/work/<slug>/`). Add `"duration_ms": 6000` (1,000 to 15,000, a multiple of 100) to `ad.json`, and set `--loop` on `.ad` to the same length (`--loop: 6s`). No `duration_ms` means a still ad, and a still ad must not move.
+- **CSS animations only.** No scripts, video, GIFs or SVG `<animate>`: the render refuses them. A repeating animation (`infinite`) must last exactly the loop (or fit it a whole number of times) with no `animation-delay`; stagger with keyframe percentages (see `.ad-anim-rule--late` in `ad.css`). A one-off animation must end within the loop. Transitions do not run in an ad (nothing triggers them).
+- **The rules** (RULES.md 9): subtle; the message is complete and readable on the first frame and on the last; nothing essential appears only mid-loop; nothing flashes, blinks or races; everything stays in `.safe` at every frame. Prefer moving the rules or a gentle reveal of decoration over moving the words.
+- **Preview locally**: `npm run ad:render -- ads/work/<slug> --guides`. It pauses the animations and seeks them to every frame's time (30 a second), checks the safe area on each frame, and writes `out/<size>.mp4`, `out/<size>.poster.png` (the end of the loop, the still fallback) and `out/<size>.guides.png` (the poster with the covered areas). It refuses a loop whose frames never change. To look at it: open `out/<size>.mp4` in a video player, or extract frames: `ffmpeg -i out/vertical.mp4 -vf "select=eq(n\,0)" -frames:v 1 first.png` (also a middle and the last frame) and Read them. To watch it live, open `ads/work/<slug>/out/<size>.html` in a browser.
+- **Show Chris** the MP4s (and the first, middle and last frames), then publish as usual. `ad:publish` uploads the HTML, the MP4 and the poster; staff see it play in the console with Replay and Pause, its length, and "Download the video".
 
 ## Pick up the ad changes
 
@@ -71,3 +82,4 @@ Staff ask for changes on the ad page in the staff console. When Chris says "pick
 - Do not change the wordmark artwork, the colours or the kit to suit one ad; raise it with Chris instead.
 - Do not publish an ad Chris has not seen. A change to a published ad is a new version of it (keep `ad_id` in `ad.json`), not a new ad.
 - Do not sign in to the staff site or touch other live data.
+- Do not animate an ad Chris asked for as a still, or make the movement carry the message.

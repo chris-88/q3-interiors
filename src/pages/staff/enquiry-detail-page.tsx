@@ -26,6 +26,7 @@ import { OutcomeForm } from '@/components/staff/outcome-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import { eventLine } from '@/components/staff/event-text'
 import { EnquiryFlags } from '@/components/staff/enquiry-flags'
+import { ChaseForm } from '@/components/staff/chase-form'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -479,6 +480,18 @@ export function EnquiryDetailPage() {
           form={forms.data?.get(`site_details@${data.site_details_form_version ?? 1}`)}
         />
       )}
+
+      <Section title="Had to chase details">
+        <ChaseForm
+          key={`${data.chase_flagged_at}-${data.chase_note}`}
+          enquiryId={data.id}
+          current={{
+            at: data.chase_flagged_at,
+            note: data.chase_note,
+            by: data.chase_flagged_by_name,
+          }}
+        />
+      </Section>
 
       <Section title="Outcome">
         <OutcomeForm

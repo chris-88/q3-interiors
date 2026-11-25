@@ -15,6 +15,7 @@ export type SubmitBody = {
   p_marketing_opt_in: boolean
   p_attribution: Record<string, unknown> | null
   p_trap?: string | null
+  p_session_id?: string | null
 }
 
 /**
@@ -24,7 +25,7 @@ export type SubmitBody = {
  */
 export async function installFakeBackend(
   page: Page,
-  opts: { failFirstSubmit?: boolean; limitSubmit?: boolean } = {},
+  opts: { failFirstSubmit?: boolean; limitSubmit?: boolean; failVisits?: boolean } = {},
 ) {
   const clock = { offset: 0 }
   const now = () => Date.now() + clock.offset
@@ -109,6 +110,17 @@ export async function installFakeBackend(
     })
   })
 
+  // Visit counting: record what the browser sent; optionally fail like an unreachable server.
+  const visitBodies: Record<string, unknown>[] = []
+  await page.route('**/rest/v1/rpc/record_visit', async (route) => {
+    visitBodies.push(route.request().postDataJSON() as Record<string, unknown>)
+    if (opts.failVisits) {
+      await route.abort('internetdisconnected')
+      return
+    }
+    await route.fulfill({ status: 204, body: '' })
+  })
+
   // The landing page's live durations, from the fake database's active types.
   await page.route('**/rest/v1/rpc/public_appointment_types', async (route) => {
     await route.fulfill({
@@ -141,7 +153,7 @@ export async function installFakeBackend(
     })
   })
 
-  return { db, calendar, clock, submitBodies, photos, bookingBodies }
+  return { db, calendar, clock, submitBodies, photos, bookingBodies, visitBodies }
 }
 
 export type Route = 'phone' | 'on_site'

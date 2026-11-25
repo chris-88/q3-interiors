@@ -29,6 +29,12 @@ expect_absent dist-staff 'A photo from the doorway helps us see the whole room.'
 # Only the staff console reads the photo bucket.
 expect_absent dist 'enquiry-photos'
 expect_present dist-staff 'enquiry-photos'
+# Visit counting is customer-side only; the pilot report and chase flag are staff-side only.
+expect_present dist 'record_visit'
+expect_absent dist-staff 'record_visit'
+expect_absent dist 'pilot_report'
+expect_absent dist 'set_chase_details'
+expect_present dist-staff 'pilot_report'
 expect_absent dist-staff 'What kind of project is it?'
 # Each has its own.
 expect_present dist 'Show us the space so we can measure up'

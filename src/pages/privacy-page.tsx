@@ -69,6 +69,11 @@ export function PrivacyPage() {
             stop the same address sending too many enquiries. We do not store the address itself.
           </li>
           <li>Whether you asked to hear about news and offers.</li>
+          <li>
+            We count visits to this site and which advert they came from, without personal details
+            or cookies: each browser tab gets a random number that is forgotten when the tab closes.
+            Visit counts are deleted after 13 months.
+          </li>
         </ul>
       </Part>
 

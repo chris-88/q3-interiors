@@ -14,6 +14,8 @@ export type SubmitEnquiryInput = {
   attribution: Attribution | null
   /** The hidden honeypot field; anything in it means a bot. */
   trap: string
+  /** This tab's visit id (no personal data), so the enquiry joins its landing session. */
+  sessionId?: string | null
 }
 
 const submittedSchema = z.object({
@@ -38,6 +40,7 @@ export async function submitEnquiry(input: SubmitEnquiryInput): Promise<Submitte
     p_marketing_opt_in: input.marketingOptIn,
     p_attribution: input.attribution,
     p_trap: input.trap || null,
+    p_session_id: input.sessionId ?? null,
   })
   if (error) {
     if (error.code === 'PT429' || error.message === 'rate_limited') throw new RateLimitedError()

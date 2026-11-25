@@ -52,8 +52,8 @@ select pg_temp.expect(
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname in ('public', 'private') and has_function_privilege('anon', p.oid, 'execute'))
   = array['public_appointment_types', 'public_business_details', 'public_wording',
-          'submit_enquiry_with_access'],
-  'anon may run only the four public functions');
+          'record_visit', 'submit_enquiry_with_access'],
+  'anon may run only the five public functions');
 
 -- -------------------------------------------------------------------------------------------
 -- anon: the landing durations, and v2 submissions

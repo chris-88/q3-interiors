@@ -55,6 +55,34 @@ export const CAPTION_MAX = 2200
 export const HEADLINE_MAX = 40
 export const BUTTON_MAX = 30
 
+/**
+ * Animated ads (Meta's video specs, docs/instagram-ad-specs.md): MP4, H.264, fixed frame rate,
+ * progressive, square pixels; Stories at least 1 second (Reels from 0, feed from 1), at most 15
+ * minutes (Reels) to 60 minutes (feed and Stories), up to 4 GB. A Q3 ad is a short loop, so the
+ * studio keeps it between 1 and 15 seconds, and the private bucket holds files up to 30 MB.
+ */
+export const VIDEO_FPS = 30
+export const MIN_DURATION_MS = 1000
+export const MAX_DURATION_MS = 15000
+export const MAX_VIDEO_BYTES = 30 * 1024 * 1024
+
+/** "6 seconds", "2.5 seconds" */
+export function formatDuration(ms: number): string {
+  const s = Math.round(ms / 100) / 10
+  return `${s} ${s === 1 ? 'second' : 'seconds'}`
+}
+
+/** A declared loop length: whole frames at VIDEO_FPS, within the studio's limits. */
+export function durationProblem(ms: unknown): string | null {
+  if (typeof ms !== 'number' || !Number.isInteger(ms))
+    return 'duration_ms: a whole number of milliseconds'
+  if (ms < MIN_DURATION_MS || ms > MAX_DURATION_MS)
+    return `duration_ms: between ${MIN_DURATION_MS} and ${MAX_DURATION_MS}`
+  if ((ms * VIDEO_FPS) % 1000 !== 0)
+    return `duration_ms: a whole number of frames at ${VIDEO_FPS} per second (a multiple of 100 ms works)`
+  return null
+}
+
 /** The safe rectangle in pixels for a placement. */
 export function safeArea(p: Placement) {
   const left = Math.round(p.width * p.covered.side)
@@ -81,14 +109,17 @@ export type HtmlProblem = { problem: string; detail: string }
 
 /**
  * Everything in a published ad file that could reach the network or run code. A published variant
- * must come back empty: fonts, logo and images are inlined as data: URIs, nothing else.
+ * must come back empty: fonts, logo and images are inlined as data: URIs, nothing else. Movement
+ * is CSS animation only, so a render can step it frame by frame.
  */
 export function htmlProblems(html: string): HtmlProblem[] {
   const problems: HtmlProblem[] = []
   const add = (problem: string, detail: string) =>
     problems.push({ problem, detail: detail.slice(0, 120) })
   const tags: [RegExp, string][] = [
-    [/<script\b/i, 'scripts are not allowed in a still ad'],
+    [/<script\b/i, 'scripts are not allowed in an ad (animate with CSS)'],
+    [/<(video|audio)\b/i, 'video and audio elements are not allowed (animate with CSS)'],
+    [/<(animate|animateTransform|animateMotion|set)\b/i, 'SVG animation is not allowed (use CSS)'],
     [/<(iframe|frame|object|embed|portal)\b/i, 'embedded documents are not allowed'],
     [/<link\b/i, 'linked files are not allowed (inline the CSS)'],
     [/<base\b/i, 'a base URL is not allowed'],

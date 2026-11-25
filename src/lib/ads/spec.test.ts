@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { exportFilename, htmlProblems, PLACEMENTS, safeArea } from './spec'
+import {
+  durationProblem,
+  exportFilename,
+  formatDuration,
+  htmlProblems,
+  PLACEMENTS,
+  safeArea,
+} from './spec'
 
 const clean = `<!doctype html><html><head><style>
 @font-face { font-family: Roboto; src: url(data:font/woff2;base64,AAAA) format('woff2'); }
@@ -17,6 +24,33 @@ describe('ad placements', () => {
     expect(exportFilename('Sample: Planning a renovation?', 1, PLACEMENTS.vertical)).toBe(
       'q3-sample-planning-a-renovation-v1-9x16-1440x2560.png',
     )
+    expect(exportFilename('Sample', 2, PLACEMENTS.portrait, 'mp4')).toBe(
+      'q3-sample-v2-4x5-1440x1800.mp4',
+    )
+  })
+})
+
+describe('animated ads', () => {
+  it('accept a loop of whole frames between 1 and 15 seconds', () => {
+    expect(durationProblem(6000)).toBeNull()
+    expect(durationProblem(1000)).toBeNull()
+    expect(durationProblem(15000)).toBeNull()
+    expect(durationProblem(900)).toMatch(/between/)
+    expect(durationProblem(16000)).toMatch(/between/)
+    expect(durationProblem(6010)).toMatch(/whole number of frames/)
+    expect(durationProblem('6000')).toMatch(/whole number/)
+  })
+
+  it('say the length plainly', () => {
+    expect(formatDuration(6000)).toBe('6 seconds')
+    expect(formatDuration(2500)).toBe('2.5 seconds')
+    expect(formatDuration(1000)).toBe('1 second')
+  })
+
+  it('may use CSS keyframes', () => {
+    const css = `<style>@keyframes wipe { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0) } }
+      .ad-rule { animation: wipe 6s ease-in-out infinite }</style>`
+    expect(htmlProblems(css)).toEqual([])
   })
 })
 
@@ -39,7 +73,12 @@ describe('published ad files', () => {
     ],
     ['<img srcset="a.png 1x, data:image/png;base64,AA 2x">', 'external or unresolved reference'],
     ['<link rel="stylesheet" href="kit:ad.css">', 'linked files are not allowed (inline the CSS)'],
-    ['<script>fetch("/x")</script>', 'scripts are not allowed in a still ad'],
+    ['<script>fetch("/x")</script>', 'scripts are not allowed in an ad (animate with CSS)'],
+    [
+      '<video autoplay muted src="data:video/mp4;base64,AA"></video>',
+      'video and audio elements are not allowed (animate with CSS)',
+    ],
+    ['<svg><animate attributeName="x" dur="1s"/></svg>', 'SVG animation is not allowed (use CSS)'],
     [
       '<img src="data:image/png;base64,AA" onload="go()">',
       'event handler attributes are not allowed',

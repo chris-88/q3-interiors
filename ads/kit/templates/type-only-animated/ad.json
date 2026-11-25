@@ -1,0 +1,9 @@
+{
+  "name": "Short name staff will recognise",
+  "caption": "The post text. The first 125 characters carry it.",
+  "headline": "Up to 40 characters",
+  "button_label": "Learn more",
+  "notes": "Where the words came from.",
+  "duration_ms": 6000,
+  "sizes": ["portrait", "vertical"]
+}

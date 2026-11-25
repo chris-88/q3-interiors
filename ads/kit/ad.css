@@ -128,6 +128,54 @@ body {
   color: #d4d4d4;
 }
 
+/*
+ * Animated ads: CSS animation only, one loop of var(--loop). Set --loop on .ad to the same length
+ * as duration_ms in ad.json (the render refuses a mismatch). The message is complete on the first
+ * frame and the last: these move only the rules, which redraw from the left and settle by 40% of
+ * the loop. Stagger with the --late variant, never with animation-delay.
+ */
+.ad {
+  --loop: 6s;
+}
+@keyframes ad-rule-redraw {
+  0%,
+  6% {
+    clip-path: inset(0 0 0 0);
+  }
+  20% {
+    clip-path: inset(0 0 0 100%);
+  }
+  20.01% {
+    clip-path: inset(0 100% 0 0);
+  }
+  36%,
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes ad-rule-redraw-late {
+  0%,
+  12% {
+    clip-path: inset(0 0 0 0);
+  }
+  26% {
+    clip-path: inset(0 0 0 100%);
+  }
+  26.01% {
+    clip-path: inset(0 100% 0 0);
+  }
+  42%,
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.ad-anim-rule {
+  animation: ad-rule-redraw var(--loop) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.ad-anim-rule--late {
+  animation-name: ad-rule-redraw-late;
+}
+
 /* Local preview only (npm run ad:render -- <dir> --guides): never in a published file. */
 .guides .ad::before,
 .guides .ad::after {

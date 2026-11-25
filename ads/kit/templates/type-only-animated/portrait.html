@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="utf-8" />
+    <title>Q3 Interiors animated ad: feed 4:5</title>
+    <link rel="stylesheet" href="kit:ad.css" />
+    <style>
+      .ad {
+        --loop: 6s; /* the same as duration_ms in ad.json */
+      }
+      .safe {
+        justify-content: space-between;
+      }
+      .copy {
+        display: flex;
+        flex-direction: column;
+        gap: 48px;
+      }
+      .copy .ad-rule {
+        width: 240px;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Animated type-only feed ad, 1440 x 1800, a 6 second loop. The words and the wordmark never
+      move; the two rules redraw from the left early in the loop and hold. Replace the words; keep
+      the structure, the kit and the loop length in step with ad.json.
+    -->
+    <main class="ad ad--portrait">
+      <div class="safe">
+        <img class="ad-wordmark" src="kit:wordmark-black.svg" alt="Q3 Interiors" />
+        <div class="copy">
+          <hr class="ad-rule ad-anim-rule" />
+          <h1 class="ad-headline">Headline in sentence case</h1>
+          <p class="ad-line">One supporting line, only what the site already says.</p>
+        </div>
+        <hr class="ad-rule ad-anim-rule ad-anim-rule--late" />
+      </div>
+    </main>
+  </body>
+</html>

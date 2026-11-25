@@ -49,6 +49,19 @@ select pg_temp.expect_error($$insert into public.ad_variants (version_id, size, 
 select pg_temp.expect_error($$insert into public.ad_versions (ad_id, version, caption, headline)
   values ('00000000-0000-4000-8000-00000000a601', 2, 'c', repeat('x', 41))$$, '23514');
 insert into storage.objects (bucket_id, name) values ('ads', 'ad/v1/portrait.html');
+-- Animated variants carry a video, a loop length and a poster; stills carry neither.
+set local role service_role;
+insert into public.ad_variants (version_id, size, width, height, html_path, export_path, export_type, duration_ms, poster_path)
+values ('00000000-0000-4000-8000-00000000a602', 'vertical', 1440, 2560, 'ad/v1/vertical.html', 'ad/v1/vertical.mp4', 'video', 6000, 'ad/v1/vertical.png');
+reset role;
+select pg_temp.expect((select export_type = 'image' from public.ad_variants where size = 'portrait'
+  and version_id = '00000000-0000-4000-8000-00000000a602'), 'stills default to image');
+select pg_temp.expect_error($$insert into public.ad_variants (version_id, size, width, height, html_path, export_path, export_type)
+  values ('00000000-0000-4000-8000-00000000a602', 'square', 1440, 1440, 'a/s.html', 'a/s.mp4', 'video')$$, '23514');
+select pg_temp.expect_error($$insert into public.ad_variants (version_id, size, width, height, html_path, export_path, duration_ms)
+  values ('00000000-0000-4000-8000-00000000a602', 'square', 1440, 1440, 'a/s.html', 'a/s.png', 6000)$$, '23514');
+select pg_temp.expect_error($$insert into public.ad_variants (version_id, size, width, height, html_path, export_path, export_type, duration_ms, poster_path)
+  values ('00000000-0000-4000-8000-00000000a602', 'square', 1440, 1440, 'a/s.html', 'a/s.mp4', 'video', 60000, 'a/s.png')$$, '23514');
 
 -- The bucket is private.
 select pg_temp.expect((select not public from storage.buckets where id = 'ads'), 'ads bucket is private');

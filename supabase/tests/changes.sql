@@ -163,9 +163,9 @@ reset role;
 -- -------------------------------------------------------------------------------------------
 -- Staff: attendance, outcome, report
 -- -------------------------------------------------------------------------------------------
--- Put B's booking in the past and confirm it.
-update public.bookings set starts_at = now() - interval '2 hours', ends_at = now() - interval '100 minutes',
-  blocked = tstzrange(now() - interval '2 hours', now() - interval '90 minutes')
+-- Put B's booking in the past and confirm it (weeks back, clear of any live booking).
+update public.bookings set starts_at = now() - interval '40 days', ends_at = now() - interval '40 days' + interval '20 minutes',
+  blocked = tstzrange(now() - interval '40 days', now() - interval '40 days' + interval '30 minutes')
 where id = pg_temp.id('bb');
 set local role service_role;
 select private.complete_calendar_job((select id from public.integration_jobs where booking_id = pg_temp.id('bb') and kind = 'create_calendar_event'), null);

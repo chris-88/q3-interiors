@@ -22,7 +22,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings; do
+  booking_settings ads ad_versions ad_variants; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -43,6 +43,14 @@ expect_code "anon cannot run the funnel report" 42501 \
   "$(curl -s -X POST "$rest/rpc/funnel_report" "${headers[@]}" -d '{"p_from":"2026-01-01","p_to":"2026-12-31"}')"
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
+
+# Ad files: the bucket is private (no public URL) and anon lists nothing.
+ad_public="$(curl -s -o /dev/null -w '%{http_code}' "$url/storage/v1/object/public/ads/x.png")"
+if [[ "$ad_public" == 400 || "$ad_public" == 404 ]]; then echo "ok    the ads bucket has no public URLs ($ad_public)"; else echo "FAIL  public ad URL answered $ad_public"; fail=1; fi
+ad_list="$(curl -s -X POST "$url/storage/v1/object/list/ads" "${headers[@]}" -d '{"prefix":""}')"
+if [[ "$ad_list" == "[]" || "$ad_list" == *'"statusCode"'* || "$ad_list" == *'"error"'* ]]; then echo "ok    anon lists no ad files"; else echo "FAIL  anon listed ad files: ${ad_list:0:120}"; fail=1; fi
+ad_get="$(curl -s -o /dev/null -w '%{http_code}' "$url/storage/v1/object/ads/x.png" "${headers[@]}")"
+if [[ "$ad_get" != 200 ]]; then echo "ok    anon cannot read an ad file ($ad_get)"; else echo "FAIL  anon read an ad file"; fail=1; fi
 
 # Edge Functions (slice 2).
 functions="$url/functions/v1"

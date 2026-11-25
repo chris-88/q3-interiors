@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { StaffPublicShell } from '@/components/staff/staff-layout'
 import {
+  StaffAdRoute,
+  StaffAdsRoute,
   StaffAppointmentsRoute,
   StaffBookingRulesRoute,
   StaffBusinessRoute,
@@ -52,6 +54,8 @@ export default function StaffApp() {
       <Route path="/enquiries" element={<StaffListRoute />} />
       <Route path="/enquiries/:id" element={<StaffDetailRoute />} />
       <Route path="/appointments" element={<StaffAppointmentsRoute />} />
+      <Route path="/ads" element={<StaffAdsRoute />} />
+      <Route path="/ads/:id" element={<StaffAdRoute />} />
       <Route path="/report" element={<StaffReportRoute />} />
       <Route path="/settings" element={<StaffSettingsRoute />} />
       <Route path="/settings/people" element={<StaffPeopleRoute />} />

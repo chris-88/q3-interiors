@@ -16,6 +16,7 @@ import {
 } from '@/api/staff-booking'
 import { useBookablePerson } from '@/api/staff-accounts'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
+import { InstallHint } from '@/components/staff/install-hint'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -564,6 +565,7 @@ export function SettingsPage() {
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
       <h1 className="text-section text-ink font-medium">Settings</h1>
+      <InstallHint />
       {isAdmin && <SetupLinks />}
       <CalendarCard />
       <Card title="Hours for bookings" id="availability-heading">

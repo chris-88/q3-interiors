@@ -17,6 +17,10 @@ import {
   StaffWordingRoute,
 } from '@/pages/staff/routes'
 import { unprefixedStaffPath } from './staff-redirect'
+import { startStaffPwa } from './staff-pwa'
+
+// Service worker, update notice, install prompt (staff build only).
+startStaffPwa()
 
 /** Old `/staff/...` links on this host land on the same screen without the prefix. */
 function Unprefix() {

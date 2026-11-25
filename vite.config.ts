@@ -22,8 +22,18 @@ export default defineConfig({
               .replace(/\s*<meta\s+name="description"[\s\S]*?\/>/, '')
               .replace(
                 '<meta name="color-scheme" content="light" />',
-                '<meta name="color-scheme" content="light" />\n    <meta name="robots" content="noindex, nofollow" />',
+                [
+                  '<meta name="color-scheme" content="light" />',
+                  '<meta name="robots" content="noindex, nofollow" />',
+                  // Installable staff app (manifest and icons written by staff-site-files.cjs).
+                  '<link rel="manifest" href="/manifest.webmanifest" />',
+                  '<meta name="mobile-web-app-capable" content="yes" />',
+                  '<meta name="apple-mobile-web-app-capable" content="yes" />',
+                  '<meta name="apple-mobile-web-app-title" content="Q3 Staff" />',
+                  '<meta name="apple-mobile-web-app-status-bar-style" content="default" />',
+                ].join('\n    '),
               )
+              .replace('href="/apple-touch-icon.png"', 'href="/icons/apple-touch-icon.png"')
               .replaceAll('%SITE_URL%', SITE_URL)
           : html.replaceAll('%SITE_URL%', SITE_URL),
     },

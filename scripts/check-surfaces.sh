@@ -27,4 +27,10 @@ expect_present dist-staff 'Who takes bookings'
 expect_present dist-staff/CNAME 'staff.q3interiors.ie'
 expect_present dist-staff/robots.txt 'Disallow: /'
 expect_present dist-staff/index.html 'noindex'
+# Only the staff console is an installable app.
+expect_absent dist/index.html 'manifest'
+if [[ -e dist/sw.js || -e dist/manifest.webmanifest ]]; then echo "FAIL  dist has a service worker or manifest"; fail=1; else echo "ok    dist has no service worker or manifest"; fi
+expect_present dist-staff/index.html 'rel="manifest"'
+expect_present dist-staff/manifest.webmanifest '"display": "standalone"'
+expect_present dist-staff/sw.js 'q3-staff-shell-'
 exit "$fail"

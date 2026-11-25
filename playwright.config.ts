@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test'
 // write to the real database.
 const PUBLIC_URL = 'http://127.0.0.1:4173'
 const STAFF_URL = 'http://127.0.0.1:4174'
-const STAFF_SPECS = /(staff-accounts|campaigns|checklist|staff-host)\.spec\.ts/
+const STAFF_SPECS = /(staff-accounts|campaigns|checklist|staff-host|staff-pwa)\.spec\.ts/
 const phone = { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } }
 
 export default defineConfig({
@@ -40,7 +40,9 @@ export default defineConfig({
     {
       name: 'staff',
       testMatch: STAFF_SPECS,
-      use: { ...phone, baseURL: STAFF_URL },
+      // The service worker would sit in front of the fake backend's routes; only staff-pwa.spec
+      // turns it on.
+      use: { ...phone, baseURL: STAFF_URL, serviceWorkers: 'block' },
     },
   ],
 })

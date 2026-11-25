@@ -34,7 +34,7 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
       <header className="bg-background border-b">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
           <Link
-            to="/staff"
+            to="/"
             className="inline-flex min-h-12 items-center gap-2 rounded-sm text-sm font-medium"
           >
             {/* Decorative: the link text names it. */}
@@ -71,10 +71,10 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
         <nav aria-label="Staff" className="bg-background border-b">
           <ul className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-2">
             {[
-              ['/staff', 'Enquiries', true],
-              ['/staff/appointments', 'Appointments', true],
-              ['/staff/report', 'Report', true],
-              ['/staff/settings', 'Settings', false],
+              ['/', 'Enquiries', true],
+              ['/appointments', 'Appointments', true],
+              ['/report', 'Report', true],
+              ['/settings', 'Settings', false],
             ].map(([to, label, end]) => (
               <li key={String(to)}>
                 <NavLink
@@ -158,7 +158,7 @@ function SignInForm() {
             {signIn.isPending ? 'Signing in…' : 'Sign in'}
           </Button>
           <Link
-            to="/staff/forgot"
+            to="/forgot"
             className="text-primary inline-flex min-h-12 items-center text-sm underline"
           >
             Forgot your password?

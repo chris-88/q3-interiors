@@ -272,7 +272,7 @@ export function EnquiryDetailPage() {
 
   const back = (
     <Link
-      to="/staff"
+      to="/"
       className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 inline-flex items-center gap-1 text-sm focus-visible:rounded-sm focus-visible:ring-3 focus-visible:outline-none"
     >
       <ChevronLeft className="size-4" aria-hidden="true" /> All enquiries

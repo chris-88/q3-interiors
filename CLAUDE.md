@@ -8,18 +8,18 @@ Q3 Interiors is a multi-trade renovation contractor. This app is its customer ac
 
 Slices 1 (enquiry), 2 (booking against one Google Calendar, confirmation email, staff appointments and calendar settings) and 3 (cancel and reschedule, email reminders, attendance and won/lost outcomes, funnel report, calendar reconcile flags) are built. SMS, uploads, ad pixels, multi-staff and a form editor are not (see the vault decision `2026-11-20-q3-pilot-scope-and-hosting`).
 
-| Concern            | Choice                                                                                                                              |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Build              | Vite + React + TypeScript (strict, `noUncheckedIndexedAccess`, no `any`)                                                            |
-| Styling / UI       | Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (Base UI)                                                                         |
-| Routing            | React Router, `HashRouter` (GitHub Pages cannot serve deep links)                                                                   |
-| Server state       | TanStack Query; Supabase reads/writes through hooks in `src/api/`                                                                   |
-| Validation / forms | Zod + React Hook Form                                                                                                               |
-| Backend            | Self-hosted Supabase stack `q3-interiors` (`~/code/infra/stacks/q3-interiors`), public URL `https://api.chrisquinn.ie/q3-interiors` |
-| Tests              | Vitest + Testing Library; Playwright when e2e is warranted                                                                          |
-| Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                                                                    |
-| Hosting            | GitHub Pages via GitHub Actions on push to `main`, `book.q3interiors.ie`                                                            |
-| Node               | `.nvmrc` = 24                                                                                                                       |
+| Concern            | Choice                                                                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Build              | Vite + React + TypeScript (strict, `noUncheckedIndexedAccess`, no `any`)                                                                                                 |
+| Styling / UI       | Tailwind CSS v4 (`@tailwindcss/vite`) + shadcn/ui (Base UI)                                                                                                              |
+| Routing            | React Router, `HashRouter` (GitHub Pages cannot serve deep links)                                                                                                        |
+| Server state       | TanStack Query; Supabase reads/writes through hooks in `src/api/`                                                                                                        |
+| Validation / forms | Zod + React Hook Form                                                                                                                                                    |
+| Backend            | Self-hosted Supabase stack `q3-interiors` (`~/code/infra/stacks/q3-interiors`), public URL `https://api.chrisquinn.ie/q3-interiors`                                      |
+| Tests              | Vitest + Testing Library; Playwright when e2e is warranted                                                                                                               |
+| Lint / format      | oxlint (`jsx-a11y`), Prettier with `prettier-plugin-tailwindcss`                                                                                                         |
+| Hosting            | GitHub Pages via GitHub Actions on push to `main`: customer site `book.q3interiors.ie` (this repo), staff console `staff.q3interiors.ie` (`chris-88/q3-interiors-staff`) |
+| Node               | `.nvmrc` = 24                                                                                                                                                            |
 
 ## Operating philosophy: lean surface, high floor
 
@@ -72,20 +72,28 @@ The Q3 Interiors website brand guide v2.0 (black and white wordmark, supplied 20
 
 ## Routes (HashRouter)
 
-| Route                    | What                                                                                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/#/`                    | Landing page, one "Tell us about your project" action                                                                                               |
-| `/#/enquire`             | Multi-step enquiry form, then review, then send                                                                                                     |
-| `/#/enquire/sent`        | Confirmation with the reference; only reachable after a successful save                                                                             |
-| `/#/staff`               | Staff sign-in, then the enquiry list (lazy-loaded chunk)                                                                                            |
-| `/#/staff/enquiries/:id` | Enquiry detail: answers via the stored form version, contact, status change, history, attribution                                                   |
-| `/#/book/:token`         | Customer scheduling for one enquiry (opaque access token, 30 days): type, address for a visit, slot, book, pending, confirmed                       |
-| `/#/staff/appointments`  | Appointments, upcoming first, plus past and failed                                                                                                  |
-| `/#/staff/settings`      | Own Google Calendar and the booking hours; admins: links to People, Business details, Wording, Campaigns, Go-live checklist, Booking rules and data |
-| `/#/privacy`             | Privacy notice (PLACEHOLDER wording; legal details from `src/config/business.ts`)                                                                   |
-| `/#/staff/report`        | Funnel report: enquiries -> booked -> attended -> won, overall and by campaign, for a date range                                                    |
+| Route             | What                                                                    |
+| ----------------- | ----------------------------------------------------------------------- |
+| `/#/`             | Landing page, one "Tell us about your project" action                   |
+| `/#/enquire`      | Multi-step enquiry form, then review, then send                         |
+| `/#/enquire/sent` | Confirmation with the reference; only reachable after a successful save |
+
+Staff console routes (on `https://staff.q3interiors.ie`, no `/staff` prefix):
+
+| Route                                         | What                                                                                                                                         |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/#/` (also `/#/enquiries`)                   | Staff sign-in, then the enquiry list                                                                                                         |
+| `/#/enquiries/:id`                            | Enquiry detail: answers via the stored form version, contact, status change, history, attribution                                            |
+| `/#/appointments`                             | Appointments, upcoming first, plus past and failed                                                                                           |
+| `/#/report`                                   | Funnel report: enquiries -> booked -> attended -> won, overall and by campaign, for a date range                                             |
+| `/#/settings`                                 | Own Google Calendar and the booking hours; admins: links to `/#/settings/people`, `business`, `wording`, `campaigns`, `checklist`, `booking` |
+| `/#/forgot`, `/#/set-password?token_hash=...` | Forgot password; set a password from an emailed link                                                                                         |
+
+Old `/#/staff/...` links: on the customer site they go to the same place on the staff site (query kept, so emailed set-password links still work); on the staff site they drop the prefix.
 
 Campaign links carry `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, either before the `#` (`https://book.q3interiors.ie/?utm_source=instagram#/`) or inside the route (`/#/?utm_source=instagram`). `src/lib/attribution.ts` keeps the first tagged arrival for 30 days in localStorage; an untagged arrival is stored as `tracking = 'unknown'`. Click ids are recorded only as present or not. Never put customer data in a URL.
+
+Two builds, one codebase (`VITE_SURFACE`, read once in `src/main.tsx` so the other surface is left out of the bundle): `npm run build` makes the customer site in `dist/` (`src/App.tsx`: landing, enquiry, booking, privacy, and a redirect for old `/staff` links) and the staff console in `dist-staff/` (`src/StaffApp.tsx`; title "Q3 Interiors Staff", `noindex` meta, `robots.txt` Disallow, its own `CNAME`, `.nojekyll`). `npm run check:surfaces` greps both bundles to prove neither carries the other. The deploy workflow publishes `dist/` to this repo's Pages and the `deploy-staff` job commits `dist-staff/` to `chris-88/q3-interiors-staff` (`main`, root; deploy key in the secret `STAFF_DEPLOY_KEY`; never a force-push), whose Pages serves `staff.q3interiors.ie`. Absolute URLs: `SITE_URL` (customer) and `STAFF_URL` (staff alerts, account emails, the Google Calendar return) in `supabase/functions/_shared/site.ts`.
 
 The public host is `https://book.q3interiors.ie` (Cloudflare zone `q3interiors.ie`, proxied CNAME to GitHub Pages; `public/CNAME` and the Pages custom domain match it; HTTPS is Cloudflare's, so GitHub's enforce-HTTPS is not used). The old host `q3.chrisquinn.ie` redirects to it at Cloudflare. The API stays at `https://api.chrisquinn.ie/q3-interiors`; its gateway reflects the request origin for CORS.
 
@@ -121,13 +129,13 @@ Flow: `submit_enquiry_with_access` (anon) returns the reference plus an access t
 
 Edge Functions (source of truth `supabase/functions/`, deployed with `npm run functions:deploy`):
 
-| Function                | Auth                                                                           | What                                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `public-booking`        | anon key (router JWT check) + enquiry token in the body                        | `context`, `availability`, `site_details`, `book`, `status`, `request_contact`, `move_options`, `reschedule`, `cancel`   |
-| `calendar-admin`        | signed-in staff (GoTrue `/user` + `staff` row)                                 | `start` (Google consent URL, PKCE, state), `test`, `disconnect`                                                          |
-| `google-oauth-callback` | none: listed in `FUNCTIONS_PUBLIC`; authorised by a single-use 10-minute state | exchanges the code, stores the AES-GCM-encrypted refresh token, redirects to `/#/staff/settings?calendar=…`              |
-| `staff-booking`         | signed-in staff (GoTrue `/user` + `staff` row)                                 | `move_options`, `reschedule`, `cancel` for any booking (no cut-off)                                                      |
-| `booking-worker`        | anon key + `x-worker-secret`                                                   | retries due calendar jobs and emails; pg_cron calls it every minute via pg_net (`private.kick_worker`, secrets in Vault) |
+| Function                | Auth                                                                           | What                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `public-booking`        | anon key (router JWT check) + enquiry token in the body                        | `context`, `availability`, `site_details`, `book`, `status`, `request_contact`, `move_options`, `reschedule`, `cancel`            |
+| `calendar-admin`        | signed-in staff (GoTrue `/user` + `staff` row)                                 | `start` (Google consent URL, PKCE, state), `test`, `disconnect`                                                                   |
+| `google-oauth-callback` | none: listed in `FUNCTIONS_PUBLIC`; authorised by a single-use 10-minute state | exchanges the code, stores the AES-GCM-encrypted refresh token, redirects to `https://staff.q3interiors.ie/#/settings?calendar=…` |
+| `staff-booking`         | signed-in staff (GoTrue `/user` + `staff` row)                                 | `move_options`, `reschedule`, `cancel` for any booking (no cut-off)                                                               |
+| `booking-worker`        | anon key + `x-worker-secret`                                                   | retries due calendar jobs and emails; pg_cron calls it every minute via pg_net (`private.kick_worker`, secrets in Vault)          |
 
 Pure logic lives in `supabase/functions/_shared` and is unit-tested with Vitest (`slots.ts`, `calendar-job.ts`, `email.ts`, `public-booking.ts`; fakes in `_shared/testing/fakes.ts`). `db.ts` and `runtime.ts` are Deno-only and checked with `npm run functions:check`.
 
@@ -165,7 +173,7 @@ Stack wiring (infra repo, `stacks/q3-interiors/`): `docker-compose.q3-interiors.
 
 ## Admin set-up (slice 5)
 
-Pilot inputs go in through Settings, not code. Settings is split: everyone sees their Google Calendar and the booking hours; admins also get links to People, Business details, Wording, Campaigns, Go-live checklist and Booking rules and data (`/#/staff/settings/<people|business|wording|campaigns|checklist|booking>`).
+Pilot inputs go in through Settings, not code. Settings is split: everyone sees their Google Calendar and the booking hours; admins also get links to People, Business details, Wording, Campaigns, Go-live checklist and Booking rules and data (`/#/settings/<people|business|wording|campaigns|checklist|booking>` on the staff console).
 
 Roles (`staff.role`, enforced by RLS, security-definer checks and the functions; the screens only explain):
 
@@ -176,7 +184,7 @@ Roles (`staff.role`, enforced by RLS, security-definer checks and the functions;
 | People, who takes bookings, business details, wording, appointment types, change/reminder rules, retention, request limits, delete enquiry, campaigns, spend and costs, checklist | no    | yes                             |
 
 - A deactivated person (`staff.active = false`) keeps their row; `is_staff()` is false for them, so every read and action stops at their next request, they get no alerts, and the staff-accounts function also bans them in GoTrue. Guards: never the last active admin, never the person who takes bookings (choose someone else first), never yourself.
-- Staff accounts: the `staff-accounts` Edge Function (service key from the container env `SUPABASE_SERVICE_ROLE_KEY`, never in a browser) adds, deactivates/reactivates, re-roles and sends password links; `set_password` (any active staff session) enforces 12 to 72 characters; `forgot` answers the same for any address and is limited per address (`password_reset` bucket). Invite and reset emails go through `communications` (`staff_invite`, `staff_password_reset`); the worker asks GoTrue's `generate_link` for a recovery token hash at send time (nothing usable is stored) and links to `/#/staff/set-password?token_hash=...&type=recovery`, which calls `verifyOtp` once and removes the token from the address bar.
+- Staff accounts: the `staff-accounts` Edge Function (service key from the container env `SUPABASE_SERVICE_ROLE_KEY`, never in a browser) adds, deactivates/reactivates, re-roles and sends password links; `set_password` (any active staff session) enforces 12 to 72 characters; `forgot` answers the same for any address and is limited per address (`password_reset` bucket). Invite and reset emails go through `communications` (`staff_invite`, `staff_password_reset`); the worker asks GoTrue's `generate_link` for a recovery token hash at send time (nothing usable is stored) and links to `https://staff.q3interiors.ie/#/set-password?token_hash=...&type=recovery`, which calls `verifyOtp` once and removes the token from the address bar.
 - Who takes bookings: `booking_settings.bookable_staff_user_id`, set with `set_bookable_staff()` (admins). New bookings use that person's availability and calendar; existing bookings keep their `staff_user_id` (and calendar) for moves, cancellations, reminders and reconcile. A person with no connected calendar means customers get the call-back path. Appointment types (lengths, buffers) are business-wide.
 - Business details: `business_details` (one row; NULL = not confirmed and never shown). Public pages read `public_business_details()` (only public fields, the privacy-review flag and the retention period) and keep the last copy in localStorage (`q3.business.v1`) for the failure state; a first-time visitor who cannot reach the server sees no contact line. The functions read the ring-us phone from here.
 - Wording: each email is a fixed structure (greeting, date and time, where, reference, Change-or-cancel button, privacy link, plain-text part) with named text blocks (`WORDING` in `supabase/functions/_shared/messages.ts`). Only changed blocks are stored (`message_blocks`); reset deletes the row. Blocks are plain text, escaped, length-checked and limited to their tokens (`{first_name}`, `{event}`); an invalid stored block falls back to the default. The visit disclaimer on the booked page comes from `public_wording()`. What-to-prepare stays on `appointment_types`.
@@ -187,7 +195,7 @@ Roles (`staff.role`, enforced by RLS, security-definer checks and the functions;
 ## Testing
 
 - `npm run test`: unit tests (schema-to-validation, conditional visibility, attribution parsing, drafts and idempotency keys, published-form drift, a few component tests).
-- `npm run test:e2e`: Playwright at 390px against `vite preview` of the current `dist/` (run `npm run build` first; a stale `dist/` tests old code). `e2e/fake-backend.ts` runs the real `public-booking` logic in Node over an in-memory database and a fake Google Calendar and blocks every other backend request, so nothing reaches the stack. Set `SCREENSHOTS_DIR` to keep step screenshots. Runs in CI on pull requests and before deploy.
+- `npm run test:e2e`: Playwright at 390px against `vite preview` of the current builds: project `public` on `dist/` (port 4173) and project `staff` on `dist-staff/` (port 4174) (run `npm run build` first; a stale build tests old code). `e2e/fake-backend.ts` runs the real `public-booking` logic in Node over an in-memory database and a fake Google Calendar and blocks every other backend request, so nothing reaches the stack. Set `SCREENSHOTS_DIR` to keep step screenshots. Runs in CI on pull requests and before deploy.
 - `npm run test:db`: against the live stack: `supabase/tests/access.sql`, `booking.sql`, `changes.sql`, `hardening.sql`, `roles.sql`, `business.sql`, `wording.sql`, `campaigns.sql` and `checklist.sql` inside transactions that are always rolled back (privileges, RLS, validation, idempotency, tokens, reservations, job and email transitions), the form drift check, `supabase/tests/race.sh` (a real two-session race for one slot; it deletes what it creates), then `scripts/check-anon-http.sh` through the public gateway (tables, RPCs, functions, the OAuth callback). Run it after any migration or functions deploy. Not in CI (the database is not reachable from GitHub).
 - Local dev must run on `http://localhost:5173` (the gateway's CORS allow-list); `.env.local` carries the URL and anon key.
 
@@ -195,7 +203,9 @@ Roles (`staff.role`, enforced by RLS, security-definer checks and the functions;
 
 ```bash
 npm run dev            # local dev server
-npm run build          # type-check + production build
+npm run build          # type-check + both builds (dist/ customer, dist-staff/ staff)
+npm run check:surfaces # prove the two bundles are split
+npm run preview:staff  # serve dist-staff/
 npm run typecheck      # tsc --noEmit
 npm run lint           # oxlint src/
 npm run format         # prettier --write

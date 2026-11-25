@@ -306,7 +306,7 @@ export function useExceptions(staffUserId: string | undefined) {
           text: conn
             ? `Google Calendar is disconnected${conn.last_error ? `: ${conn.last_error}` : ''}. Customers are being asked if we can contact them instead.`
             : 'No Google Calendar is connected. Customers cannot book times and are offered a call-back instead.',
-          link: '/staff/settings',
+          link: '/settings',
         })
       }
       const ref = z.object({ reference: z.string() }).nullable()
@@ -324,7 +324,7 @@ export function useExceptions(staffUserId: string | undefined) {
           id: `booking-${b.id}`,
           kind: 'booking',
           text: `Booking for ${b.enquiries?.reference ?? 'an enquiry'} failed: ${b.failure_reason ?? 'unknown reason'}`,
-          link: `/staff/enquiries/${b.enquiry_id}`,
+          link: `/enquiries/${b.enquiry_id}`,
         })
       }
       for (const e of z
@@ -340,7 +340,7 @@ export function useExceptions(staffUserId: string | undefined) {
           id: `contact-${e.id}`,
           kind: 'contact',
           text: `${e.reference} asked to be contacted${e.contact_request_reason ? ` (${e.contact_request_reason})` : ''}`,
-          link: `/staff/enquiries/${e.id}`,
+          link: `/enquiries/${e.id}`,
         })
       }
       for (const c of z
@@ -357,7 +357,7 @@ export function useExceptions(staffUserId: string | undefined) {
           id: `email-${c.id}`,
           kind: 'email',
           text: `Confirmation email for ${c.enquiries?.reference ?? 'an enquiry'} not sent: ${c.last_error ?? 'unknown error'}`,
-          link: `/staff/enquiries/${c.enquiry_id}`,
+          link: `/enquiries/${c.enquiry_id}`,
         })
       }
       for (const b of z
@@ -374,7 +374,7 @@ export function useExceptions(staffUserId: string | undefined) {
           id: `mismatch-${b.id}`,
           kind: 'calendar',
           text: `${b.enquiries?.reference ?? 'A booking'}: ${b.calendar_mismatch}. The booking itself is unchanged.`,
-          link: `/staff/enquiries/${b.enquiry_id}`,
+          link: `/enquiries/${b.enquiry_id}`,
         })
       }
       for (const j of z
@@ -390,7 +390,7 @@ export function useExceptions(staffUserId: string | undefined) {
           id: `removal-${j.id}`,
           kind: 'calendar',
           text: `Could not remove the Google Calendar event for cancelled ${j.bookings?.enquiries?.reference ?? 'booking'}: ${j.last_error ?? 'unknown error'}`,
-          link: j.bookings ? `/staff/enquiries/${j.bookings.enquiry_id}` : '/staff/appointments',
+          link: j.bookings ? `/enquiries/${j.bookings.enquiry_id}` : '/appointments',
         })
       }
       const stuck = z.number().parse(orphans.data)
@@ -399,7 +399,7 @@ export function useExceptions(staffUserId: string | undefined) {
           id: 'orphans',
           kind: 'calendar',
           text: `${stuck} Google Calendar event${stuck === 1 ? '' : 's'} from deleted enquiries could not be removed yet. Remove ${stuck === 1 ? 'it' : 'them'} by hand if this persists.`,
-          link: '/staff/settings',
+          link: '/settings',
         })
       }
       return out

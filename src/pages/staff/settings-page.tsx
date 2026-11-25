@@ -503,28 +503,28 @@ export function BookingSettingsForm({ initial }: { initial: BookingSettings }) {
 
 const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
   {
-    to: '/staff/settings/people',
+    to: '/settings/people',
     label: 'People',
     hint: 'Add staff, switch accounts off, who takes bookings',
   },
   {
-    to: '/staff/settings/business',
+    to: '/settings/business',
     label: 'Business details',
     hint: 'Name, contact details, service area, privacy contact',
   },
-  { to: '/staff/settings/wording', label: 'Wording', hint: 'Reword the emails, with a preview' },
+  { to: '/settings/wording', label: 'Wording', hint: 'Reword the emails, with a preview' },
   {
-    to: '/staff/settings/campaigns',
+    to: '/settings/campaigns',
     label: 'Campaigns',
     hint: 'Tagged links for ads, creatives and spend',
   },
   {
-    to: '/staff/settings/booking',
+    to: '/settings/booking',
     label: 'Booking rules and data',
     hint: 'Changes and reminders, appointment types, retention, request limits',
   },
   {
-    to: '/staff/settings/checklist',
+    to: '/settings/checklist',
     label: 'Go-live checklist',
     hint: 'What is left before a paid campaign',
   },

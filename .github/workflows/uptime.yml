@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 5
     env:
       SITE: https://book.q3interiors.ie
+      STAFF_SITE: https://staff.q3interiors.ie
       API: https://api.chrisquinn.ie
       GATEWAY: https://api.chrisquinn.ie/q3-interiors
       ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
@@ -31,6 +32,12 @@ jobs:
           body="$(curl -fsS --max-time 20 "$SITE/")"
           grep -q '<div id="root"></div>' <<<"$body" || { echo "::error::app shell missing"; exit 1; }
           grep -q '<title>Q3 Interiors</title>' <<<"$body" || { echo "::error::title missing"; exit 1; }
+
+      - name: Staff site serves the console shell
+        run: |
+          body="$(curl -fsS --max-time 20 "$STAFF_SITE/")"
+          grep -q '<div id="root"></div>' <<<"$body" || { echo "::error::staff app shell missing"; exit 1; }
+          grep -q '<title>Q3 Interiors Staff</title>' <<<"$body" || { echo "::error::staff title missing"; exit 1; }
 
       - name: Edge health
         run: curl -fsS --max-time 20 -o /dev/null "$API/health"

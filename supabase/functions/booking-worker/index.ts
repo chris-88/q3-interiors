@@ -67,7 +67,13 @@ Deno.serve(async (req) => {
       for (const message of await db.claimCommunications(10)) {
         tally(
           counts.email,
-          await processCommunication(message, { db, mailer, appUrl: config.appUrl, accounts }),
+          await processCommunication(message, {
+            db,
+            mailer,
+            appUrl: config.appUrl,
+            staffUrl: config.staffUrl,
+            accounts,
+          }),
         )
       }
     }

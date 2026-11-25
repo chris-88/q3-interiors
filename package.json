@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:staff",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit --project tsconfig.app.json && tsc --noEmit --project tsconfig.functions.json",
     "lint": "oxlint src/ supabase/functions/",
@@ -20,7 +20,10 @@
     "functions:check": "cd supabase/functions && deno check --config deno.jsonc public-booking/index.ts booking-worker/index.ts calendar-admin/index.ts google-oauth-callback/index.ts staff-booking/index.ts staff-accounts/index.ts",
     "functions:deploy": "scripts/functions-deploy.sh",
     "functions:secrets": "scripts/worker-secrets.sh",
-    "brand:images": "node scripts/brand-images.cjs"
+    "brand:images": "node scripts/brand-images.cjs",
+    "build:staff": "VITE_SURFACE=staff vite build --outDir dist-staff && node scripts/staff-site-files.cjs",
+    "preview:staff": "vite preview --outDir dist-staff",
+    "check:surfaces": "scripts/check-surfaces.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

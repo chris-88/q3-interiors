@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { submitEnquiry } from './fake-backend'
-import { installFakeStaff, signIn } from './fake-staff'
+import { installFakeStaff, PUBLIC_URL, signIn, STAFF_URL_LOCAL } from './fake-staff'
 
 const shot = async (page: Page, name: string) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
@@ -23,7 +23,7 @@ test('business details reach the public pages, and stay available when the serve
   await expect(page.getByRole('contentinfo')).not.toContainText('Contact:')
 
   // An admin fills them in.
-  await page.goto('/#/staff/settings/business')
+  await page.goto(`${STAFF_URL_LOCAL}/#/settings/business`)
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   // Saving with most boxes still empty works and says so.
   await page.getByLabel('Service area').fill('Dublin')
@@ -45,7 +45,7 @@ test('business details reach the public pages, and stay available when the serve
   expect(world.business.contact_phone).toBe('01 555 0100')
 
   // The public pages show them.
-  await page.goto('/#/')
+  await page.goto(`${PUBLIC_URL}/#/`)
   const footer = page.getByRole('contentinfo')
   await expect(footer).toContainText('Contact: 01 555 0100 · hello@example.com')
   await expect(footer).toContainText('We work in Dublin and north Kildare.')
@@ -65,7 +65,7 @@ test('business details reach the public pages, and stay available when the serve
 
 test('staff cannot change business details', async ({ page }) => {
   await installFakeStaff(page)
-  await page.goto('/#/staff/settings/business')
+  await page.goto(`${STAFF_URL_LOCAL}/#/settings/business`)
   await signIn(page, 'staff@example.com', 'another long password')
   await expect(page.getByRole('heading', { name: 'Admins only' })).toBeVisible()
 })

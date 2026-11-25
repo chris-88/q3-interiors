@@ -9,7 +9,7 @@ export interface AuthAdmin {
   setPassword(userId: string, password: string): Promise<void>
   /**
    * A single-use recovery token hash for the address (GoTrue's generate_link, which sends no
-   * email itself). The app emails it as a link to /#/staff/set-password.
+   * email itself). The app emails it as a link to the staff site's /#/set-password.
    */
   recoveryTokenHash(email: string): Promise<string>
 }

@@ -13,7 +13,7 @@ test('an admin builds a tagged link, enters spend, and the report shows what it 
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   const world = await installFakeStaff(page)
-  await page.goto('/#/staff/settings/campaigns')
+  await page.goto('/#/settings/campaigns')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
 
   await page.getByRole('button', { name: 'New campaign' }).click()
@@ -103,10 +103,10 @@ test('staff see the report without spend and cannot open campaigns', async ({ pa
       won_value: 0,
     },
   ]
-  await page.goto('/#/staff/report')
+  await page.goto('/#/report')
   await signIn(page, 'staff@example.com', 'another long password')
   await expect(page.getByRole('heading', { name: 'Funnel report' })).toBeVisible()
   await expect(page.getByText('Spend in range')).toHaveCount(0)
-  await page.goto('/#/staff/settings/campaigns')
+  await page.goto('/#/settings/campaigns')
   await expect(page.getByRole('heading', { name: 'Admins only' })).toBeVisible()
 })

@@ -256,9 +256,7 @@ describe('forgot password', () => {
 describe('account emails', () => {
   it('link to the HashRouter set-password page with a token hash, never a fragment redirect', () => {
     const url = setPasswordUrl('https://q3.example', 'abc', 'staff_invite')
-    expect(url).toBe(
-      'https://q3.example/#/staff/set-password?token_hash=abc&type=recovery&welcome=1',
-    )
+    expect(url).toBe('https://q3.example/#/set-password?token_hash=abc&type=recovery&welcome=1')
     expect(setPasswordUrl('https://q3.example', 'abc', 'staff_password_reset')).not.toContain(
       'welcome',
     )

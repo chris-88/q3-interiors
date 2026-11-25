@@ -441,7 +441,7 @@ describe('calendar event creation', () => {
     expect(event.location).toBe('12 Example Road')
     expect(event.description).toContain('087 123 4567')
     expect(event.description).toContain('Side gate')
-    expect(event.description).toContain(`https://q3.example/#/staff/enquiries/${id}`)
+    expect(event.description).toContain(`https://staff.q3interiors.ie/#/enquiries/${id}`)
     expect(event.description).not.toContain('customer@example.com')
     expect(event.description).not.toContain('New kitchen units')
   })

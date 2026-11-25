@@ -6,4 +6,7 @@ Customer acquisition for Q3 Interiors: enquiry form, booking and staff workspace
 npm install && npm run dev
 ```
 
-Live: https://book.q3interiors.ie (the old host https://q3.chrisquinn.ie redirects there)
+Live:
+
+- Customer site: https://book.q3interiors.ie (the old host https://q3.chrisquinn.ie redirects there)
+- Staff console: https://staff.q3interiors.ie (built from this repo, published to chris-88/q3-interiors-staff)

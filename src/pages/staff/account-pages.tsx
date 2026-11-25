@@ -52,10 +52,7 @@ export function ForgotPasswordPage() {
               Nothing arrived after a few minutes? Check your spam folder, or ask an admin to send a
               new link.
             </p>
-            <Link
-              to="/staff"
-              className="text-primary mt-4 inline-flex min-h-12 items-center underline"
-            >
+            <Link to="/" className="text-primary mt-4 inline-flex min-h-12 items-center underline">
               Back to sign in
             </Link>
           </div>
@@ -95,10 +92,7 @@ export function ForgotPasswordPage() {
               >
                 {forgot.isPending ? 'Sending…' : 'Send me a link'}
               </Button>
-              <Link
-                to="/staff"
-                className="text-primary inline-flex min-h-12 items-center underline"
-              >
+              <Link to="/" className="text-primary inline-flex min-h-12 items-center underline">
                 Back to sign in
               </Link>
             </FieldGroup>
@@ -148,7 +142,7 @@ export function SetPasswordPage() {
       window.history.replaceState(
         null,
         '',
-        `${window.location.pathname}#/staff/set-password${welcome ? '?welcome=1' : ''}`,
+        `${window.location.pathname}#/set-password${welcome ? '?welcome=1' : ''}`,
       )
       if (live) setState(ok ? 'ready' : 'invalid')
     })
@@ -181,7 +175,7 @@ export function SetPasswordPage() {
             and we will send it straight away.
           </p>
           <Link
-            to="/staff/forgot"
+            to="/forgot"
             className="bg-primary text-primary-foreground mt-4 inline-flex h-12 items-center rounded-md px-6 font-medium"
           >
             Send me a new link
@@ -199,7 +193,7 @@ export function SetPasswordPage() {
               You are signed in. Use this password next time you sign in.
             </output>
             <Link
-              to="/staff"
+              to="/"
               className="bg-primary text-primary-foreground mt-4 inline-flex h-12 items-center rounded-md px-6 font-medium"
             >
               Go to enquiries

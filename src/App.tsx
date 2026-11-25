@@ -1,51 +1,12 @@
-import { lazy, Suspense } from 'react'
-import { Link, Route, Routes } from 'react-router'
+import { Suspense, useEffect } from 'react'
+import { Link, Route, Routes, useLocation } from 'react-router'
 import { PublicLayout } from '@/components/public-layout'
 import { BookingPage } from '@/pages/booking-page'
 import { ConfirmationPage } from '@/pages/confirmation-page'
 import { EnquiryPage } from '@/pages/enquiry-page'
 import { LandingPage } from '@/pages/landing-page'
 import { PrivacyPage } from '@/pages/privacy-page'
-
-const StaffListRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffListRoute })),
-)
-const StaffAppointmentsRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffAppointmentsRoute })),
-)
-const StaffSettingsRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffSettingsRoute })),
-)
-const StaffReportRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffReportRoute })),
-)
-const StaffBusinessRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffBusinessRoute })),
-)
-const StaffWordingRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffWordingRoute })),
-)
-const StaffCampaignsRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffCampaignsRoute })),
-)
-const StaffBookingRulesRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffBookingRulesRoute })),
-)
-const StaffChecklistRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffChecklistRoute })),
-)
-const StaffPeopleRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffPeopleRoute })),
-)
-const StaffForgotRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffForgotRoute })),
-)
-const StaffSetPasswordRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffSetPasswordRoute })),
-)
-const StaffDetailRoute = lazy(() =>
-  import('@/pages/staff/routes').then((m) => ({ default: m.StaffDetailRoute })),
-)
+import { staffHostUrl } from './staff-redirect'
 
 function NotFound() {
   return (
@@ -57,6 +18,22 @@ function NotFound() {
         </Link>
       </p>
     </PublicLayout>
+  )
+}
+
+/**
+ * The staff console lives on its own host. Old links here (including set-password links already
+ * emailed) go to the same place there, query and all. The only staff code in the customer build.
+ */
+function ToStaffHost() {
+  const { pathname, search } = useLocation()
+  useEffect(() => {
+    window.location.replace(staffHostUrl(pathname, search))
+  }, [pathname, search])
+  return (
+    <p className="text-muted-foreground p-6 text-sm" aria-live="polite">
+      Opening the staff site…
+    </p>
   )
 }
 
@@ -77,19 +54,7 @@ export default function App() {
         <Route path="/enquire/sent" element={<ConfirmationPage />} />
         <Route path="/book/:token" element={<BookingPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/staff" element={<StaffListRoute />} />
-        <Route path="/staff/enquiries/:id" element={<StaffDetailRoute />} />
-        <Route path="/staff/appointments" element={<StaffAppointmentsRoute />} />
-        <Route path="/staff/settings" element={<StaffSettingsRoute />} />
-        <Route path="/staff/report" element={<StaffReportRoute />} />
-        <Route path="/staff/settings/people" element={<StaffPeopleRoute />} />
-        <Route path="/staff/settings/checklist" element={<StaffChecklistRoute />} />
-        <Route path="/staff/settings/booking" element={<StaffBookingRulesRoute />} />
-        <Route path="/staff/settings/campaigns" element={<StaffCampaignsRoute />} />
-        <Route path="/staff/settings/wording" element={<StaffWordingRoute />} />
-        <Route path="/staff/settings/business" element={<StaffBusinessRoute />} />
-        <Route path="/staff/forgot" element={<StaffForgotRoute />} />
-        <Route path="/staff/set-password" element={<StaffSetPasswordRoute />} />
+        <Route path="/staff/*" element={<ToStaffHost />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

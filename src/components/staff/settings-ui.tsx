@@ -25,7 +25,7 @@ export function SettingsCard({
 export function BackToSettings() {
   return (
     <Link
-      to="/staff/settings"
+      to="/settings"
       className="text-primary inline-flex min-h-12 items-center gap-1 text-sm underline"
     >
       <ChevronLeft className="size-4" aria-hidden="true" />

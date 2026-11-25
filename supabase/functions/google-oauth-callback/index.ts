@@ -12,7 +12,7 @@ function back(result: 'connected' | 'error', reason?: string): Response {
   return new Response(null, {
     status: 303,
     headers: {
-      Location: `${config.appUrl}/#/staff/settings?${params.toString()}`,
+      Location: `${config.staffUrl}/#/settings?${params.toString()}`,
       'Cache-Control': 'no-store',
     },
   })

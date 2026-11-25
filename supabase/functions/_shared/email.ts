@@ -1,3 +1,4 @@
+import { STAFF_URL } from './site.ts'
 import { backoffSeconds } from './calendar-job.ts'
 import {
   renderAccountEmail,
@@ -89,6 +90,8 @@ export type CommunicationDeps = {
   db: Db
   mailer: Mailer
   appUrl: string
+  /** The staff console (default STAFF_URL). */
+  staffUrl?: string
   now?: () => number
   /** Staff account emails: who the person is, and a fresh single-use set-password token hash. */
   accounts?: {
@@ -98,10 +101,10 @@ export type CommunicationDeps = {
 }
 
 /** The set-password page; GoTrue's token hash is verified there with verifyOtp. */
-export function setPasswordUrl(appUrl: string, tokenHash: string, template: string): string {
+export function setPasswordUrl(staffUrl: string, tokenHash: string, template: string): string {
   const params = new URLSearchParams({ token_hash: tokenHash, type: 'recovery' })
   if (template === 'staff_invite') params.set('welcome', '1')
-  return `${appUrl}/#/staff/set-password?${params.toString()}`
+  return `${staffUrl}/#/set-password?${params.toString()}`
 }
 
 /** Why a queued message should not go out any more, or null to send it. */
@@ -148,7 +151,7 @@ export async function processCommunication(
     try {
       // Generated now, not when queued: no usable token is ever stored, and a retry gets a new one.
       link = setPasswordUrl(
-        deps.appUrl,
+        deps.staffUrl ?? STAFF_URL,
         await deps.accounts.recoveryTokenHash(comm.recipient),
         comm.template,
       )
@@ -165,7 +168,12 @@ export async function processCommunication(
     return send(
       comm,
       deps,
-      renderAccountEmail(comm.template, { displayName: name, link, siteUrl: deps.appUrl }),
+      renderAccountEmail(comm.template, {
+        displayName: name,
+        link,
+        siteUrl: deps.appUrl,
+        staffUrl: deps.staffUrl ?? STAFF_URL,
+      }),
     )
   }
   if (comm.template === 'staff_new_enquiry' || comm.template === 'staff_callback_request') {
@@ -176,7 +184,7 @@ export async function processCommunication(
     }
     const message = renderStaffAlert(comm.template, {
       summary,
-      staffUrl: `${deps.appUrl}/#/staff/enquiries/${summary.id}`,
+      staffUrl: `${deps.staffUrl ?? STAFF_URL}/#/enquiries/${summary.id}`,
       siteUrl: deps.appUrl,
       wording: await db.getWording(),
     })

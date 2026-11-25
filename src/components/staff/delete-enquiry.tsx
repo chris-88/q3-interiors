@@ -11,9 +11,7 @@ export function DeleteEnquiry({ enquiryId, reference }: { enquiryId: string; ref
   const [open, setOpen] = useState(false)
   const [typed, setTyped] = useState('')
   const navigate = useNavigate()
-  const remove = useDeleteEnquiry((deleted) =>
-    navigate('/staff', { replace: true, state: { deleted } }),
-  )
+  const remove = useDeleteEnquiry((deleted) => navigate('/', { replace: true, state: { deleted } }))
   const matches = typed.trim().toUpperCase() === reference
 
   if (!open) {

@@ -140,7 +140,9 @@ select pg_temp.expect((select count(*) from private.rate_limit_hits where addr_h
 update public.enquiries set submitted_at = now() - interval '13 months'
 where idempotency_key in (pg_temp.key(1), pg_temp.key(2), pg_temp.key(3));
 update public.enquiries set outcome = 'won', outcome_at = now() where idempotency_key = pg_temp.key(3);
-select pg_temp.expect((select retention_months is null from public.booking_settings), 'retention is off by default');
+-- Live may have retention set; test the off state explicitly (rolled back).
+update public.booking_settings set retention_months = null;
+select pg_temp.expect((select retention_months is null from public.booking_settings), 'retention can be off');
 select pg_temp.expect(private.run_retention() = 0, 'off: deletes nothing');
 select pg_temp.expect((select count(*) from public.enquiries where idempotency_key in (pg_temp.key(1), pg_temp.key(2), pg_temp.key(3))) = 3,
   'off: all kept');

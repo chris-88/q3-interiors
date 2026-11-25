@@ -45,6 +45,8 @@ export type StaffWorld = {
   /** Rows returned by the funnel_report RPC. */
   funnel: Record<string, unknown>[]
   testCalendar: { email: string | null }
+  /** Objects in the private `ads` bucket: path -> body and type. */
+  adFiles: Map<string, { body: Buffer | string; type: string }>
 }
 
 export function staffWorld(): StaffWorld {
@@ -78,6 +80,7 @@ export function staffWorld(): StaffWorld {
     tables: {},
     funnel: [],
     testCalendar: { email: null },
+    adFiles: new Map(),
     business: {
       trading_name: 'Q3 Interiors',
       legal_name: null,
@@ -396,6 +399,29 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
     const out = select(rows, url)
     const single = (req.headers().accept ?? '').includes('vnd.pgrst.object')
     return json(route, 200, single ? (out[0] ?? null) : out)
+  })
+
+  // Private storage: only an active staff session may read ad files.
+  await page.route('**/storage/v1/object/ads/**', async (route) => {
+    const req = route.request()
+    if (req.method() === 'OPTIONS') return json(route, 204, undefined)
+    const caller = world.staff.get(subOf(req.headers().authorization) ?? '')
+    const objectPath = decodeURIComponent(
+      new URL(req.url()).pathname.split('/storage/v1/object/ads/')[1] ?? '',
+    )
+    const file = world.adFiles.get(objectPath)
+    if (!caller?.active || !file)
+      return json(route, 400, {
+        statusCode: '404',
+        error: 'not_found',
+        message: 'Object not found',
+      })
+    return route.fulfill({
+      status: 200,
+      contentType: file.type,
+      headers: { 'access-control-allow-origin': '*' },
+      body: file.body,
+    })
   })
 
   await page.route('**/functions/v1/staff-accounts', async (route) => {

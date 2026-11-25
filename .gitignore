@@ -36,3 +36,6 @@ playwright-report
 
 # Deno (functions are checked with deno; the edge runtime resolves its own deps)
 supabase/functions/deno.lock
+
+# Ad studio working files and handed-in assets (ads are not committed to this public repo)
+ads/work/

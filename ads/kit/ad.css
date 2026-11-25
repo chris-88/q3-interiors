@@ -1,0 +1,151 @@
+/*
+ * Q3 Interiors ad kit: brand tokens, Roboto and the base layouts for every placement.
+ * Referenced from an ad as a stylesheet link to kit:ad.css; `npm run ad:render` inlines
+ * it (and every kit: and local reference inside it) so the published file is self-contained.
+ * Sizes are in CSS pixels at the exported size (1440 wide).
+ */
+@font-face {
+  font-family: 'Roboto';
+  font-weight: 400;
+  src: url('kit:roboto-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-weight: 500;
+  src: url('kit:roboto-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-weight: 700;
+  src: url('kit:roboto-700.woff2') format('woff2');
+}
+
+:root {
+  /* Brand guide v2.0: black and white, ink text, muted greys. */
+  --ad-black: #000000;
+  --ad-white: #ffffff;
+  --ad-ink: #171717;
+  --ad-muted: #555555;
+  --ad-soft: #f5f5f5;
+  --ad-rule: #d4d4d4;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+body {
+  font-family: 'Roboto', system-ui, sans-serif;
+  color: var(--ad-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One ad = one .ad element at the exact export size. */
+.ad {
+  position: relative;
+  overflow: hidden;
+  background: var(--ad-white);
+}
+.ad--portrait {
+  width: 1440px;
+  height: 1800px;
+  --safe-top: 108px; /* 6% */
+  --safe-bottom: 108px; /* 6% */
+  --safe-side: 86px; /* 6% */
+}
+.ad--vertical {
+  width: 1440px;
+  height: 2560px;
+  --safe-top: 358px; /* 14%: profile name and close button on Stories and Reels */
+  --safe-bottom: 896px; /* 35%: caption, call-to-action button and reply bar */
+  --safe-side: 86px; /* 6% */
+}
+.ad--square {
+  width: 1440px;
+  height: 1440px;
+  --safe-top: 86px;
+  --safe-bottom: 86px;
+  --safe-side: 86px;
+}
+.ad--dark {
+  background: var(--ad-black);
+  color: var(--ad-white);
+}
+
+/* Text, logo and key content go inside .safe. Backgrounds and photos may fill the whole .ad. */
+.safe {
+  position: absolute;
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  left: var(--safe-side);
+  right: var(--safe-side);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Type scale for 1440-wide artwork, sentence case, medium headings. */
+.ad-wordmark {
+  display: block;
+  width: 420px;
+  height: auto;
+}
+.ad-mark {
+  display: block;
+  height: 160px;
+  width: auto;
+}
+.ad-kicker {
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ad-muted);
+  margin: 0;
+}
+.ad-headline {
+  font-size: 128px;
+  line-height: 1.06;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.ad-line {
+  font-size: 56px;
+  line-height: 1.3;
+  font-weight: 400;
+  margin: 0;
+}
+.ad-rule {
+  height: 4px;
+  background: currentColor;
+  border: 0;
+  margin: 0;
+}
+.ad--dark .ad-kicker {
+  color: #d4d4d4;
+}
+
+/* Local preview only (npm run ad:render -- <dir> --guides): never in a published file. */
+.guides .ad::before,
+.guides .ad::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgb(220 0 0 / 0.18);
+  z-index: 10;
+}
+.guides .ad::before {
+  top: 0;
+  height: var(--safe-top);
+}
+.guides .ad::after {
+  bottom: 0;
+  height: var(--safe-bottom);
+}
+.guides .safe {
+  outline: 4px dashed rgb(220 0 0 / 0.7);
+}

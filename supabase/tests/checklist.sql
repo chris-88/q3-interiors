@@ -48,7 +48,7 @@ select pg_temp.expect((select enquiry_limit_per_hour <> 99 from public.booking_s
 -- admin: the checklist reflects the data.
 set local role authenticated;
 select pg_temp.as_user(public.bookable_staff()::text);
-update public.business_details set legal_name = null;
+update public.business_details set legal_name = null, privacy_reviewed_at = null;
 insert into r select 'c1', public.go_live_checklist();
 reset role;
 select pg_temp.expect((select (value -> 'business_missing') ? 'legal name' from r where name = 'c1'), 'missing legal name listed');
@@ -58,7 +58,7 @@ set local role authenticated;
 select pg_temp.as_user(public.bookable_staff()::text);
 update public.business_details set legal_name = 'A Ltd', postal_address = '1 Road, Dublin', contact_phone = '01 555 0100',
   contact_email = 'a@example.invalid', service_area = 'Dublin', privacy_contact = 'p@example.invalid';
-insert into public.setup_ticks (key, ticked_by_name) values ('phone_check', 'Admin');
+insert into public.setup_ticks (key, ticked_by_name) values ('phone_check', 'Admin') on conflict (key) do nothing;
 select pg_temp.expect_error($$insert into public.setup_ticks (key) values ('anything_else')$$, '23514');
 update public.booking_settings set enquiry_limit_per_hour = 10, booking_write_limit_per_hour = 30, booking_read_limit_per_hour = 400;
 select pg_temp.expect_error('update public.booking_settings set enquiry_limit_per_hour = 0', '23514');
@@ -80,6 +80,6 @@ select pg_temp.expect((public.go_live_checklist() ->> 'test_calendar_email') = '
 select pg_temp.expect(public.mark_test_calendar(true) is null, 'flag cleared');
 delete from public.setup_ticks where key = 'phone_check';
 reset role;
-select pg_temp.expect(not exists (select 1 from public.setup_ticks), 'admin unticks');
+select pg_temp.expect(not exists (select 1 from public.setup_ticks where key = 'phone_check'), 'admin unticks');
 
 rollback;

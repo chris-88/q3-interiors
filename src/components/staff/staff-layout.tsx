@@ -65,20 +65,21 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
     <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
+          {/* The full wordmark (as on the customer site) with a small "Staff" label. */}
           <Link
             to="/"
-            className="inline-flex min-h-12 items-center gap-2 rounded-sm text-sm font-medium"
+            aria-label="Q3 Interiors Staff home"
+            className="inline-flex min-h-12 items-center gap-2 rounded-sm"
           >
-            {/* Decorative: the link text names it. */}
             <img
-              src="/brand/q3-mark-black.svg"
-              width={33}
+              src="/brand/q3-full-black.svg"
+              width={105}
               height={40}
               alt=""
-              className="h-10 w-auto"
+              className="block h-10 w-auto"
             />
-            <span>
-              Q3 Interiors <span className="text-muted-foreground font-normal">Staff</span>
+            <span className="text-muted-foreground border-rule border-l pl-2 text-sm font-medium">
+              Staff
             </span>
           </Link>
           {staff && (
@@ -105,6 +106,7 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
             {[
               ['/', 'Enquiries', true],
               ['/appointments', 'Appointments', true],
+              ['/ads', 'Ads', false],
               ['/report', 'Report', true],
               ['/settings', 'Settings', false],
             ].map(([to, label, end]) => (
@@ -113,7 +115,7 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
                   to={String(to)}
                   end={end === true}
                   className={({ isActive }) =>
-                    `focus-visible:ring-ring/50 inline-flex h-11 items-center border-b-2 px-3 text-sm focus-visible:ring-3 focus-visible:outline-none ${
+                    `focus-visible:ring-ring/50 inline-flex h-12 items-center border-b-2 px-2 text-sm focus-visible:ring-3 focus-visible:outline-none ${
                       isActive
                         ? 'border-foreground text-foreground font-medium'
                         : 'text-muted-foreground hover:text-foreground border-transparent'

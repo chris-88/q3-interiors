@@ -32,7 +32,8 @@ select private.add_staff('00000000-0000-4000-8000-0000000006b1', 'staff6@example
 select private.add_staff('00000000-0000-4000-8000-0000000006c1', 'off6@example.invalid', 'Off Six', 'staff');
 select private.set_staff_active('00000000-0000-4000-8000-0000000006c1', false);
 update public.business_details set legal_name = 'Test Legal Ltd', contact_phone = '01 555 0100',
-  contact_email = 'hello@example.invalid', privacy_reviewed_at = null;
+  contact_email = 'hello@example.invalid', postal_address = null, privacy_contact = null,
+  service_area = null, privacy_reviewed_at = null;
 
 -- anon: the public function only, and only public fields.
 set local role anon;

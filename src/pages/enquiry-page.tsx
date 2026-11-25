@@ -221,7 +221,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-section text-ink font-bold outline-none"
+            className="text-section text-ink font-medium outline-none"
           >
             Review your enquiry
           </h1>
@@ -288,7 +288,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-section text-ink font-bold text-balance outline-none"
+            className="text-section text-ink font-medium text-balance outline-none"
           >
             {current.title}
           </h1>

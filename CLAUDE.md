@@ -56,18 +56,19 @@ If you can't satisfy an item, say so explicitly rather than quietly skipping it.
 
 ## Brand
 
-The Q3 Interiors website brand guide v1.0 (supplied 2026-11-24, kept outside the repo) is applied through the existing Tailwind/shadcn tokens in `src/index.css`; its `q3-web.css` is not imported.
+The Q3 Interiors website brand guide v2.0 (black and white wordmark, supplied 2026-11-25, kept outside the repo) is applied through the existing Tailwind/shadcn tokens in `src/index.css`; its `q3-web.css` is not imported.
 
-- Colours: forest `#415847` (primary, links, focus; hover `#324639`), cream `#E8E6D6` (secondary/muted surfaces), ink `#1F2922` (text), muted text `#526154`, control edge `#758175`, divider `#C8CDBF`, error `#943B30`. White is the page and card background. Utilities: `bg-forest`, `bg-cream`, `text-ink`, `border-rule`, `border-edge`.
-- Type: Roboto 400/500/700 self-hosted via `@fontsource/roboto` (latin subset, `font-display: swap`). Scale: `text-display`, `text-section`, `text-title`, `text-body` (fluid clamps from the guide).
-- Shape and size: 4px radius; controls 48px (`h-12`, `min-h-12`); widths `max-w-page` (1200px), `max-w-form` (640px), `max-w-prose` (64ch).
-- Focus: 3px forest outline, 3px offset, unlayered in `index.css` so it beats utilities; cream inside `.on-forest`.
+- Roles (named by role, never by colour): `action` `#000000` (primary buttons, links, focus; hover `action-hover` `#2B2B2B`), `ink` `#171717` (text), muted text `#555555`, `soft` `#F5F5F5` (occasional section background; also shadcn secondary/muted/accent), `edge` `#767676` (field and option boundaries), `rule` `#D4D4D4` (dividers). Black panels: `panel` `#000000` with `on-panel` white text and buttons (hover `on-panel-hover` `#E6E6E6`). White is the page and card background.
+- Errors stay red `#943B30` (`destructive`) with a written instruction. This is a deliberate departure from guide v2.0, which makes errors black: red keeps an error distinct from the black primary actions and focus ring. Status colours that carry meaning (checklist amber, badges) also stay.
+- Type: Roboto 400/500/700 self-hosted via `@fontsource/roboto` (latin subset, `font-display: swap`). Headings use 500 (`font-medium`); 700 only for selective emphasis. Scale: `text-display`, `text-section`, `text-title`, `text-body` (fluid clamps from the guide).
+- Shape and size: 4px radius; controls 48px (`h-12`, `min-h-12`); widths `max-w-page` (1200px), `max-w-form` (640px), `max-w-prose` (64ch). Native radios and checkboxes use the action colour (`accent-color`).
+- Focus: 3px black outline, 3px offset, unlayered in `index.css` so it beats utilities; white inside `.on-panel`.
 - Light only: no dark tokens; `dark:` utilities never apply.
-- Logos: the four supplied SVGs, unchanged, in `public/brand/`. Public header: round mark at 48px with visible "Q3 Interiors" on small screens, square badge from 768px; the link is named "Q3 Interiors home" and the image is decorative. Footer: forest band, badge on a cream surface. Staff: white surfaces, round mark in the header, density unchanged.
-- Favicon: `public/favicon.svg` is a favicon-only cut of the round mark (no ring, heavier stroke, cream tile), plus `favicon-32.png` and `apple-touch-icon.png` (180px).
-- Link preview and email badge: `public/og/q3-og.png` (1200x630) and `public/brand/q3-badge-email.png` are rendered by `npm run brand:images` (`scripts/brand-images.cjs`).
+- Logos: the two supplied SVGs, unchanged, in `public/brand/` (`q3-full-black.svg` 243x93, `q3-mark-black.svg` 77x93); the white versions are the same paths with `fill="white"`, generated, never redrawn. Public header: the compact Q at 44px high in a 48x48 hit area with visible "Q3 Interiors" beside it on small screens, the full wordmark at 160px wide from 768px; the link is named "Q3 Interiors home" and the image is decorative. Footer: black panel with the white wordmark. Staff header: the compact Q. Page text, titles and emails say "Q3 Interiors"; "Q THREE" appears only in the artwork.
+- Generated images (`npm run brand:images`, `scripts/brand-images.cjs`, all from the two SVGs): the white logos; `public/favicon.svg` (the Q alone on a white tile: at 16px the logo's thin rules would blur, so they are left out) with `favicon-16.png` and `favicon-32.png`; `apple-touch-icon.png` (180px, compact Q with both rules); `public/og/q3-og.png` (1200x630, white card, wordmark, the main line); `public/brand/q3-email-logo.png` (the wordmark at 2x for HTML emails, shown at 160px).
+- Emails: the wordmark PNG at the top, ink text on white, one black button for the main action, black links; the plain-text part is unchanged.
 - One site URL: `SITE_URL` in `supabase/functions/_shared/site.ts`. Vite injects it into `index.html` (`%SITE_URL%`, Open Graph/Twitter tags) and the functions use it for every link and image in emails.
-- Wording: public states use the guide's section 5 phrases, shown only when the saved state supports them. Vocabulary: enquiry; a call or a site visit; an estimate is a price range; a quote covers an agreed scope. No "Our work" until approved photos exist. Email wording lives in `supabase/functions/_shared/messages.ts` (plain text plus a branded HTML part).
+- Wording: public states use the guide's section 5 phrases, shown only when the saved state supports them. Vocabulary: enquiry; a call or a site visit; an estimate is a price range; a quote covers an agreed scope. No "Our work" until approved photos exist.
 
 ## Routes (HashRouter)
 

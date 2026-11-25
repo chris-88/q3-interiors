@@ -14,7 +14,7 @@ export function SettingsCard({
 }) {
   return (
     <section aria-labelledby={id} className="bg-background rounded-md border p-4">
-      <h2 id={id} className="text-base font-bold">
+      <h2 id={id} className="text-base font-medium">
         {title}
       </h2>
       <div className="mt-3">{children}</div>
@@ -42,7 +42,7 @@ export function AdminOnly({ children }: { children: ReactNode }) {
       <div className="flex flex-col gap-4">
         <BackToSettings />
         <div className="bg-background rounded-md border p-6">
-          <h1 className="text-title text-ink font-bold">Admins only</h1>
+          <h1 className="text-title text-ink font-medium">Admins only</h1>
           <p className="text-muted-foreground mt-2 text-sm">
             Only an admin can see and change this. Ask an admin if something here needs changing.
           </p>

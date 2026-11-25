@@ -46,7 +46,7 @@ function Heading({ children }: { children: React.ReactNode }) {
     <h1
       ref={ref}
       tabIndex={-1}
-      className="text-section text-ink font-bold text-balance outline-none"
+      className="text-section text-ink font-medium text-balance outline-none"
     >
       {children}
     </h1>

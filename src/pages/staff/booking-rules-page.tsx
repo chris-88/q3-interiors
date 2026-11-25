@@ -93,7 +93,7 @@ export function BookingRulesPage() {
     <AdminOnly>
       <div className="flex flex-col gap-4">
         <BackToSettings />
-        <h1 className="text-section text-ink font-bold">Booking rules and data</h1>
+        <h1 className="text-section text-ink font-medium">Booking rules and data</h1>
         <SettingsCard title="Changes, reminders and keeping data" id="rules-heading">
           {settings.isPending ? (
             <Skeleton className="h-32 w-full" />

@@ -5,28 +5,33 @@ import { BRAND_NAME, usePublicBusiness } from '@/api/business'
 import { cn } from '@/lib/utils'
 
 /**
- * Home link per the brand guide: the round mark at 48px with "Q3 Interiors" as visible text on
- * small screens, the square badge from 768px. The link is named "Q3 Interiors home" and the image
- * is decorative.
+ * Home link per the brand guide (v2.0): the compact Q at 44px high on phones, inside a 48x48 hit
+ * area, with "Q3 Interiors" as visible text beside it; the full wordmark at 160px wide from 768px.
+ * The link is named "Q3 Interiors home" and the image is decorative.
  */
 function HomeLink() {
   return (
     <Link
       to="/"
       aria-label="Q3 Interiors home"
-      className="inline-flex items-center gap-3 rounded-sm p-2 md:p-4"
+      className="inline-flex min-h-12 min-w-12 items-center gap-3 rounded-sm p-2 md:p-3"
     >
       <picture>
-        <source media="(min-width: 48rem)" srcSet="/brand/q3-square-colour.svg" />
+        <source
+          media="(min-width: 48rem)"
+          srcSet="/brand/q3-full-black.svg"
+          width={160}
+          height={61}
+        />
         <img
-          src="/brand/q3-round-colour.svg"
-          width={48}
-          height={48}
+          src="/brand/q3-mark-black.svg"
+          width={36}
+          height={44}
           alt=""
-          className="block size-12 md:size-26"
+          className="block h-11 w-auto md:h-[61px]"
         />
       </picture>
-      <span className="text-title text-ink font-bold md:sr-only">{BRAND_NAME}</span>
+      <span className="text-title text-ink font-medium md:sr-only">{BRAND_NAME}</span>
     </Link>
   )
 }
@@ -37,18 +42,16 @@ function Footer() {
     Boolean(v),
   )
   return (
-    <footer className="on-forest bg-forest text-cream">
+    <footer className="on-panel bg-panel text-on-panel">
       <div className="max-w-page mx-auto flex w-full flex-col gap-8 px-5 py-12 md:flex-row md:items-start md:gap-16 md:px-10">
-        {/* The full badge on a quiet cream surface, as the guide asks on forest. */}
-        <div className="bg-cream self-start p-3">
-          <img
-            src="/brand/q3-square-colour.svg"
-            width={104}
-            height={104}
-            alt="Q3 Interiors"
-            className="block size-26"
-          />
-        </div>
+        {/* The white wordmark on the black panel, at the header's displayed width. */}
+        <img
+          src="/brand/q3-full-white.svg"
+          width={160}
+          height={61}
+          alt="Q3 Interiors"
+          className="block h-[61px] w-40 shrink-0 self-start"
+        />
         <div className="flex max-w-prose flex-col gap-3 text-sm leading-relaxed">
           {contact.length > 0 && <p>Contact: {contact.join(' · ')}</p>}
           {business.service_area && <p>We work in {business.service_area}.</p>}
@@ -57,7 +60,7 @@ function Footer() {
             offers if you ask us to.
           </p>
           <p>
-            <Link to="/privacy" className="text-cream underline">
+            <Link to="/privacy" className="text-on-panel underline">
               How we use your details
             </Link>
           </p>

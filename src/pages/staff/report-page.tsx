@@ -123,7 +123,7 @@ export function ReportPage() {
   return (
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
-      <h1 className="text-section text-ink font-bold">Funnel report</h1>
+      <h1 className="text-section text-ink font-medium">Funnel report</h1>
       <p className="text-muted-foreground -mt-2 text-sm">
         Enquiries received in the date range (Irish dates), and what became of them. Booked means an
         appointment was confirmed, even if later cancelled.

@@ -533,7 +533,7 @@ const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
 function SetupLinks() {
   return (
     <nav aria-labelledby="setup-heading" className="bg-background rounded-md border p-4">
-      <h2 id="setup-heading" className="text-base font-bold">
+      <h2 id="setup-heading" className="text-base font-medium">
         Set-up (admins)
       </h2>
       <ul className="mt-2 flex flex-col">
@@ -563,7 +563,7 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       <ExceptionsBanner />
-      <h1 className="text-section text-ink font-bold">Settings</h1>
+      <h1 className="text-section text-ink font-medium">Settings</h1>
       {isAdmin && <SetupLinks />}
       <CalendarCard />
       <Card title="Hours for bookings" id="availability-heading">

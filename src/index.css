@@ -13,18 +13,22 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Q3 Interiors brand tokens (Website brand guide v1.0, 24 November 2026), mapped onto the
+ * Q3 Interiors brand tokens (Website brand guide v2.0: black and white wordmark), mapped onto the
  * shadcn/Tailwind tokens so every screen picks them up. One styling system: q3-web.css from the
- * brand pack is not imported.
+ * brand pack is not imported. Tokens are named by role, not colour. One deliberate departure from
+ * the guide: errors stay red (#943B30) with a written instruction, rather than black.
  */
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  /* Brand colours as utilities: bg-forest, text-cream, bg-forest-hover, border-edge... */
-  --color-forest: var(--q3-forest);
-  --color-forest-hover: var(--q3-forest-hover);
-  --color-cream: var(--q3-cream);
+  /* Brand roles as utilities: bg-action, bg-soft, bg-panel, text-on-panel, text-ink, border-rule... */
+  --color-action: var(--q3-action);
+  --color-action-hover: var(--q3-action-hover);
+  --color-soft: var(--q3-soft);
+  --color-panel: var(--q3-panel);
+  --color-on-panel: var(--q3-on-panel);
+  --color-on-panel-hover: var(--q3-on-panel-hover);
   --color-ink: var(--q3-ink);
   --color-edge: var(--q3-edge);
   --color-rule: var(--q3-rule);
@@ -91,14 +95,25 @@
 :root {
   color-scheme: light;
 
-  /* Approved and web-only brand colours (guide 2). */
-  --q3-forest: #415847;
-  --q3-forest-hover: #324639;
-  --q3-cream: #e8e6d6;
-  --q3-ink: #1f2922;
-  --q3-muted: #526154;
-  --q3-edge: #758175;
-  --q3-rule: #c8cdbf;
+  /* Website roles (guide 2). */
+  /* Primary actions, links and focus on light surfaces (21:1 on white). */
+  --q3-action: #000000;
+  --q3-action-hover: #2b2b2b;
+  /* Main reading text and headings (17.9:1). */
+  --q3-ink: #171717;
+  /* Hints, metadata and captions (7.5:1). */
+  --q3-muted: #555555;
+  /* Occasional section background. */
+  --q3-soft: #f5f5f5;
+  /* Field and option boundaries (4.5:1 on white). */
+  --q3-edge: #767676;
+  /* Decorative rules between sections. */
+  --q3-rule: #d4d4d4;
+  /* Black panels (footer) carry white artwork, text and buttons. */
+  --q3-panel: #000000;
+  --q3-on-panel: #ffffff;
+  --q3-on-panel-hover: #e6e6e6;
+  /* Errors stay red with a written instruction (a deliberate departure from the guide). */
   --q3-error: #943b30;
 
   --background: #ffffff;
@@ -107,34 +122,34 @@
   --card-foreground: var(--q3-ink);
   --popover: #ffffff;
   --popover-foreground: var(--q3-ink);
-  --primary: var(--q3-forest);
+  --primary: var(--q3-action);
   --primary-foreground: #ffffff;
-  --secondary: var(--q3-cream);
+  --secondary: var(--q3-soft);
   --secondary-foreground: var(--q3-ink);
-  --muted: var(--q3-cream);
+  --muted: var(--q3-soft);
   --muted-foreground: var(--q3-muted);
-  --accent: var(--q3-cream);
+  --accent: var(--q3-soft);
   --accent-foreground: var(--q3-ink);
   --destructive: var(--q3-error);
   /* Decorative rules between sections. */
   --border: var(--q3-rule);
-  /* Boundaries of editable fields and selectable options (3:1 against white and cream). */
+  /* Boundaries of editable fields and selectable options (3:1 or more on white and soft). */
   --input: var(--q3-edge);
-  --ring: var(--q3-forest);
-  --chart-1: var(--q3-forest);
+  --ring: var(--q3-action);
+  --chart-1: var(--q3-action);
   --chart-2: var(--q3-muted);
   --chart-3: var(--q3-edge);
   --chart-4: var(--q3-rule);
-  --chart-5: var(--q3-cream);
+  --chart-5: var(--q3-soft);
   --radius: 0.25rem;
   --sidebar: #ffffff;
   --sidebar-foreground: var(--q3-ink);
-  --sidebar-primary: var(--q3-forest);
+  --sidebar-primary: var(--q3-action);
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--q3-cream);
+  --sidebar-accent: var(--q3-soft);
   --sidebar-accent-foreground: var(--q3-ink);
   --sidebar-border: var(--q3-rule);
-  --sidebar-ring: var(--q3-forest);
+  --sidebar-ring: var(--q3-action);
 }
 
 @layer base {
@@ -150,6 +165,11 @@
   a {
     text-underline-offset: 0.18em;
   }
+  /* Native radios and checkboxes in the brand control colour, not the browser's blue. */
+  input[type='radio'],
+  input[type='checkbox'] {
+    accent-color: var(--q3-action);
+  }
   /* At 200% text on a 320px screen a long word must wrap rather than widen the page. */
   h1,
   h2,
@@ -162,16 +182,16 @@
 }
 
 /*
- * Focus (guide 6): 3px forest outline with a 3px offset on light surfaces, cream on forest.
+ * Focus (guide 6): 3px black outline with a 3px offset on light surfaces, white on black panels.
  * Unlayered on purpose, so it wins over the components' own focus utilities everywhere.
  */
 :focus-visible {
-  outline: 3px solid var(--q3-forest);
+  outline: 3px solid var(--q3-action);
   outline-offset: 3px;
   box-shadow: none;
 }
-.on-forest :focus-visible {
-  outline-color: var(--q3-cream);
+.on-panel :focus-visible {
+  outline-color: var(--q3-on-panel);
 }
 /* Headings receive focus by script when a step changes; they are not controls, so no ring. */
 [tabindex='-1']:focus-visible {

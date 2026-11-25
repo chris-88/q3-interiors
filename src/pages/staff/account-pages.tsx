@@ -21,7 +21,7 @@ import { supabase } from '@/lib/supabase'
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-background mx-auto max-w-sm rounded-md border p-6">
-      <h1 className="text-title text-ink font-bold">{title}</h1>
+      <h1 className="text-title text-ink font-medium">{title}</h1>
       <div className="mt-4">{children}</div>
     </div>
   )

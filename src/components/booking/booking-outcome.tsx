@@ -44,7 +44,7 @@ export function BookingConfirmed({
   return (
     <section aria-labelledby="booked-heading">
       <CircleCheck className="size-8" aria-hidden="true" />
-      <h1 id="booked-heading" className="text-section text-ink mt-4 font-bold">
+      <h1 id="booked-heading" className="text-section text-ink mt-4 font-medium">
         {booking.type.mode === 'on_site' ? 'Your site visit is booked' : 'Your call is booked'}
       </h1>
       <p className="text-muted-foreground mt-2">
@@ -52,7 +52,7 @@ export function BookingConfirmed({
         <span className="text-foreground font-mono">{reference}</span>.
       </p>
       <When booking={booking} />
-      <h2 className="text-title text-ink mt-8 font-bold">To prepare</h2>
+      <h2 className="text-title text-ink mt-8 font-medium">To prepare</h2>
       <p className="text-muted-foreground mt-2">{booking.whatToPrepare}</p>
       <p className="bg-muted text-muted-foreground mt-6 rounded-lg px-4 py-3 text-sm leading-relaxed">
         {booking.type.mode === 'on_site'
@@ -67,7 +67,7 @@ export function BookingPending({ booking, slow }: { booking: CustomerBooking; sl
   return (
     <section aria-labelledby="pending-heading" aria-live="polite">
       <Clock className="size-8 animate-pulse" aria-hidden="true" />
-      <h1 id="pending-heading" className="text-section text-ink mt-4 font-bold">
+      <h1 id="pending-heading" className="text-section text-ink mt-4 font-medium">
         Confirming your appointment…
       </h1>
       <p className="text-muted-foreground mt-2">

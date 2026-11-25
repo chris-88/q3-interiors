@@ -56,9 +56,9 @@ export function LandingPage() {
 
   return (
     <PublicLayout width="page">
-      <section aria-labelledby="intro-heading" className="bg-cream">
+      <section aria-labelledby="intro-heading" className="bg-soft">
         <div className="max-w-page mx-auto flex flex-col gap-6 px-5 py-12 md:px-10 md:py-24">
-          <h1 id="intro-heading" className="text-display text-ink max-w-prose font-bold">
+          <h1 id="intro-heading" className="text-display text-ink max-w-prose font-medium">
             Planning a home renovation?
           </h1>
           <p className="text-body text-ink max-w-prose">
@@ -77,7 +77,7 @@ export function LandingPage() {
             id="how-it-works"
             ref={howRef}
             tabIndex={-1}
-            className="text-section text-ink font-bold outline-none"
+            className="text-section text-ink font-medium outline-none"
           >
             How it works
           </h2>
@@ -86,18 +86,18 @@ export function LandingPage() {
               <li key={step.title} className="flex max-w-prose min-w-0 gap-4 md:flex-col">
                 <span
                   aria-hidden="true"
-                  className="bg-forest flex size-10 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
+                  className="bg-action flex size-10 shrink-0 items-center justify-center rounded-full text-base font-medium text-white"
                 >
                   {index + 1}
                 </span>
                 <div className="flex min-w-0 flex-col gap-2">
-                  <h3 className="text-title text-ink font-bold">{step.title}</h3>
+                  <h3 className="text-title text-ink font-medium">{step.title}</h3>
                   <p className="text-muted-foreground">{step.body}</p>
                 </div>
               </li>
             ))}
           </ol>
-          <p className="border-forest bg-cream text-ink mt-10 max-w-prose border-l-4 px-4 py-3">
+          <p className="border-action bg-soft text-ink mt-10 max-w-prose border-l-4 px-4 py-3">
             A site visit is for us to assess and price the work. Booking one does not commit you to
             a quote, and it is not a start date.
           </p>
@@ -106,7 +106,7 @@ export function LandingPage() {
 
       <section aria-labelledby="final-heading" className="border-rule bg-background border-t">
         <div className="max-w-page mx-auto flex flex-col items-start gap-6 px-5 py-12 md:px-10 md:py-16">
-          <h2 id="final-heading" className="text-section text-ink font-bold">
+          <h2 id="final-heading" className="text-section text-ink font-medium">
             Ready to tell us about it?
           </h2>
           <MainAction />

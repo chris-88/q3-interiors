@@ -25,7 +25,7 @@ function Heading({ children }: { children: React.ReactNode }) {
     <h1
       ref={ref}
       tabIndex={-1}
-      className="text-section text-ink font-bold text-balance outline-none"
+      className="text-section text-ink font-medium text-balance outline-none"
     >
       {children}
     </h1>
@@ -323,7 +323,7 @@ export function ManageBooking({
       )}
       <BookingConfirmed booking={booking} reference={reference} />
       <section aria-labelledby="change-heading" className="mt-10">
-        <h2 id="change-heading" className="text-title text-ink font-bold">
+        <h2 id="change-heading" className="text-title text-ink font-medium">
           Change or cancel
         </h2>
         {booking.canChange ? (

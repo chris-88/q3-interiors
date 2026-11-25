@@ -33,14 +33,17 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
     <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
-          <Link to="/staff" className="inline-flex items-center gap-2 rounded-sm text-sm font-bold">
+          <Link
+            to="/staff"
+            className="inline-flex min-h-12 items-center gap-2 rounded-sm text-sm font-medium"
+          >
             {/* Decorative: the link text names it. */}
             <img
-              src="/brand/q3-round-colour.svg"
-              width={40}
+              src="/brand/q3-mark-black.svg"
+              width={33}
               height={40}
               alt=""
-              className="size-10"
+              className="h-10 w-auto"
             />
             <span>
               Q3 Interiors <span className="text-muted-foreground font-normal">Staff</span>
@@ -235,7 +238,7 @@ export function StaffArea({ children }: { children: ReactNode }) {
     return (
       <Shell>
         <div className="bg-background mx-auto max-w-sm rounded-md border p-6">
-          <h1 className="text-title text-ink font-bold">Your account is switched off</h1>
+          <h1 className="text-title text-ink font-medium">Your account is switched off</h1>
           <p className="text-muted-foreground mt-2 text-sm">
             An admin has switched off this staff account. If you think that is a mistake, ask them
             to switch it back on.

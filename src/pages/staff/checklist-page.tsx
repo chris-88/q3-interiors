@@ -91,7 +91,7 @@ export function ChecklistPage() {
     <AdminOnly>
       <div className="flex flex-col gap-4">
         <BackToSettings />
-        <h1 className="text-section text-ink font-bold">Go-live checklist</h1>
+        <h1 className="text-section text-ink font-medium">Go-live checklist</h1>
         <p className="text-muted-foreground text-sm">
           What stands between today and a paid campaign. Green items are done; amber items say what
           is left and where to fix it.
@@ -113,13 +113,10 @@ export function ChecklistPage() {
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className={`bg-background flex gap-3 rounded-md border border-l-4 p-4 ${item.done ? 'border-l-forest' : 'border-l-[#b7791f]'}`}
+                  className={`bg-background flex gap-3 rounded-md border border-l-4 p-4 ${item.done ? 'border-l-action' : 'border-l-[#b7791f]'}`}
                 >
                   {item.done ? (
-                    <CircleCheck
-                      className="text-forest mt-0.5 size-5 shrink-0"
-                      aria-hidden="true"
-                    />
+                    <CircleCheck className="text-ink mt-0.5 size-5 shrink-0" aria-hidden="true" />
                   ) : (
                     <CircleAlert
                       className="mt-0.5 size-5 shrink-0 text-[#8a5a12]"
@@ -127,7 +124,7 @@ export function ChecklistPage() {
                     />
                   )}
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <h2 className="font-bold">
+                    <h2 className="font-medium">
                       <span className="sr-only">{item.done ? 'Done: ' : 'To do: '}</span>
                       {item.title}
                     </h2>

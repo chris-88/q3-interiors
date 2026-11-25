@@ -209,7 +209,8 @@ type Draft = {
   after?: string[][]
 }
 
-const BRAND = { forest: '#415847', ink: '#1F2922', muted: '#526154', cream: '#E8E6D6' }
+// Brand guide v2.0: black actions and links, ink text, muted captions, on white.
+const BRAND = { action: '#000000', ink: '#171717', muted: '#555555' }
 
 function escapeHtml(value: string): string {
   return value
@@ -235,14 +236,15 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
     `<p style="margin:0 0 16px;font:16px/1.55 Roboto,Arial,sans-serif;color:${BRAND.ink}">${lines
       .map(escapeHtml)
       .join('<br>')}</p>`
+  // The wordmark, served from the site at twice its displayed size.
   const badge = opts.siteUrl
-    ? `<img src="${escapeHtml(opts.siteUrl)}/brand/q3-badge-email.png" width="112" height="112" alt="Q3 Interiors" style="display:block;border:0;margin:0 0 24px">`
+    ? `<img src="${escapeHtml(opts.siteUrl)}/brand/q3-email-logo.png" width="160" height="61" alt="Q3 Interiors" style="display:block;border:0;margin:0 0 24px">`
     : ''
   const button = d.action
-    ? `<p style="margin:8px 0 24px"><a href="${escapeHtml(d.action.url)}" style="display:inline-block;background:${BRAND.forest};color:#ffffff;font:500 16px/1.4 Roboto,Arial,sans-serif;text-decoration:none;padding:12px 24px;border-radius:4px">${escapeHtml(d.action.label)}</a></p>`
+    ? `<p style="margin:8px 0 24px"><a href="${escapeHtml(d.action.url)}" style="display:inline-block;background:${BRAND.action};color:#ffffff;font:500 16px/1.4 Roboto,Arial,sans-serif;text-decoration:none;padding:12px 24px;border-radius:4px">${escapeHtml(d.action.label)}</a></p>`
     : ''
   const privacy = opts.privacyUrl
-    ? `<p style="margin:24px 0 0;font:14px/1.5 Roboto,Arial,sans-serif;color:${BRAND.muted}"><a href="${escapeHtml(opts.privacyUrl)}" style="color:${BRAND.forest}">How we use your details</a></p>`
+    ? `<p style="margin:24px 0 0;font:14px/1.5 Roboto,Arial,sans-serif;color:${BRAND.muted}"><a href="${escapeHtml(opts.privacyUrl)}" style="color:${BRAND.action}">How we use your details</a></p>`
     : ''
   return `<!doctype html><html lang="en-IE"><head><meta charset="utf-8"><meta name="color-scheme" content="light"><title>${escapeHtml(d.subject)}</title></head>
 <body style="margin:0;padding:0;background:#ffffff">

@@ -294,11 +294,11 @@ describe('messages', () => {
     expect(m.text).toContain('Change or cancel: https://q3.example/#/book/t')
     expect(m.text).toContain('How we use your details: https://q3.example/#/privacy')
     expect(m.text).not.toContain('<a ')
-    // HTML: badge from the site, one forest button for the main action, the privacy link.
-    expect(m.html).toContain('src="https://q3.example/brand/q3-badge-email.png"')
+    // HTML: the wordmark from the site, one black button for the main action, the privacy link.
+    expect(m.html).toContain('src="https://q3.example/brand/q3-email-logo.png"')
     expect(m.html).toContain('alt="Q3 Interiors"')
     expect(m.html).toMatch(
-      /<a href="https:\/\/q3.example\/#\/book\/t" style="[^"]*background:#415847/,
+      /<a href="https:\/\/q3.example\/#\/book\/t" style="[^"]*background:#000000/,
     )
     expect(m.html).toContain('>Change or cancel</a>')
     expect(m.html).toContain('href="https://q3.example/#/privacy"')

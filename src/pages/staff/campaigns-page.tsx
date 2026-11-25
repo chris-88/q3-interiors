@@ -445,7 +445,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
       className="bg-background flex flex-col gap-4 rounded-md border p-4"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id={headingId} className="text-title text-ink font-bold">
+        <h2 id={headingId} className="text-title text-ink font-medium">
           {campaign.name}
         </h2>
         {campaign.archived_at && <Badge variant="outline">Archived</Badge>}
@@ -458,11 +458,11 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
         <CampaignForm campaign={campaign} onDone={() => setEditing(false)} />
       ) : (
         <>
-          <h3 className="font-bold">Link builder</h3>
+          <h3 className="font-medium">Link builder</h3>
           <LinkBuilder campaign={campaign} />
-          <h3 className="font-bold">Creatives</h3>
+          <h3 className="font-medium">Creatives</h3>
           <Creatives campaign={campaign} />
-          <h3 className="font-bold">Spend</h3>
+          <h3 className="font-medium">Spend</h3>
           <Spend campaign={campaign} />
         </>
       )}
@@ -497,7 +497,7 @@ export function CampaignsPage() {
     <AdminOnly>
       <div className="flex flex-col gap-4">
         <BackToSettings />
-        <h1 className="text-section text-ink font-bold">Campaigns</h1>
+        <h1 className="text-section text-ink font-medium">Campaigns</h1>
         <p className="text-muted-foreground text-sm">
           One campaign per set of ads. Copy its link into the ad, enter what you spend, and the
           report shows what each enquiry and booking cost.

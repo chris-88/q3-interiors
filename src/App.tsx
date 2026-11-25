@@ -50,7 +50,7 @@ const StaffDetailRoute = lazy(() =>
 function NotFound() {
   return (
     <PublicLayout>
-      <h1 className="text-section text-ink font-bold">Page not found</h1>
+      <h1 className="text-section text-ink font-medium">Page not found</h1>
       <p className="text-muted-foreground mt-2">
         <Link to="/" className="underline underline-offset-4">
           Go to the home page

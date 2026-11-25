@@ -54,7 +54,7 @@ function WhoTakesBookings({ people }: { people: StaffRow[] }) {
           {active.map((p) => (
             <label
               key={p.user_id}
-              className="flex min-h-12 items-center gap-3 rounded-md border px-3 py-2"
+              className="border-edge has-[:checked]:border-action has-[:checked]:bg-soft flex min-h-12 items-center gap-3 rounded-md border px-3 py-2"
             >
               <input
                 type="radio"
@@ -302,7 +302,7 @@ function AddPerson() {
           </Field>
           <fieldset className="flex min-w-0 flex-col gap-1">
             <legend className="mb-1 text-sm font-medium">What can they do?</legend>
-            <label className="flex min-h-12 items-start gap-3 rounded-md border px-3 py-2">
+            <label className="border-edge has-[:checked]:border-action has-[:checked]:bg-soft flex min-h-12 items-start gap-3 rounded-md border px-3 py-2">
               <input type="radio" value="staff" className="mt-1 size-5" {...register('role')} />
               <span>
                 <span className="font-medium">Staff</span>
@@ -311,7 +311,7 @@ function AddPerson() {
                 </span>
               </span>
             </label>
-            <label className="flex min-h-12 items-start gap-3 rounded-md border px-3 py-2">
+            <label className="border-edge has-[:checked]:border-action has-[:checked]:bg-soft flex min-h-12 items-start gap-3 rounded-md border px-3 py-2">
               <input type="radio" value="admin" className="mt-1 size-5" {...register('role')} />
               <span>
                 <span className="font-medium">Admin</span>
@@ -354,7 +354,7 @@ export function PeoplePage() {
     <AdminOnly>
       <div className="flex flex-col gap-4">
         <BackToSettings />
-        <h1 className="text-section text-ink font-bold">People</h1>
+        <h1 className="text-section text-ink font-medium">People</h1>
         {people.isPending ? (
           <Skeleton className="h-40 w-full" />
         ) : people.isError ? (

@@ -7,7 +7,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-forest-hover active:bg-forest-hover',
+        default: 'bg-primary text-primary-foreground hover:bg-action-hover active:bg-action-hover',
         outline:
           // Q3: a bordered secondary action in the link colour (brand guide 6).
           'border-primary bg-background text-primary hover:underline aria-expanded:bg-muted aria-expanded:text-foreground',

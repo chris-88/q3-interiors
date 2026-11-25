@@ -352,7 +352,7 @@ export function WordingPage() {
     <AdminOnly>
       <div className="flex flex-col gap-4">
         <BackToSettings />
-        <h1 className="text-section text-ink font-bold">Wording</h1>
+        <h1 className="text-section text-ink font-medium">Wording</h1>
         <p className="text-muted-foreground text-sm">
           Reword the parts of each email in your own words. The date and time, the reference, the
           Change-or-cancel button and the privacy link are always added for you.

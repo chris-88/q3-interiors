@@ -145,7 +145,7 @@ export function BusinessPage() {
     <AdminOnly>
       <div className="flex flex-col gap-4">
         <BackToSettings />
-        <h1 className="text-section text-ink font-bold">Business details</h1>
+        <h1 className="text-section text-ink font-medium">Business details</h1>
         <SettingsCard title="What customers see" id="business-heading">
           {details.isPending ? (
             <Skeleton className="h-64 w-full" />

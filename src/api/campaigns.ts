@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseRows } from '@/lib/tolerant'
 import { SLUG } from '@/lib/campaigns'
 import { toApiError } from './errors'
 
@@ -22,7 +23,9 @@ const campaignSchema = z.object({
   archived_at: z.string().nullable(),
   link_used_at: z.string().nullable(),
   created_at: z.string(),
-  campaign_creatives: z.array(creativeSchema),
+  campaign_creatives: z
+    .array(z.unknown())
+    .transform((rows) => parseRows(creativeSchema, rows, 'campaign creatives')),
 })
 
 export type Campaign = z.infer<typeof campaignSchema>
@@ -94,7 +97,8 @@ export function useCampaigns() {
         )
         .order('created_at', { ascending: false })
       if (error) throw toApiError(error)
-      return z.array(campaignSchema).parse(data)
+      // A campaign this build cannot build links for (say, a new landing route) is left out.
+      return parseRows(campaignSchema, data, 'campaigns')
     },
   })
 }
@@ -181,7 +185,7 @@ export function useSpend(campaignId: string) {
         .eq('campaign_id', campaignId)
         .order('spent_on', { ascending: false })
       if (error) throw toApiError(error)
-      return z.array(spendSchema).parse(data)
+      return parseRows(spendSchema, data, 'campaign spend')
     },
   })
 }
@@ -235,7 +239,7 @@ export function useCampaignCosts(from: string, to: string, enabled: boolean) {
     queryFn: async () => {
       const { data, error } = await supabase.rpc('campaign_costs', { p_from: from, p_to: to })
       if (error) throw toApiError(error)
-      return z.array(costSchema).parse(data)
+      return parseRows(costSchema, data, 'campaign costs')
     },
   })
 }

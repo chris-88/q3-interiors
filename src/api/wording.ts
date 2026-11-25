@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseRows } from '@/lib/tolerant'
 import {
   WORDING,
   type Wording,
@@ -38,7 +39,7 @@ export function useWordingOverrides() {
     queryFn: async (): Promise<Wording> => {
       const { data, error } = await supabase.from('message_blocks').select('key, body')
       if (error) throw toApiError(error)
-      const rows = z.array(z.object({ key: z.string(), body: z.string() })).parse(data)
+      const rows = parseRows(z.object({ key: z.string(), body: z.string() }), data, 'wording')
       return Object.fromEntries(rows.filter((r) => r.key in WORDING).map((r) => [r.key, r.body]))
     },
   })

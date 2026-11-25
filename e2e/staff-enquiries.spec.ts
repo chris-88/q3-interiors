@@ -116,7 +116,7 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   await signIn(page, 'staff@example.com', 'another long password')
 
   // The list: the choice, the follow-up and the contact request at a glance.
-  const rows = page.getByRole('main').getByRole('listitem')
+  const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
   await expect(rows.first()).toContainText('Kitchen')
   await expect(rows.first()).toContainText('Dublin 8 · Layout: Changing it')
   await expect(rows.first()).toContainText('Wants a site visit')
@@ -225,7 +225,7 @@ test('staff see what a customer added after booking: the marker, the answers and
   await installFakeStaff(page, world)
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
-  const row = page.getByRole('main').getByRole('listitem').first()
+  const row = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem').first()
   await expect(row).toContainText('Added after booking')
   await row.getByRole('link').click()
 

@@ -11,7 +11,7 @@ import { call } from './booking'
 const prepareStateSchema = z.object({
   window: z.object({
     open: z.boolean(),
-    reason: z.enum(['no_booking', 'started']).nullable(),
+    reason: z.string().nullable(),
     mode: z.enum(['phone', 'on_site']).nullable(),
   }),
   answers: z.record(z.string(), z.string()),

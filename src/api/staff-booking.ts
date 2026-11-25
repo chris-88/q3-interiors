@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { openEnum, parseOne, parseRows } from '@/lib/tolerant'
 import { ApiError, toApiError } from './errors'
 
 export const BOOKING_STATES = [
@@ -24,19 +25,19 @@ const answers = z.record(z.string(), z.union([z.string(), z.array(z.string())]))
 const bookingSchema = z.object({
   id: z.string(),
   enquiry_id: z.string(),
-  state: z.enum(BOOKING_STATES),
+  state: openEnum(BOOKING_STATES),
   starts_at: z.string(),
   ends_at: z.string(),
   failure_reason: z.string().nullable(),
   calendar_event_id: z.string(),
   calendar_event_link: z.string().nullable(),
   created_at: z.string(),
-  attendance: z.enum(['attended', 'no_show']).nullable(),
+  attendance: openEnum(['attended', 'no_show']).nullable(),
   cancelled_at: z.string().nullable(),
-  cancelled_by: z.enum(['customer', 'staff']).nullable(),
+  cancelled_by: openEnum(['customer', 'staff']).nullable(),
   cancel_reason: z.string().nullable(),
   calendar_mismatch: z.string().nullable(),
-  appointment_types: z.object({ label: z.string(), mode: z.enum(['phone', 'on_site']) }),
+  appointment_types: z.object({ label: z.string(), mode: openEnum(['phone', 'on_site']) }),
   enquiries: z.object({ reference: z.string(), answers }).nullable(),
 })
 export type StaffBooking = z.infer<typeof bookingSchema>
@@ -55,7 +56,7 @@ export function useAppointments() {
         .order('starts_at', { ascending: true })
         .limit(300)
       if (error) throw toApiError(error)
-      return z.array(bookingSchema).parse(data)
+      return parseRows(bookingSchema, data, 'appointments')
     },
   })
 }
@@ -70,14 +71,14 @@ export function useEnquiryBookings(enquiryId: string) {
         .eq('enquiry_id', enquiryId)
         .order('created_at', { ascending: false })
       if (error) throw toApiError(error)
-      return z.array(bookingSchema).parse(data)
+      return parseRows(bookingSchema, data, 'appointments')
     },
   })
 }
 
 const connectionSchema = z.object({
   staff_user_id: z.string(),
-  status: z.enum(['connected', 'disconnected']),
+  status: openEnum(['connected', 'disconnected']),
   google_email: z.string().nullable(),
   calendar_id: z.string(),
   connected_at: z.string().nullable(),
@@ -100,7 +101,7 @@ export function useCalendarConnection(staffUserId: string | undefined) {
         .eq('staff_user_id', staffUserId ?? '')
         .maybeSingle()
       if (error) throw toApiError(error)
-      return data === null ? null : connectionSchema.parse(data)
+      return data === null ? null : parseOne(connectionSchema, data, 'the calendar connection')
     },
   })
 }
@@ -122,7 +123,7 @@ export function useCalendarAction(staffUserId: string | undefined) {
         body: { action },
       })
       if (error) throw new ApiError(error.message)
-      const parsed = actionResult.parse(data)
+      const parsed = parseOne(actionResult, data, 'the calendar reply')
       if (parsed.error === 'not_configured') {
         throw new ApiError('Google sign-in is not set up on the server yet', 'not_configured')
       }
@@ -176,7 +177,7 @@ export function useStaffAvailability(staffUserId: string | undefined) {
         .eq('staff_user_id', staffUserId ?? '')
         .maybeSingle()
       if (error) throw toApiError(error)
-      return data === null ? null : availabilitySchema.parse(data)
+      return data === null ? null : parseOne(availabilitySchema, data, 'the booking hours')
     },
   })
 }
@@ -219,7 +220,8 @@ export function useAppointmentTypes() {
         )
         .order('sort_order')
       if (error) throw toApiError(error)
-      return z.array(appointmentTypeSchema).parse(data)
+      // A type with a mode this build does not know is left out of the settings list.
+      return parseRows(appointmentTypeSchema, data, 'appointment types')
     },
   })
 }
@@ -295,10 +297,11 @@ export function useExceptions(staffUserId: string | undefined) {
         if (r.error) throw toApiError(r.error)
       }
       const out: StaffException[] = []
-      const conn = z
-        .object({ status: z.string(), last_error: z.string().nullable() })
-        .nullable()
-        .parse(connection.data)
+      const conn = parseOne(
+        z.object({ status: z.string(), last_error: z.string().nullable() }).nullable(),
+        connection.data,
+        'the calendar connection',
+      )
       if (!conn || conn.status !== 'connected') {
         out.push({
           id: 'calendar',
@@ -310,16 +313,16 @@ export function useExceptions(staffUserId: string | undefined) {
         })
       }
       const ref = z.object({ reference: z.string() }).nullable()
-      for (const b of z
-        .array(
-          z.object({
-            id: z.string(),
-            enquiry_id: z.string(),
-            failure_reason: z.string().nullable(),
-            enquiries: ref,
-          }),
-        )
-        .parse(failed.data)) {
+      for (const b of parseRows(
+        z.object({
+          id: z.string(),
+          enquiry_id: z.string(),
+          failure_reason: z.string().nullable(),
+          enquiries: ref,
+        }),
+        failed.data,
+        'needs attention',
+      )) {
         out.push({
           id: `booking-${b.id}`,
           kind: 'booking',
@@ -327,15 +330,15 @@ export function useExceptions(staffUserId: string | undefined) {
           link: `/enquiries/${b.enquiry_id}`,
         })
       }
-      for (const e of z
-        .array(
-          z.object({
-            id: z.string(),
-            reference: z.string(),
-            contact_request_reason: z.string().nullable(),
-          }),
-        )
-        .parse(contacts.data)) {
+      for (const e of parseRows(
+        z.object({
+          id: z.string(),
+          reference: z.string(),
+          contact_request_reason: z.string().nullable(),
+        }),
+        contacts.data,
+        'needs attention',
+      )) {
         out.push({
           id: `contact-${e.id}`,
           kind: 'contact',
@@ -343,33 +346,36 @@ export function useExceptions(staffUserId: string | undefined) {
           link: `/enquiries/${e.id}`,
         })
       }
-      for (const c of z
-        .array(
-          z.object({
-            id: z.string(),
-            enquiry_id: z.string(),
-            last_error: z.string().nullable(),
-            enquiries: ref,
-          }),
-        )
-        .parse(emails.data)) {
+      for (const c of parseRows(
+        z.object({
+          id: z.string(),
+          // Staff account emails (invite, password reset) belong to no enquiry.
+          enquiry_id: z.string().nullable(),
+          last_error: z.string().nullable(),
+          enquiries: ref,
+        }),
+        emails.data,
+        'needs attention',
+      )) {
         out.push({
           id: `email-${c.id}`,
           kind: 'email',
-          text: `Confirmation email for ${c.enquiries?.reference ?? 'an enquiry'} not sent: ${c.last_error ?? 'unknown error'}`,
-          link: `/enquiries/${c.enquiry_id}`,
+          text: c.enquiry_id
+            ? `Email for ${c.enquiries?.reference ?? 'an enquiry'} not sent: ${c.last_error ?? 'unknown error'}`
+            : `A staff account email was not sent: ${c.last_error ?? 'unknown error'}`,
+          link: c.enquiry_id ? `/enquiries/${c.enquiry_id}` : '/settings/people',
         })
       }
-      for (const b of z
-        .array(
-          z.object({
-            id: z.string(),
-            enquiry_id: z.string(),
-            calendar_mismatch: z.string(),
-            enquiries: ref,
-          }),
-        )
-        .parse(mismatches.data)) {
+      for (const b of parseRows(
+        z.object({
+          id: z.string(),
+          enquiry_id: z.string(),
+          calendar_mismatch: z.string(),
+          enquiries: ref,
+        }),
+        mismatches.data,
+        'needs attention',
+      )) {
         out.push({
           id: `mismatch-${b.id}`,
           kind: 'calendar',
@@ -377,15 +383,15 @@ export function useExceptions(staffUserId: string | undefined) {
           link: `/enquiries/${b.enquiry_id}`,
         })
       }
-      for (const j of z
-        .array(
-          z.object({
-            id: z.number(),
-            last_error: z.string().nullable(),
-            bookings: z.object({ enquiry_id: z.string(), enquiries: ref }).nullable(),
-          }),
-        )
-        .parse(removals.data)) {
+      for (const j of parseRows(
+        z.object({
+          id: z.number(),
+          last_error: z.string().nullable(),
+          bookings: z.object({ enquiry_id: z.string(), enquiries: ref }).nullable(),
+        }),
+        removals.data,
+        'needs attention',
+      )) {
         out.push({
           id: `removal-${j.id}`,
           kind: 'calendar',
@@ -393,7 +399,7 @@ export function useExceptions(staffUserId: string | undefined) {
           link: j.bookings ? `/enquiries/${j.bookings.enquiry_id}` : '/appointments',
         })
       }
-      const stuck = z.number().parse(orphans.data)
+      const stuck = z.coerce.number().catch(0).parse(orphans.data)
       if (stuck > 0) {
         out.push({
           id: 'orphans',
@@ -432,7 +438,7 @@ export type StaffChangeResult = z.infer<typeof changeSchema>
 async function staffCall<T>(body: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('staff-booking', { body })
   if (error) throw new ApiError(error.message)
-  return schema.parse(data)
+  return parseOne(schema, data, 'the reply from the server')
 }
 
 export function useStaffMoveOptions(bookingId: string, enabled: boolean) {
@@ -554,7 +560,7 @@ export function useBookingSettings() {
         .select('change_cutoff_minutes, reminder_lead_minutes, retention_months')
         .maybeSingle()
       if (error) throw toApiError(error)
-      return data === null ? null : bookingSettingsSchema.parse(data)
+      return data === null ? null : parseOne(bookingSettingsSchema, data, 'the booking rules')
     },
   })
 }
@@ -592,7 +598,7 @@ export function useFunnelReport(from: string, to: string) {
     queryFn: async () => {
       const { data, error } = await supabase.rpc('funnel_report', { p_from: from, p_to: to })
       if (error) throw toApiError(error)
-      return z.array(funnelRowSchema).parse(data)
+      return parseRows(funnelRowSchema, data, 'the funnel report')
     },
   })
 }
@@ -606,7 +612,7 @@ export function useRetentionPreview(months: number | null) {
     queryFn: async () => {
       const { data, error } = await supabase.rpc('retention_preview', { p_months: months })
       if (error) throw toApiError(error)
-      return z.number().parse(data)
+      return parseOne(z.coerce.number(), data, 'the count')
     },
   })
 }
@@ -622,7 +628,7 @@ export function useDeleteEnquiry(onDeleted?: (reference: string) => void) {
         p_confirm_reference: input.confirm,
       })
       if (error) throw toApiError(error)
-      return z.string().parse(data)
+      return parseOne(z.string(), data, 'the reply from the server')
     },
     onSuccess: (reference) => {
       onDeleted?.(reference)

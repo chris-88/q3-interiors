@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
-  AD_STATUS_LABELS,
+  adStatusLabel,
+  requestSizeLabel,
   adErrorMessage,
   downloadAdFile,
   latestVersion,
   REQUEST_MAX,
-  REQUEST_SIZES,
   useAd,
   useAdHtml,
   useAds,
@@ -34,9 +34,7 @@ import { formatDateTime } from '@/lib/format'
 import { SITE_URL } from '../../../supabase/functions/_shared/site.ts'
 
 function StatusBadge({ status }: { status: Ad['status'] }) {
-  return (
-    <Badge variant={status === 'new' ? 'default' : 'outline'}>{AD_STATUS_LABELS[status]}</Badge>
-  )
+  return <Badge variant={status === 'new' ? 'default' : 'outline'}>{adStatusLabel(status)}</Badge>
 }
 
 const FILTERS = {
@@ -365,7 +363,7 @@ function Review({ ad, version, isCurrent }: { ad: Ad; version: AdVersion; isCurr
         {version.approved_at
           ? `Version ${version.version} approved by ${version.approved_by_name ?? 'an admin'} on ${formatDateTime(version.approved_at)}.`
           : isCurrent
-            ? `Version ${version.version} is ${AD_STATUS_LABELS[ad.status].toLowerCase()}.`
+            ? `Version ${version.version} is ${adStatusLabel(ad.status).toLowerCase()}.`
             : `Version ${version.version} was not approved.`}
       </p>
       {!isAdmin && (
@@ -448,7 +446,7 @@ function RequestItem({ request }: { request: AdRequest }) {
     <li className="flex flex-col gap-1 rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={request.state === 'open' ? 'default' : 'outline'}>{state}</Badge>
-        <span className="text-muted-foreground text-sm">{REQUEST_SIZES[request.size]}</span>
+        <span className="text-muted-foreground text-sm">{requestSizeLabel(request.size)}</span>
       </div>
       <p className="break-words whitespace-pre-line">{request.body}</p>
       <span className="text-muted-foreground text-sm">
@@ -544,7 +542,7 @@ function RequestForm({ ad }: { ad: Ad }) {
                 checked={size === s}
                 onChange={() => setSize(s as AdRequest['size'])}
               />
-              {REQUEST_SIZES[s as AdRequest['size']]}
+              {requestSizeLabel(s)}
             </label>
           ))}
         </div>

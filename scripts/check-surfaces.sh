@@ -35,6 +35,9 @@ expect_absent dist-staff 'record_visit'
 expect_absent dist 'pilot_report'
 expect_absent dist 'set_chase_details'
 expect_present dist-staff 'pilot_report'
+# The staff build publishes its build id; the customer build has none.
+expect_present dist-staff/version.json 'StaffApp-'
+expect_absent dist 'version.json'
 expect_absent dist-staff 'What kind of project is it?'
 # Each has its own.
 expect_present dist 'Show us the space so we can measure up'

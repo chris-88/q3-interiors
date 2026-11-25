@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseOne } from '@/lib/tolerant'
 import { checklistDataSchema, type ManualKey } from '@/lib/checklist'
 import { toApiError } from './errors'
 
@@ -10,7 +11,7 @@ export function useChecklist() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc('go_live_checklist')
       if (error) throw toApiError(error)
-      return checklistDataSchema.parse(data)
+      return parseOne(checklistDataSchema, data, 'the go-live checklist')
     },
   })
 }

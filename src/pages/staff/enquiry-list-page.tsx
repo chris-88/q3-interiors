@@ -87,7 +87,7 @@ export function EnquiryListPage() {
           No enquiries yet. New ones appear here as soon as they are sent.
         </p>
       ) : (
-        <ul className="mt-4 flex flex-col gap-2">
+        <ul aria-label="Enquiries" className="mt-4 flex flex-col gap-2">
           {enquiries.data.map((enquiry) => {
             const form = forms.data?.get(`${enquiry.form_id}@${enquiry.form_version}`)
             const location = enquiry.answers.location

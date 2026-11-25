@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseRows } from '@/lib/tolerant'
 import { ApiError, RateLimitedError } from './errors'
 
 /**
@@ -38,6 +39,16 @@ const bookingSchema = z.object({
 })
 export type CustomerBooking = z.infer<typeof bookingSchema>
 
+const typeOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  mode: z.enum(['phone', 'on_site']),
+  durationMinutes: z.number(),
+  requiresSiteAddress: z.boolean(),
+  eligibility: z.string(),
+})
+
 const contextSchema = z.object({
   reference: z.string(),
   firstName: z.string().nullable(),
@@ -50,17 +61,10 @@ const contextSchema = z.object({
   siteAddress: z.string().nullable(),
   contactRequested: z.boolean(),
   calendarAvailable: z.boolean(),
-  types: z.array(
-    z.object({
-      id: z.string(),
-      label: z.string(),
-      description: z.string(),
-      mode: z.enum(['phone', 'on_site']),
-      durationMinutes: z.number(),
-      requiresSiteAddress: z.boolean(),
-      eligibility: z.string(),
-    }),
-  ),
+  // Row by row: a type with a mode this page does not know is left out, not fatal.
+  types: z
+    .array(z.unknown())
+    .transform((rows) => parseRows(typeOptionSchema, rows, 'appointment types')),
   booking: bookingSchema.nullable(),
 })
 export type BookingContext = z.infer<typeof contextSchema>
@@ -68,7 +72,8 @@ export type AppointmentTypeOption = BookingContext['types'][number]
 
 const unavailableSchema = z.object({
   status: z.literal('unavailable'),
-  reason: z.enum(['calendar_unavailable', 'calendar_error', 'no_staff']),
+  // Any reason: a newer function may add one; the page treats them all alike.
+  reason: z.string(),
 })
 
 const availabilitySchema = z.discriminatedUnion('status', [

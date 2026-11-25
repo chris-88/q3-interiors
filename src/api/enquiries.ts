@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { formDefinitionSchema } from '@/forms/definition-schema'
 import type { FormDefinition } from '@/forms/types'
 import { supabase } from '@/lib/supabase'
+import { openEnum, parseOne, parseRows, type Open } from '@/lib/tolerant'
 import { toApiError } from './errors'
 
 export const ENQUIRY_STATUSES = ['new', 'in_review', 'contacted', 'unsuitable'] as const
@@ -15,7 +16,13 @@ export const STATUS_LABELS: Record<EnquiryStatus, string> = {
   unsuitable: 'Unsuitable',
 }
 
-const statusSchema = z.enum(ENQUIRY_STATUSES)
+/** The label for a status, or the raw value for one a newer release added. */
+export function statusLabel(status: Open<EnquiryStatus>): string {
+  return (STATUS_LABELS as Record<string, string>)[status] ?? status
+}
+
+// Open: a status added by a newer release must not break the list (see lib/tolerant.ts).
+const statusSchema = openEnum(ENQUIRY_STATUSES)
 const answersSchema = z.record(z.string(), z.union([z.string(), z.array(z.string())]))
 
 const enquirySummarySchema = z.object({
@@ -33,7 +40,7 @@ const enquirySummarySchema = z.object({
 export type EnquirySummary = z.infer<typeof enquirySummarySchema>
 
 const attributionSchema = z.object({
-  tracking: z.enum(['tagged', 'unknown']),
+  tracking: openEnum(['tagged', 'unknown']),
   utm_source: z.string().nullable(),
   utm_medium: z.string().nullable(),
   utm_campaign: z.string().nullable(),
@@ -48,32 +55,8 @@ export type EnquiryAttribution = z.infer<typeof attributionSchema>
 
 const eventSchema = z.object({
   id: z.number(),
-  kind: z.enum([
-    'submitted',
-    'status_changed',
-    'site_details_added',
-    'contact_requested',
-    'booking_requested',
-    'booking_confirmed',
-    'booking_failed',
-    'booking_retrying',
-    'email_sent',
-    'email_failed',
-    'booking_cancelled',
-    'booking_rescheduled',
-    'calendar_updated',
-    'calendar_update_failed',
-    'attendance_recorded',
-    'outcome_recorded',
-    'outcome_cleared',
-    'details_updated',
-    'prepare_updated',
-    'photo_added',
-    'photo_removed',
-    'chase_flagged',
-    'chase_updated',
-    'chase_cleared',
-  ]),
+  // Any string: kinds added by newer releases render as a generic history line.
+  kind: z.string(),
   detail: z.string().nullable(),
   from_status: statusSchema.nullable(),
   to_status: statusSchema.nullable(),
@@ -83,6 +66,11 @@ const eventSchema = z.object({
 })
 
 export type EnquiryEvent = z.infer<typeof eventSchema>
+
+/** History entries parsed one by one: one this build cannot read is left out, not fatal. */
+const eventsSchema = z
+  .array(z.unknown())
+  .transform((rows) => parseRows(eventSchema, rows, 'enquiry history'))
 
 const enquiryDetailSchema = enquirySummarySchema.extend({
   status_reason: z.string().nullable(),
@@ -98,15 +86,20 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
   chase_flagged_by_name: z.string().nullable().default(null),
   contact_requested_at: z.string().nullable(),
   contact_request_reason: z.string().nullable(),
-  outcome: z.enum(['won', 'lost']).nullable(),
+  outcome: openEnum(['won', 'lost']).nullable(),
   outcome_value: z.coerce.number().nullable(),
-  outcome_reason: z
-    .enum(['price', 'timing', 'chose_another', 'project_cancelled', 'no_response', 'other'])
-    .nullable(),
+  outcome_reason: openEnum([
+    'price',
+    'timing',
+    'chose_another',
+    'project_cancelled',
+    'no_response',
+    'other',
+  ]).nullable(),
   outcome_note: z.string().nullable(),
   // One-to-one embed: PostgREST returns an object (or null) because enquiry_id is the key.
   enquiry_attribution: attributionSchema.nullable(),
-  enquiry_events: z.array(eventSchema),
+  enquiry_events: eventsSchema,
 })
 
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
@@ -124,7 +117,7 @@ export function useEnquiries() {
         .order('submitted_at', { ascending: false })
         .limit(200)
       if (error) throw toApiError(error)
-      return z.array(enquirySummarySchema).parse(data)
+      return parseRows(enquirySummarySchema, data, 'enquiries')
     },
   })
 }
@@ -148,7 +141,7 @@ export function useEnquiry(id: string) {
         .order('created_at', { referencedTable: 'enquiry_events', ascending: false })
         .maybeSingle()
       if (error) throw toApiError(error)
-      return data === null ? null : enquiryDetailSchema.parse(data)
+      return data === null ? null : parseOne(enquiryDetailSchema, data, 'this enquiry')
     },
   })
 }
@@ -163,9 +156,12 @@ export function useFormVersions() {
         .from('form_versions')
         .select('form_id, version, schema')
       if (error) throw toApiError(error)
-      const rows = z
-        .array(z.object({ form_id: z.string(), version: z.number(), schema: formDefinitionSchema }))
-        .parse(data)
+      // A version this build cannot read is left out; its enquiries fall back to plain answers.
+      const rows = parseRows(
+        z.object({ form_id: z.string(), version: z.number(), schema: formDefinitionSchema }),
+        data,
+        'form versions',
+      )
       return new Map(rows.map((row) => [`${row.form_id}@${row.version}`, row.schema]))
     },
   })
@@ -230,17 +226,14 @@ export function useEnquiryPhotos(enquiryId: string) {
         .eq('enquiry_id', enquiryId)
         .order('created_at', { ascending: true })
       if (error) throw toApiError(error)
-      return z
-        .array(photoRowSchema)
-        .parse(data)
-        .map((row) => ({
-          id: row.id,
-          path: row.object_path,
-          width: row.width,
-          height: row.height,
-          thumbUrl: `data:image/jpeg;base64,${hexToBase64(row.thumb_jpeg)}`,
-          uploadedAt: row.uploaded_at,
-        }))
+      return parseRows(photoRowSchema, data, 'photos').map((row) => ({
+        id: row.id,
+        path: row.object_path,
+        width: row.width,
+        height: row.height,
+        thumbUrl: `data:image/jpeg;base64,${hexToBase64(row.thumb_jpeg)}`,
+        uploadedAt: row.uploaded_at,
+      }))
     },
   })
 }

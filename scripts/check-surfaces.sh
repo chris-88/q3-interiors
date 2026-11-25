@@ -19,6 +19,7 @@ expect_absent dist 'Staff sign in'
 expect_absent dist 'Go-live checklist'
 expect_absent dist 'staff-accounts'
 expect_absent dist 'ad_variants'
+expect_absent dist 'request_ad_change'
 expect_absent dist 'Download the image'
 # The customer journey must not reach the staff site.
 expect_absent dist-staff 'Planning a home renovation?'

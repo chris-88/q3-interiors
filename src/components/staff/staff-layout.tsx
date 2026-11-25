@@ -17,6 +17,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOnline, useUpdateReady } from '@/staff-pwa'
+import { useAdsWaitingCount } from '@/api/ads'
 
 const StaffContext = createContext<StaffMember | null>(null)
 
@@ -26,6 +27,22 @@ export function useCurrentStaff(): StaffMember {
   const staff = useContext(StaffContext)
   if (!staff) throw new Error('useCurrentStaff outside StaffArea')
   return staff
+}
+
+/** "Ads" with the number waiting for review (status new). */
+function AdsNavLabel() {
+  const waiting = useAdsWaitingCount().data ?? 0
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      Ads
+      {waiting > 0 && (
+        <span className="bg-primary text-primary-foreground inline-flex min-w-5 justify-center rounded-full px-1.5 text-xs leading-5 font-medium">
+          {waiting}
+          <span className="sr-only"> waiting for review</span>
+        </span>
+      )}
+    </span>
+  )
 }
 
 function Offline() {
@@ -122,7 +139,7 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
                     }`
                   }
                 >
-                  {label}
+                  {to === '/ads' ? <AdsNavLabel /> : label}
                 </NavLink>
               </li>
             ))}

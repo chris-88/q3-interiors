@@ -3,19 +3,31 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
   AD_STATUS_LABELS,
+  adErrorMessage,
   downloadAdFile,
   latestVersion,
+  REQUEST_MAX,
+  REQUEST_SIZES,
   useAd,
   useAdHtml,
   useAds,
+  useApproveAd,
+  useArchiveAd,
+  useRequestChange,
+  useWithdrawRequest,
   type Ad,
+  type AdRequest,
   type AdVariant,
+  type AdVersion,
 } from '@/api/ads'
 import { AdFrame } from '@/components/staff/ad-frame'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useCurrentStaff } from '@/components/staff/staff-layout'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import { campaignLink } from '@/lib/campaigns'
 import { exportFilename, PLACEMENTS } from '@/lib/ads/spec'
 import { formatDateTime } from '@/lib/format'
@@ -27,15 +39,45 @@ function StatusBadge({ status }: { status: Ad['status'] }) {
   )
 }
 
+const FILTERS = {
+  active: 'All except archived',
+  new: 'New',
+  changes_requested: 'Changes requested',
+  approved: 'Approved',
+  archived: 'Archived',
+} as const
+type Filter = keyof typeof FILTERS
+
 export function AdsPage() {
   const ads = useAds()
+  const [filter, setFilter] = useState<Filter>('active')
+  const shown = (ads.data ?? []).filter((ad) =>
+    filter === 'active' ? ad.status !== 'archived' : ad.status === filter,
+  )
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-section text-ink font-medium">Ads</h1>
       <p className="text-muted-foreground -mt-2 text-sm">
-        Instagram ads built in the ad studio. Open one to see it at its real size, download the
-        image and copy the words for the post.
+        Instagram ads built in the ad studio. Open one to see it at its real size, ask for changes,
+        download the image and copy the words for the post.
       </p>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="ads-filter" className="text-sm font-medium">
+          Show
+        </label>
+        <NativeSelect
+          id="ads-filter"
+          className="h-12 w-full text-base sm:w-72"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as Filter)}
+        >
+          {Object.entries(FILTERS).map(([value, label]) => (
+            <NativeSelectOption key={value} value={value}>
+              {label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
       {ads.isPending ? (
         <Skeleton className="h-32 w-full" />
       ) : ads.isError ? (
@@ -47,35 +89,41 @@ export function AdsPage() {
             </Button>
           </AlertDescription>
         </Alert>
-      ) : ads.data.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="bg-background text-muted-foreground rounded-md border p-6 text-center">
-          No ads yet. They appear here when one is published from the ad studio.
+          {ads.data.length === 0
+            ? 'No ads yet. They appear here when one is published from the ad studio.'
+            : 'No ads with this status.'}
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {ads.data.map((ad) => (
-            <li key={ad.id}>
-              <Link
-                to={`/ads/${ad.id}`}
-                className="bg-background hover:bg-muted/50 flex items-center gap-3 rounded-md border p-4"
-              >
-                <span className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{ad.name}</span>
-                    <StatusBadge status={ad.status} />
+          {shown.map((ad) => {
+            const open = ad.ad_requests.filter((r) => r.state === 'open').length
+            return (
+              <li key={ad.id}>
+                <Link
+                  to={`/ads/${ad.id}`}
+                  className="bg-background hover:bg-muted/50 flex items-center gap-3 rounded-md border p-4"
+                >
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{ad.name}</span>
+                      <StatusBadge status={ad.status} />
+                    </span>
+                    <span className="text-muted-foreground text-sm">
+                      Version {Math.max(1, ...ad.ad_versions.map((v) => v.version))}
+                      {open > 0 && ` · ${open} open ${open === 1 ? 'request' : 'requests'}`} ·{' '}
+                      {formatDateTime(ad.created_at)}
+                    </span>
                   </span>
-                  <span className="text-muted-foreground text-sm">
-                    Version {Math.max(1, ...ad.ad_versions.map((v) => v.version))} ·{' '}
-                    {formatDateTime(ad.created_at)}
-                  </span>
-                </span>
-                <ChevronRight
-                  className="text-muted-foreground size-5 shrink-0"
-                  aria-hidden="true"
-                />
-              </Link>
-            </li>
-          ))}
+                  <ChevronRight
+                    className="text-muted-foreground size-5 shrink-0"
+                    aria-hidden="true"
+                  />
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
@@ -157,7 +205,7 @@ function SizeView({ ad, version, variant }: { ad: Ad; version: number; variant: 
             html={html.data}
             width={variant.width}
             height={variant.height}
-            title={`${ad.name}, ${p.label}`}
+            title={`${ad.name}, version ${version}, ${p.label}`}
           />
         )}
       </div>
@@ -175,15 +223,307 @@ function SizeView({ ad, version, variant }: { ad: Ad; version: number; variant: 
   )
 }
 
-function AdView({ ad }: { ad: Ad }) {
-  const version = latestVersion(ad)
-  const variants = [...(version?.ad_variants ?? [])].sort(
-    (a, b) =>
-      ['portrait', 'vertical', 'square'].indexOf(a.size) -
-      ['portrait', 'vertical', 'square'].indexOf(b.size),
+const ORDER = ['portrait', 'vertical', 'square']
+
+function Sizes({ ad, version }: { ad: Ad; version: AdVersion }) {
+  const variants = [...version.ad_variants].sort(
+    (a, b) => ORDER.indexOf(a.size) - ORDER.indexOf(b.size),
   )
   const [tab, setTab] = useState(variants[0]?.size ?? 'portrait')
   const current = variants.find((v) => v.size === tab) ?? variants[0]
+  if (!current) return <p className="text-muted-foreground">This version has no sizes.</p>
+  return (
+    <section aria-labelledby="sizes-heading" className="bg-background rounded-md border p-4">
+      <h2 id="sizes-heading" className="sr-only">
+        Sizes
+      </h2>
+      <div role="tablist" aria-label="Sizes" className="mb-4 flex flex-wrap gap-2">
+        {variants.map((v) => (
+          <button
+            key={v.size}
+            type="button"
+            role="tab"
+            id={`tab-${v.size}`}
+            aria-selected={v.size === current.size}
+            aria-controls="size-panel"
+            onClick={() => setTab(v.size)}
+            className={`h-12 rounded-md border px-4 text-sm font-medium ${
+              v.size === current.size
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-edge bg-background'
+            }`}
+          >
+            {PLACEMENTS[v.size].label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id="size-panel" aria-labelledby={`tab-${current.size}`}>
+        <SizeView key={current.id} ad={ad} version={version.version} variant={current} />
+      </div>
+    </section>
+  )
+}
+
+function Review({ ad, version, isCurrent }: { ad: Ad; version: AdVersion; isCurrent: boolean }) {
+  const me = useCurrentStaff()
+  const approve = useApproveAd()
+  const archive = useArchiveAd()
+  const [confirming, setConfirming] = useState(false)
+  const open = ad.ad_requests.filter((r) => r.version_id === version.id && r.state === 'open')
+  const isAdmin = me.role === 'admin'
+  const archived = ad.status === 'archived'
+  const failed = approve.error ?? archive.error
+  return (
+    <section
+      aria-labelledby="review-heading"
+      className="bg-background flex flex-col gap-3 rounded-md border p-4"
+    >
+      <h2 id="review-heading" className="text-base font-medium">
+        Review
+      </h2>
+      <p className="text-sm">
+        {version.approved_at
+          ? `Version ${version.version} approved by ${version.approved_by_name ?? 'an admin'} on ${formatDateTime(version.approved_at)}.`
+          : isCurrent
+            ? `Version ${version.version} is ${AD_STATUS_LABELS[ad.status].toLowerCase()}.`
+            : `Version ${version.version} was not approved.`}
+      </p>
+      {!isAdmin && (
+        <p className="text-muted-foreground text-sm">
+          An admin approves ads. Ask for a change below if something needs fixing.
+        </p>
+      )}
+      {isAdmin && isCurrent && !archived && !version.approved_at && !confirming && (
+        <Button
+          className="h-12 self-start px-6"
+          disabled={approve.isPending}
+          onClick={() =>
+            open.length > 0
+              ? setConfirming(true)
+              : approve.mutate({ adId: ad.id, version: version.version, despiteOpen: false })
+          }
+        >
+          Approve version {version.version}
+        </Button>
+      )}
+      {confirming && (
+        <Alert role="alertdialog" aria-labelledby="confirm-title">
+          <AlertTitle id="confirm-title">
+            Approve with {open.length} open {open.length === 1 ? 'request' : 'requests'}?
+          </AlertTitle>
+          <AlertDescription>
+            <p>
+              Someone asked for changes to this version that have not been made. Approve it as it is
+              anyway?
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                className="h-12"
+                disabled={approve.isPending}
+                onClick={() =>
+                  approve.mutate(
+                    { adId: ad.id, version: version.version, despiteOpen: true },
+                    { onSuccess: () => setConfirming(false) },
+                  )
+                }
+              >
+                Yes, approve as it is
+              </Button>
+              <Button variant="outline" className="h-12" onClick={() => setConfirming(false)}>
+                Not yet
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+      {isAdmin && isCurrent && (
+        <Button
+          variant="ghost"
+          className="h-12 self-start"
+          disabled={archive.isPending}
+          onClick={() => archive.mutate({ adId: ad.id, archived: !archived })}
+        >
+          {archived ? 'Bring back from the archive' : 'Archive this ad'}
+        </Button>
+      )}
+      {failed && (
+        <p role="alert" className="text-destructive text-sm">
+          {adErrorMessage(failed)}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function RequestItem({ request }: { request: AdRequest }) {
+  const me = useCurrentStaff()
+  const withdraw = useWithdrawRequest()
+  const state =
+    request.state === 'open'
+      ? 'Open'
+      : request.state === 'done'
+        ? `Done in version ${request.done_in_version ?? ''}`
+        : 'Withdrawn'
+  return (
+    <li className="flex flex-col gap-1 rounded-md border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={request.state === 'open' ? 'default' : 'outline'}>{state}</Badge>
+        <span className="text-muted-foreground text-sm">{REQUEST_SIZES[request.size]}</span>
+      </div>
+      <p className="break-words whitespace-pre-line">{request.body}</p>
+      <span className="text-muted-foreground text-sm">
+        {request.created_by_name} · {formatDateTime(request.created_at)}
+      </span>
+      {request.state === 'open' && request.created_by === me.user_id && (
+        <Button
+          variant="ghost"
+          className="h-12 self-start"
+          disabled={withdraw.isPending}
+          onClick={() => withdraw.mutate(request.id)}
+        >
+          Withdraw my request
+        </Button>
+      )}
+      {withdraw.isError && (
+        <p role="alert" className="text-destructive text-sm">
+          {adErrorMessage(withdraw.error)}
+        </p>
+      )}
+    </li>
+  )
+}
+
+function RequestForm({ ad }: { ad: Ad }) {
+  const send = useRequestChange()
+  const [body, setBody] = useState('')
+  const [size, setSize] = useState<AdRequest['size']>('both')
+  const [problem, setProblem] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
+  const sizes = [
+    'both',
+    ...new Set(ad.ad_versions.flatMap((v) => v.ad_variants.map((x) => x.size))),
+  ]
+  return (
+    <form
+      noValidate
+      className="flex flex-col gap-3 border-t pt-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        const text = body.trim()
+        if (text.length < 3) return setProblem('Say what should change (at least 3 characters).')
+        if (text.length > REQUEST_MAX) return setProblem(`Use at most ${REQUEST_MAX} characters.`)
+        setProblem(null)
+        send.mutate(
+          { adId: ad.id, body: text, size },
+          {
+            onSuccess: () => {
+              setBody('')
+              setSize('both')
+              setSent(true)
+            },
+          },
+        )
+      }}
+    >
+      <label htmlFor="request-body" className="font-medium">
+        Ask for a change
+      </label>
+      <Textarea
+        id="request-body"
+        rows={4}
+        className="text-base"
+        value={body}
+        maxLength={REQUEST_MAX + 50}
+        onChange={(e) => {
+          setBody(e.target.value)
+          setSent(false)
+        }}
+        aria-invalid={problem ? true : undefined}
+        aria-describedby={`request-hint${problem ? ' request-error' : ''}`}
+      />
+      <p id="request-hint" className="text-muted-foreground text-sm">
+        Say what should change, in your own words. {body.trim().length}/{REQUEST_MAX} characters.
+      </p>
+      {problem && (
+        <p id="request-error" role="alert" className="text-destructive text-sm">
+          {problem}
+        </p>
+      )}
+      <fieldset className="flex min-w-0 flex-col gap-1">
+        <legend className="mb-1 text-sm font-medium">Which size?</legend>
+        <div className="flex flex-wrap gap-2">
+          {sizes.map((s) => (
+            <label
+              key={s}
+              className="border-edge has-[:checked]:border-action has-[:checked]:bg-soft flex min-h-12 items-center gap-2 rounded-md border px-3"
+            >
+              <input
+                type="radio"
+                name="request-size"
+                className="size-5"
+                checked={size === s}
+                onChange={() => setSize(s as AdRequest['size'])}
+              />
+              {REQUEST_SIZES[s as AdRequest['size']]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {send.isError && (
+        <p role="alert" className="text-destructive text-sm">
+          {adErrorMessage(send.error)}
+        </p>
+      )}
+      <output className="block text-sm">
+        {sent ? 'Saved. The ad now shows "Changes requested".' : ''}
+      </output>
+      <Button type="submit" className="h-12 self-start px-6" disabled={send.isPending}>
+        {send.isPending ? 'Saving…' : 'Save the request'}
+      </Button>
+    </form>
+  )
+}
+
+function Requests({ ad, version, isCurrent }: { ad: Ad; version: AdVersion; isCurrent: boolean }) {
+  const requests = ad.ad_requests
+    .filter((r) => r.version_id === version.id)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  return (
+    <section
+      aria-labelledby="requests-heading"
+      className="bg-background flex flex-col gap-3 rounded-md border p-4"
+    >
+      <h2 id="requests-heading" className="text-base font-medium">
+        Change requests on version {version.version}
+      </h2>
+      {requests.length === 0 ? (
+        <p className="text-muted-foreground text-sm">None yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {requests.map((r) => (
+            <RequestItem key={r.id} request={r} />
+          ))}
+        </ul>
+      )}
+      {isCurrent && ad.status !== 'archived' ? (
+        <RequestForm ad={ad} />
+      ) : (
+        <p className="text-muted-foreground text-sm">
+          {ad.status === 'archived'
+            ? 'This ad is archived.'
+            : 'Changes are asked for on the current version.'}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function AdView({ ad }: { ad: Ad }) {
+  const current = latestVersion(ad)
+  const versions = [...ad.ad_versions].sort((a, b) => b.version - a.version)
+  const [chosen, setChosen] = useState<number | null>(null)
+  const version = versions.find((v) => v.version === chosen) ?? current
+  const isCurrent = version?.id === current?.id
   const creative = ad.campaign_creatives
   const link =
     creative?.campaigns &&
@@ -195,61 +535,50 @@ function AdView({ ad }: { ad: Ad }) {
       content: creative.slug,
       route: creative.campaigns.landing_route,
     })
+  if (!version) return <p className="text-muted-foreground">This ad has no versions yet.</p>
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-section text-ink font-medium">{ad.name}</h1>
         <StatusBadge status={ad.status} />
       </div>
-      <p className="text-muted-foreground -mt-2 text-sm">
-        Version {version?.version ?? 1} · {formatDateTime(version?.created_at ?? ad.created_at)}
-        {ad.created_by_name ? ` · ${ad.created_by_name}` : ''}
-      </p>
-      {current && version ? (
-        <section aria-labelledby="sizes-heading" className="bg-background rounded-md border p-4">
-          <h2 id="sizes-heading" className="sr-only">
-            Sizes
-          </h2>
-          <div role="tablist" aria-label="Sizes" className="mb-4 flex flex-wrap gap-2">
-            {variants.map((v) => (
-              <button
-                key={v.size}
-                type="button"
-                role="tab"
-                id={`tab-${v.size}`}
-                aria-selected={v.size === current.size}
-                aria-controls="size-panel"
-                onClick={() => setTab(v.size)}
-                className={`h-12 rounded-md border px-4 text-sm font-medium ${
-                  v.size === current.size
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-edge bg-background'
-                }`}
-              >
-                {PLACEMENTS[v.size].label}
-              </button>
-            ))}
-          </div>
-          <div role="tabpanel" id="size-panel" aria-labelledby={`tab-${current.size}`}>
-            <SizeView key={current.id} ad={ad} version={version.version} variant={current} />
-          </div>
-        </section>
-      ) : (
-        <p className="text-muted-foreground">This ad has no sizes yet.</p>
-      )}
-      {version && (
-        <section
-          aria-labelledby="words-heading"
-          className="bg-background flex flex-col gap-3 rounded-md border p-4"
+      <div className="flex flex-col gap-1">
+        <label htmlFor="version" className="text-sm font-medium">
+          Version
+        </label>
+        <NativeSelect
+          id="version"
+          className="h-12 w-full text-base sm:w-72"
+          value={version.version}
+          onChange={(e) => setChosen(Number(e.target.value))}
         >
-          <h2 id="words-heading" className="text-base font-medium">
-            Words for the post
-          </h2>
-          <CopyRow label="Caption" value={version.caption} />
-          <CopyRow label="Headline" value={version.headline} />
-          <CopyRow label="Button label" value={version.button_label} />
-        </section>
-      )}
+          {versions.map((v) => (
+            <NativeSelectOption key={v.id} value={v.version}>
+              Version {v.version}
+              {v.id === current?.id ? ' (current)' : ''} · {formatDateTime(v.created_at)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        {!isCurrent && (
+          <p className="text-muted-foreground text-sm">
+            You are looking at an older version. It stays viewable and downloadable.
+          </p>
+        )}
+      </div>
+      <Sizes key={version.id} ad={ad} version={version} />
+      <Review ad={ad} version={version} isCurrent={isCurrent} />
+      <Requests ad={ad} version={version} isCurrent={isCurrent} />
+      <section
+        aria-labelledby="words-heading"
+        className="bg-background flex flex-col gap-3 rounded-md border p-4"
+      >
+        <h2 id="words-heading" className="text-base font-medium">
+          Words for the post
+        </h2>
+        <CopyRow label="Caption" value={version.caption} />
+        <CopyRow label="Headline" value={version.headline} />
+        <CopyRow label="Button label" value={version.button_label} />
+      </section>
       <section
         aria-labelledby="link-heading"
         className="bg-background flex flex-col gap-2 rounded-md border p-4"

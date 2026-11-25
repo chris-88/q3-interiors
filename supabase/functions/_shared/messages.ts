@@ -343,7 +343,11 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
             ? { label: 'Change time', url: `${input.manageUrl}?do=change` }
             : undefined,
           links: input.manageUrl
-            ? [{ label: 'Cancel appointment', url: `${input.manageUrl}?do=cancel` }]
+            ? [
+                { label: 'Cancel appointment', url: `${input.manageUrl}?do=cancel` },
+                // Part B: photos, a rough budget, timing, access notes (all optional).
+                { label: 'Help us prepare (optional)', url: `${input.manageUrl}?do=prepare` },
+              ]
             : undefined,
           after: [
             ...(change ? ringUs(input) : []),

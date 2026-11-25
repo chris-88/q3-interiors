@@ -55,7 +55,7 @@ ${css}
 
 const og = page(
   `<div class="card"><div class="logo">${full}</div>
-   <p>Planning a home renovation? <span>Tell us about your project.</span></p></div>`,
+   <p>Let’s talk about your renovation. <span>Book a free phone call or site visit.</span></p></div>`,
   `.card { width: 1200px; height: 630px; box-sizing: border-box; padding: 96px; display: flex;
      flex-direction: column; justify-content: center; gap: 56px; font-family: Roboto, sans-serif; color: #171717; }
    .logo svg { width: 560px; height: auto; }

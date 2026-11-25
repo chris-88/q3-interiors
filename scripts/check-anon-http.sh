@@ -36,7 +36,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings ads ad_versions ad_variants ad_requests ad_events; do
+  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -75,6 +75,15 @@ if [[ "$ad_list" == "[]" || "$ad_list" == *'"statusCode"'* || "$ad_list" == *'"e
 ad_get="$(curl -s -o /dev/null -w '%{http_code}' "$url/storage/v1/object/ads/x.png" "${headers[@]}")"
 if [[ "$ad_get" != 200 ]]; then echo "ok    anon cannot read an ad file ($ad_get)"; else echo "FAIL  anon read an ad file"; fail=1; fi
 
+# Customer photos: the bucket is private and anon sees nothing in it.
+photo_public="$(curl -s -o /dev/null -w '%{http_code}' "$url/storage/v1/object/public/enquiry-photos/x.jpg")"
+if [[ "$photo_public" == 400 || "$photo_public" == 404 ]]; then echo "ok    the photo bucket has no public URLs ($photo_public)"; else echo "FAIL  public photo URL answered $photo_public"; fail=1; fi
+photo_list="$(curl -s -X POST "$url/storage/v1/object/list/enquiry-photos" "${headers[@]}" -d '{"prefix":"enquiries/"}')"
+if [[ "$photo_list" == "[]" || "$photo_list" == *'"statusCode"'* || "$photo_list" == *'"error"'* ]]; then echo "ok    anon lists no photo files"; else echo "FAIL  anon listed photo files: ${photo_list:0:120}"; fail=1; fi
+photo_put="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url/storage/v1/object/enquiry-photos/enquiries/anon-test.jpg" \
+  -H "apikey: $key" -H "Authorization: Bearer $key" -H 'content-type: image/jpeg' --data-binary 'not a photo')"
+if [[ "$photo_put" != 200 ]]; then echo "ok    anon cannot upload a photo file ($photo_put)"; else echo "FAIL  anon uploaded a photo file"; fail=1; fi
+
 # Edge Functions (slice 2).
 functions="$url/functions/v1"
 check() { # what, expected, actual
@@ -86,6 +95,11 @@ check "public-booking refuses an unknown token" '{"error":"invalid_token"}' \
 check "public-booking refuses a details change without a valid token" '{"error":"invalid_token"}' \
   "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
     -d '{"action":"update_details","token":"not-a-real-token-0000000000","details":{"phone":"0871234567"}}')"
+check "public-booking refuses a photo without a valid token" '{"error":"invalid_token"}' \
+  "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
+    -d '{"action":"add_photo","token":"not-a-real-token-0000000000","key":"00000000-0000-4000-8000-000000000000","photo":"","thumb":""}')"
+check "public-booking refuses a body over its size limit" '{"error":"too_large"}' \
+  "$(head -c 3100000 /dev/zero | tr '\0' 'A' | curl -s -X POST "$functions/public-booking" "${headers[@]}" --data-binary @-)"
 types="$(curl -s -X POST "$rest/rpc/public_appointment_types" "${headers[@]}" -d '{}')"
 if [[ "$types" == "["*"duration_minutes"* && "$types" != *what_to_prepare* && "$types" != *buffer* ]]; then
   echo "ok    anon reads only the appointment lengths"

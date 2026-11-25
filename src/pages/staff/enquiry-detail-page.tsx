@@ -1,9 +1,12 @@
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
   useEnquiry,
+  useEnquiryPhotoFile,
+  useEnquiryPhotos,
   useFormVersions,
+  type EnquiryPhoto,
   type EnquiryAttribution,
   type EnquiryDetail,
   type EnquiryEvent,
@@ -266,6 +269,111 @@ function SiteDetails({
   )
 }
 
+/** The full-size photo in a modal dialog, fetched with the staff session. */
+function PhotoViewer({ photo, onClose }: { photo: EnquiryPhoto; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const file = useEnquiryPhotoFile(photo.path)
+  const url = useMemo(() => (file.data ? URL.createObjectURL(file.data) : null), [file.data])
+  useEffect(() => () => (url ? URL.revokeObjectURL(url) : undefined), [url])
+  useEffect(() => {
+    ref.current?.showModal()
+  }, [])
+  return (
+    <dialog
+      ref={ref}
+      aria-label="Photo, full size"
+      onClose={onClose}
+      className="bg-background m-auto max-h-[95svh] w-[min(95vw,1000px)] rounded-xl border p-3 backdrop:bg-black/70"
+    >
+      <div className="flex flex-col gap-2">
+        <Button
+          variant="outline"
+          className="h-10 self-end"
+          autoFocus
+          onClick={() => ref.current?.close()}
+        >
+          Close
+        </Button>
+        {file.isPending ? (
+          <Skeleton className="aspect-[4/3] w-full" />
+        ) : file.isError ? (
+          <p className="text-destructive text-sm">Could not load the photo.</p>
+        ) : url ? (
+          <img
+            src={url}
+            alt="Added by the customer, full size"
+            width={photo.width}
+            height={photo.height}
+            className="h-auto max-h-[80svh] w-full object-contain"
+          />
+        ) : null}
+      </div>
+    </dialog>
+  )
+}
+
+/** "Help us prepare": what the customer added after booking, with a clear marker. */
+function Prepared({ enquiry, form }: { enquiry: EnquiryDetail; form: FormDefinition | undefined }) {
+  const photos = useEnquiryPhotos(enquiry.id)
+  const [open, setOpen] = useState<EnquiryPhoto | null>(null)
+  const answers = enquiry.prepare_details ?? {}
+  const fields = form ? form.steps.flatMap((s) => s.fields) : []
+  const hasPhotos = (photos.data?.length ?? 0) > 0
+  if (!enquiry.added_after_booking_at && Object.keys(answers).length === 0 && !hasPhotos)
+    return null
+  return (
+    <Section title="Help us prepare">
+      {enquiry.added_after_booking_at && (
+        <p className="mb-3 text-sm">
+          <span className="bg-secondary rounded-md px-2 py-1 font-medium">Added after booking</span>{' '}
+          <span className="text-muted-foreground">
+            last change{' '}
+            <time dateTime={enquiry.added_after_booking_at}>
+              {formatDateTime(enquiry.added_after_booking_at)}
+            </time>
+          </span>
+        </p>
+      )}
+      <dl className="flex flex-col gap-3">
+        {fields.map((field) => (
+          <Row key={field.id} label={field.label}>
+            {formatAnswer(field, answers[field.id]) ?? (
+              <span className="text-muted-foreground">Not given</span>
+            )}
+          </Row>
+        ))}
+      </dl>
+      <h3 className="text-muted-foreground mt-4 text-sm">Photos</h3>
+      {photos.isPending ? (
+        <Skeleton className="mt-2 h-24 w-full" />
+      ) : photos.isError ? (
+        <p className="text-destructive mt-2 text-sm">Could not load the photos.</p>
+      ) : photos.data.length === 0 ? (
+        <p className="text-muted-foreground mt-2 text-sm">None added.</p>
+      ) : (
+        <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {photos.data.map((photo, index) => (
+            <li key={photo.id}>
+              <button
+                type="button"
+                onClick={() => setOpen(photo)}
+                className="focus-visible:ring-ring/50 block w-full rounded-md focus-visible:ring-3 focus-visible:outline-none"
+              >
+                <img
+                  src={photo.thumbUrl}
+                  alt={`Customer upload ${index + 1}, added ${formatDateTime(photo.uploadedAt)}; open full size`}
+                  className="aspect-square w-full rounded-md border object-cover"
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && <PhotoViewer photo={open} onClose={() => setOpen(null)} />}
+    </Section>
+  )
+}
+
 export function EnquiryDetailPage() {
   const { id = '' } = useParams()
   const enquiry = useEnquiry(id)
@@ -337,7 +445,11 @@ export function EnquiryDetailPage() {
           ? ` · Unsuitable: ${data.status_reason}`
           : ''}
       </p>
-      <EnquiryFlags answers={data.answers} contactRequestedAt={data.contact_requested_at} />
+      <EnquiryFlags
+        answers={data.answers}
+        contactRequestedAt={data.contact_requested_at}
+        addedAfterBookingAt={data.added_after_booking_at}
+      />
       {data.contact_requested_at && (
         <Alert variant="destructive">
           <AlertTitle>Contact request: the customer asked us to contact them</AlertTitle>
@@ -357,6 +469,10 @@ export function EnquiryDetailPage() {
       )}
 
       <BookingsSection enquiryId={data.id} />
+      <Prepared
+        enquiry={data}
+        form={forms.data?.get(`prepare@${data.prepare_form_version ?? 1}`)}
+      />
       {data.site_details && (
         <SiteDetails
           answers={data.site_details}

@@ -48,7 +48,14 @@ export function PrivacyPage() {
       <Part title="What we collect">
         <ul className="list-disc pl-5">
           <li>
-            Your answers in the enquiry form: the project, the area or Eircode, timing and budget.
+            Your answers in the enquiry form: the project, the area or Eircode, and whether you want
+            a call or a visit. After booking you may add a rough budget and when you would like the
+            work to start.
+          </li>
+          <li>
+            Photos you choose to add after booking. We use them only to prepare for your call or
+            visit and the estimate. We shrink them and remove the location and camera details before
+            they are stored, and they are deleted with your enquiry.
           </li>
           <li>Your name, email address and phone number.</li>
           <li>If you book a visit, the property address and any access notes.</li>
@@ -95,7 +102,8 @@ export function PrivacyPage() {
           {business.retention_months
             ? `We delete an enquiry ${business.retention_months} months after it comes in, unless you become a customer.`
             : 'We keep enquiries while we are dealing with them and for a limited time afterwards.'}{' '}
-          If you become a customer we keep what we need for the job and our records.
+          Any photos you added are deleted with the enquiry. If you become a customer we keep what
+          we need for the job and our records.
         </p>
       </Part>
 

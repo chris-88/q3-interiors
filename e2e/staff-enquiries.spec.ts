@@ -158,3 +158,93 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   await expect(page.getByText('Contact request')).toHaveCount(0)
   await shot(page, 's2-staff-v1')
 })
+
+test('staff see what a customer added after booking: the marker, the answers and the photos', async ({
+  page,
+}) => {
+  // Two real JPEGs made in the browser: a thumbnail and the full-size photo.
+  const [thumb, full] = await page.evaluate(() =>
+    [320, 1600].map((w) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = Math.round((w * 3) / 4)
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.fillStyle = '#c8b8a0'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.fillStyle = '#6b5a45'
+        ctx.fillRect(canvas.width / 8, canvas.height / 2, (canvas.width * 3) / 4, canvas.height / 3)
+      }
+      return canvas.toDataURL('image/jpeg', 0.8).split(',')[1] ?? ''
+    }),
+  )
+  const world = staffWorld()
+  const path = 'enquiries/e-v2p/00000000-0000-4000-9000-000000000001.jpg'
+  world.tables.enquiries = [
+    {
+      ...v2,
+      id: 'e-v2p',
+      reference: 'Q3-CCCC33',
+      contact_requested_at: null,
+      contact_request_reason: null,
+      added_after_booking_at: '2026-11-26T18:20:00Z',
+      prepare_details: { budget: '25k_50k', timing: 'flexible' },
+      prepare_form_version: 1,
+      site_details: { site_address: '12 Example Road, Dublin 8', access_notes: 'Side gate' },
+      enquiry_events: [
+        {
+          id: 5,
+          kind: 'photo_added',
+          detail: null,
+          from_status: null,
+          to_status: null,
+          reason: null,
+          actor_name: null,
+          created_at: '2026-11-26T18:20:00Z',
+        },
+      ],
+    },
+  ]
+  world.tables.form_versions = publishedForms.map((f) => ({
+    form_id: f.formId,
+    version: f.version,
+    schema: f,
+  }))
+  world.tables.enquiry_photos = [
+    {
+      id: 'ph-1',
+      enquiry_id: 'e-v2p',
+      object_path: path,
+      width: 1600,
+      height: 1200,
+      thumb_jpeg: `\\x${Buffer.from(thumb ?? '', 'base64').toString('hex')}`,
+      uploaded_at: '2026-11-26T18:20:00Z',
+    },
+  ]
+  world.photoFiles.set(path, Buffer.from(full ?? '', 'base64'))
+  await installFakeStaff(page, world)
+  await page.goto('/#/')
+  await signIn(page, 'staff@example.com', 'another long password')
+  const row = page.getByRole('main').getByRole('listitem').first()
+  await expect(row).toContainText('Added after booking')
+  await row.getByRole('link').click()
+
+  const prepared = page.getByRole('region', { name: 'Help us prepare' })
+  await expect(prepared).toContainText('Added after booking')
+  await expect(prepared).toContainText('Rough budget')
+  await expect(prepared).toContainText('€25,000 to €50,000')
+  await expect(prepared).toContainText('I’m flexible')
+  await expect(page.getByRole('region', { name: 'Property' })).toContainText('Side gate')
+  await expect(page.getByText('Customer added a photo (after booking)')).toBeVisible()
+  await shot(page, '05-staff-photos')
+
+  await prepared.getByRole('button', { name: /^Customer upload 1/ }).click()
+  const viewer = page.getByRole('dialog', { name: 'Photo, full size' })
+  await expect(viewer.getByRole('img')).toBeVisible()
+  expect(
+    await viewer.getByRole('img').evaluate((img) => (img as HTMLImageElement).naturalWidth),
+  ).toBe(1600)
+  await shot(page, '05b-staff-photo-full')
+  await viewer.getByRole('button', { name: 'Close' }).click()
+  await expect(viewer).toBeHidden()
+})

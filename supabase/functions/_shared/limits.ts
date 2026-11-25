@@ -45,7 +45,12 @@ export function bucketFor(
       return { bucket: 'booking_write', idemKey: `contact:${enquiryId}` }
     case 'site_details':
     case 'update_details':
+    case 'save_prepare':
+    case 'remove_photo':
       return { bucket: 'booking_write', idemKey: null }
+    case 'add_photo':
+      // A retried upload of the same photo is not counted twice.
+      return { bucket: 'booking_write', idemKey: `photo:${String(body.key ?? '')}` }
     default:
       return { bucket: 'booking_read', idemKey: null }
   }

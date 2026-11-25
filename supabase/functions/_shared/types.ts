@@ -229,4 +229,45 @@ export interface Db {
   // Slice 5
   /** Admin rewording of the email text blocks (key -> text); missing keys use the defaults. */
   getWording(): Promise<Record<string, string>>
+  // Form v2 part B: "Help us prepare"
+  prepareState(enquiryId: string): Promise<PrepareState>
+  savePrepare(
+    enquiryId: string,
+    patch: Record<string, string | boolean>,
+  ): Promise<{ status: 'saved' | 'closed'; reason?: string }>
+  reservePhoto(
+    enquiryId: string,
+    key: string,
+    photo: { bytes: number; width: number; height: number; thumb: Uint8Array },
+  ): Promise<PhotoReservation>
+  photoStored(enquiryId: string, photoId: string): Promise<void>
+  removePhoto(
+    enquiryId: string,
+    photoId: string,
+  ): Promise<{ status: 'removed' | 'not_found' | 'closed'; path?: string; reason?: string }>
+  claimPhotoDeletions(limit: number): Promise<string[]>
+  photoDeletionDone(paths: string[]): Promise<void>
+  photoDeletionFailed(path: string, error: string): Promise<void>
 }
+
+export type PrepareWindow = {
+  open: boolean
+  reason: 'no_booking' | 'started' | null
+  mode: 'phone' | 'on_site' | null
+}
+
+export type PrepareState = {
+  window: PrepareWindow
+  answers: Record<string, string>
+  access_notes: string | null
+  marketing_opt_in: boolean
+  max_photos: number
+  /** Stored photos only; `thumb` is base64 JPEG. */
+  photos: { id: string; thumb: string; added_at: string }[]
+}
+
+export type PhotoReservation =
+  | { status: 'reserved' | 'stored'; id: string; path: string }
+  | { status: 'limit' }
+  | { status: 'forbidden' }
+  | { status: 'closed'; reason: string }

@@ -27,6 +27,7 @@ const enquirySummarySchema = z.object({
   answers: answersSchema,
   submitted_at: z.string(),
   contact_requested_at: z.string().nullable(),
+  added_after_booking_at: z.string().nullable().default(null),
 })
 
 export type EnquirySummary = z.infer<typeof enquirySummarySchema>
@@ -66,6 +67,9 @@ const eventSchema = z.object({
     'outcome_recorded',
     'outcome_cleared',
     'details_updated',
+    'prepare_updated',
+    'photo_added',
+    'photo_removed',
   ]),
   detail: z.string().nullable(),
   from_status: statusSchema.nullable(),
@@ -84,6 +88,8 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
   updated_at: z.string(),
   site_details: answersSchema.nullable(),
   site_details_form_version: z.number().nullable(),
+  prepare_details: answersSchema.nullable().default(null),
+  prepare_form_version: z.number().nullable().default(null),
   contact_requested_at: z.string().nullable(),
   contact_request_reason: z.string().nullable(),
   outcome: z.enum(['won', 'lost']).nullable(),
@@ -100,7 +106,7 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
 
 const SUMMARY_COLUMNS =
-  'id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at'
+  'id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at'
 
 export function useEnquiries() {
   return useQuery({
@@ -126,6 +132,7 @@ export function useEnquiry(id: string) {
         .select(
           `${SUMMARY_COLUMNS}, status_reason, marketing_opt_in, marketing_opt_in_at, updated_at,
            site_details, site_details_form_version, contact_request_reason,
+           prepare_details, prepare_form_version,
            outcome, outcome_value, outcome_reason, outcome_note,
            enquiry_attribution (tracking, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
              click_id_present, landing_path, first_seen_at),
@@ -176,5 +183,72 @@ export function useSetEnquiryStatus() {
         queryClient.invalidateQueries({ queryKey: ['enquiries', id] }),
         queryClient.invalidateQueries({ queryKey: ['enquiries'], exact: true }),
       ]),
+  })
+}
+
+const photoRowSchema = z.object({
+  id: z.string(),
+  object_path: z.string(),
+  width: z.number(),
+  height: z.number(),
+  // bytea comes back from PostgREST as "\\x" + hex.
+  thumb_jpeg: z.string(),
+  uploaded_at: z.string(),
+})
+
+export type EnquiryPhoto = {
+  id: string
+  path: string
+  width: number
+  height: number
+  thumbUrl: string
+  uploadedAt: string
+}
+
+function hexToBase64(hex: string): string {
+  const clean = hex.startsWith('\\x') ? hex.slice(2) : hex
+  let binary = ''
+  for (let i = 0; i + 1 < clean.length; i += 2)
+    binary += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16))
+  return btoa(binary)
+}
+
+/** Photos a customer added after booking (stored ones only, by RLS). Staff only. */
+export function useEnquiryPhotos(enquiryId: string) {
+  return useQuery({
+    queryKey: ['enquiries', enquiryId, 'photos'],
+    queryFn: async (): Promise<EnquiryPhoto[]> => {
+      const { data, error } = await supabase
+        .from('enquiry_photos')
+        .select('id, object_path, width, height, thumb_jpeg, uploaded_at')
+        .eq('enquiry_id', enquiryId)
+        .order('created_at', { ascending: true })
+      if (error) throw toApiError(error)
+      return z
+        .array(photoRowSchema)
+        .parse(data)
+        .map((row) => ({
+          id: row.id,
+          path: row.object_path,
+          width: row.width,
+          height: row.height,
+          thumbUrl: `data:image/jpeg;base64,${hexToBase64(row.thumb_jpeg)}`,
+          uploadedAt: row.uploaded_at,
+        }))
+    },
+  })
+}
+
+/** The full-size photo, read from the private bucket with the staff session. */
+export function useEnquiryPhotoFile(path: string | null) {
+  return useQuery({
+    queryKey: ['enquiry-photo-file', path],
+    enabled: path !== null,
+    staleTime: Infinity,
+    queryFn: async (): Promise<Blob> => {
+      const { data, error } = await supabase.storage.from('enquiry-photos').download(path ?? '')
+      if (error) throw toApiError({ message: error.message })
+      return data
+    },
   })
 }

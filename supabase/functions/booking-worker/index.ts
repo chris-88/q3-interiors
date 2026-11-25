@@ -1,12 +1,13 @@
 // Retry worker, kicked every minute by pg_cron (private.kick_worker) through pg_net and
 // authenticated by the x-worker-secret header. Each run: create pending calendar events, move or
 // remove events after changes, send due emails (confirmations, reminders, notices), and check a
-// few upcoming bookings against Google (flag only).
+// few upcoming bookings against Google (flag only), and remove the files of deleted photos.
 import { processCalendarJob } from '../_shared/calendar-job.ts'
 import { processSyncJob, reconcile, scheduleReminder } from '../_shared/changes.ts'
 import { processCommunication } from '../_shared/email.ts'
 import { accountStore } from '../_shared/db.ts'
-import { authAdmin, config, json, runtime } from '../_shared/runtime.ts'
+import { processPhotoDeletions } from '../_shared/photo-deletions.ts'
+import { authAdmin, config, json, photoStore, runtime } from '../_shared/runtime.ts'
 
 function sameSecret(a: string, b: string): boolean {
   if (a.length !== b.length) return false
@@ -32,6 +33,7 @@ Deno.serve(async (req) => {
     email: {} as Record<string, number>,
     reconcile: { checked: 0, flagged: 0 },
     removed: {} as Record<string, number>,
+    photos: { removed: 0, failed: 0 },
   }
   try {
     if (calendar) {
@@ -100,6 +102,9 @@ Deno.serve(async (req) => {
         }
       }
     }
+    // Files of deleted photo rows (removals, stale uploads, deleted enquiries).
+    const store = photoStore()
+    if (store) counts.photos = await processPhotoDeletions(db, store)
     return json({ ok: true, counts })
   } catch (error) {
     console.error(

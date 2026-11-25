@@ -25,6 +25,10 @@ expect_absent dist 'Download the video'
 # The customer journey must not reach the staff site.
 expect_absent dist-staff 'Show us the space so we can measure up'
 expect_absent dist-staff 'What work are you planning?'
+expect_absent dist-staff 'A photo from the doorway helps us see the whole room.'
+# Only the staff console reads the photo bucket.
+expect_absent dist 'enquiry-photos'
+expect_present dist-staff 'enquiry-photos'
 expect_absent dist-staff 'What kind of project is it?'
 # Each has its own.
 expect_present dist 'Show us the space so we can measure up'

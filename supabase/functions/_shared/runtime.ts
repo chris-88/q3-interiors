@@ -7,6 +7,7 @@ import { createResendMailer, type Mailer } from './email.ts'
 import { createGoogleCalendar, type CalendarApi } from './google.ts'
 import { addressHash, clientAddress, type Limiter } from './limits.ts'
 import { createAuthAdmin, type AuthAdmin } from './gotrue.ts'
+import { createPhotoStore, type PhotoStore } from './storage.ts'
 import type { Db } from './types.ts'
 
 const env = (name: string) => Deno.env.get(name)?.trim() || null
@@ -64,6 +65,50 @@ export function authAdmin(): AuthAdmin | null {
   return config.serviceKey
     ? createAuthAdmin({ url: config.supabaseUrl, serviceKey: config.serviceKey })
     : null
+}
+
+/** The private photo bucket (service key, internal gateway), or null without the key. */
+export function photoStore(): PhotoStore | null {
+  return config.serviceKey
+    ? createPhotoStore({ url: config.supabaseUrl, serviceKey: config.serviceKey })
+    : null
+}
+
+/**
+ * The request body as JSON, refusing anything over `maxBytes` before it is all read. The gateway
+ * and Cloudflare let at least 24 MB through (measured 2026-11-27), so the limit lives here.
+ */
+export async function readJson(
+  req: Request,
+  maxBytes: number,
+): Promise<{ ok: true; body: unknown } | { ok: false; status: 400 | 413 }> {
+  const declared = Number(req.headers.get('content-length') ?? '0')
+  if (declared > maxBytes) return { ok: false, status: 413 }
+  const reader = req.body?.getReader()
+  if (!reader) return { ok: false, status: 400 }
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.length
+    if (total > maxBytes) {
+      await reader.cancel()
+      return { ok: false, status: 413 }
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    bytes.set(c, at)
+    at += c.length
+  }
+  try {
+    return { ok: true, body: JSON.parse(new TextDecoder().decode(bytes)) }
+  } catch {
+    return { ok: false, status: 400 }
+  }
 }
 
 /** Keyed hash of the caller's address (the same secret as the other limiters). */

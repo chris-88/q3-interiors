@@ -7,6 +7,8 @@ import { customerCanChange } from './rules.ts'
 import { GoogleError, type CalendarApi } from './google.ts'
 import { availabilityWindow, generateSlots, type Slot, type SlotType } from './slots.ts'
 import { BUSINESS_TZ } from './time.ts'
+import { PHOTO_MAX_BYTES, THUMB_MAX_BYTES, decodeBase64, inspectJpeg } from './jpeg.ts'
+import type { PhotoStore } from './storage.ts'
 import type { AppointmentType, Db } from './types.ts'
 
 export type PublicDeps = {
@@ -19,6 +21,8 @@ export type PublicDeps = {
   now: () => number
   /** Per-address limit for this request; absent in tests that do not exercise it. */
   limit?: Limiter
+  /** The private photo bucket; null when the service key is not configured (photos refused). */
+  photos?: PhotoStore | null
 }
 
 export type PublicResult = { status: number; body: unknown }
@@ -53,6 +57,30 @@ const requestSchema = z.discriminatedUnion('action', [
       .strict()
       .refine((d) => Object.keys(d).length > 0),
   }),
+  // "Help us prepare" after booking (form v2 part B).
+  z.object({ action: z.literal('prepare'), token }),
+  z.object({
+    action: z.literal('save_prepare'),
+    token,
+    details: z
+      .object({
+        budget: z.string().max(40).optional(),
+        timing: z.string().max(40).optional(),
+        access_notes: z.string().max(500).optional(),
+        marketing_opt_in: z.boolean().optional(),
+      })
+      .strict()
+      .refine((d) => Object.keys(d).length > 0),
+  }),
+  z.object({
+    action: z.literal('add_photo'),
+    token,
+    key: z.uuid(),
+    // Base64 of the JPEG (at most 2 MiB) and of its thumbnail (at most 40 kB).
+    photo: z.string().max(Math.ceil((PHOTO_MAX_BYTES * 4) / 3) + 4),
+    thumb: z.string().max(Math.ceil((THUMB_MAX_BYTES * 4) / 3) + 4),
+  }),
+  z.object({ action: z.literal('remove_photo'), token, photoId: z.uuid() }),
   z.object({ action: z.literal('status'), token }),
   z.object({ action: z.literal('request_contact'), token, reason: z.string().max(200).optional() }),
   z.object({ action: z.literal('cancel'), token, reason: z.string().max(300).optional() }),
@@ -262,6 +290,74 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
         throw error
       }
       return ok({ status: 'saved' })
+    }
+
+    case 'prepare':
+      return ok(await db.prepareState(enquiryId))
+
+    case 'save_prepare': {
+      let result
+      try {
+        result = await db.savePrepare(enquiryId, req.details)
+      } catch (error) {
+        if ((error as { code?: string }).code === '22023')
+          return { status: 400, body: { error: 'invalid_details' } }
+        throw error
+      }
+      if (result.status === 'closed')
+        return { status: 409, body: { error: 'closed', reason: result.reason ?? null } }
+      return ok({ status: 'saved' })
+    }
+
+    case 'add_photo': {
+      if (!deps.photos) return { status: 503, body: { error: 'photos_unavailable' } }
+      // The bytes must be a JPEG; metadata is stripped whatever the browser sent.
+      const raw = decodeBase64(req.photo, PHOTO_MAX_BYTES)
+      const rawThumb = decodeBase64(req.thumb, THUMB_MAX_BYTES)
+      if (!raw || !rawThumb) return { status: 400, body: { error: 'invalid_photo' } }
+      const photo = inspectJpeg(raw, PHOTO_MAX_BYTES)
+      const thumb = inspectJpeg(rawThumb, THUMB_MAX_BYTES)
+      if (!photo.ok || !thumb.ok)
+        return {
+          status: 400,
+          body: { error: 'invalid_photo', reason: photo.ok ? 'thumb' : photo.reason },
+        }
+      const place = await db.reservePhoto(enquiryId, req.key, {
+        bytes: photo.bytes.length,
+        width: photo.width,
+        height: photo.height,
+        thumb: thumb.bytes,
+      })
+      if (place.status === 'forbidden') return { status: 403, body: { error: 'forbidden' } }
+      if (place.status === 'closed')
+        return { status: 409, body: { error: 'closed', reason: place.reason } }
+      if (place.status === 'limit') return { status: 409, body: { error: 'photo_limit' } }
+      if (place.status === 'reserved') {
+        try {
+          await deps.photos.put(place.path, photo.bytes)
+        } catch {
+          // The place stays reserved for this key: the browser retries with the same key.
+          return { status: 502, body: { error: 'storage' } }
+        }
+        await db.photoStored(enquiryId, place.id)
+      }
+      return ok({ status: 'added', id: place.id })
+    }
+
+    case 'remove_photo': {
+      const result = await db.removePhoto(enquiryId, req.photoId)
+      if (result.status === 'closed')
+        return { status: 409, body: { error: 'closed', reason: result.reason ?? null } }
+      if (result.status === 'removed' && result.path && deps.photos) {
+        // Remove the file now; if that fails the worker retries from the queue.
+        try {
+          await deps.photos.remove([result.path])
+          await db.photoDeletionDone([result.path])
+        } catch {
+          // left in private.pending_photo_deletions
+        }
+      }
+      return ok({ status: result.status === 'removed' ? 'removed' : 'not_found' })
     }
 
     case 'request_contact': {

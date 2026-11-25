@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { minutesFor, usePublicAppointmentTypes } from '@/api/appointment-types'
 import { ApiError } from '@/api/errors'
 import { useSubmitEnquiry } from '@/api/submit'
+import { countRouteChoice, currentVisitId } from '@/api/visits'
 import { FormFieldInput, fieldDomId } from '@/components/enquiry/form-field'
 import {
   BackLink,
@@ -111,7 +112,10 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
   useEffect(() => persist({ step }), [persist, step])
   // Drop ?type= once it is in the draft, so a reload or Back does not restart the route.
   useEffect(() => {
-    if (searchParams.has('type')) setSearchParams({}, { replace: true })
+    if (!searchParams.has('type')) return
+    const chosen = searchParams.get('type')
+    if (isRoute(chosen)) countRouteChoice(chosen)
+    setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
 
   const route = answers.appointment_preference
@@ -158,6 +162,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
         marketingOptIn: false,
         attribution: currentAttribution(localStore),
         trap,
+        sessionId: currentVisitId(sessionStore),
       },
       {
         onSuccess: ({ reference, accessToken }) => {

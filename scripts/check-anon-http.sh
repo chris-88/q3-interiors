@@ -36,7 +36,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos; do
+  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -55,6 +55,18 @@ expect_code "submit_enquiry_with_access validates on the server" 22023 \
     -d '{"p_idempotency_key":"00000000-0000-4000-8000-000000000000","p_form_id":"enquiry","p_form_version":1,"p_answers":{}}')"
 expect_code "anon cannot run the funnel report" 42501 \
   "$(curl -s -X POST "$rest/rpc/funnel_report" "${headers[@]}" -d '{"p_from":"2026-01-01","p_to":"2026-12-31"}')"
+expect_code "anon cannot run the pilot report" 42501 \
+  "$(curl -s -X POST "$rest/rpc/pilot_report" "${headers[@]}" -d '{"p_from":"2026-01-01","p_to":"2026-12-31"}')"
+expect_code "anon cannot flag an enquiry" 42501 \
+  "$(curl -s -X POST "$rest/rpc/set_chase_details" "${headers[@]}" \
+    -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000","p_flagged":true,"p_note":"test"}')"
+# Visit counting: junk is refused; this script's own (non-browser) visit is not counted.
+expect_code "record_visit refuses junk" 22023 \
+  "$(curl -s -X POST "$rest/rpc/record_visit" "${headers[@]}" \
+    -d '{"p_session_id":"00000000-0000-4000-8000-000000000000","p_surface":"admin","p_form_version":2}')"
+visit_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$rest/rpc/record_visit" "${headers[@]}" \
+  -d '{"p_session_id":"00000000-0000-4000-8000-0000000000c5","p_surface":"landing","p_form_version":2}')"
+if [[ "$visit_code" == 204 || "$visit_code" == 200 ]]; then echo "ok    record_visit answers a non-browser without error ($visit_code)"; else echo "FAIL  record_visit answered $visit_code"; fail=1; fi
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
 

@@ -50,6 +50,8 @@ export type StaffWorld = {
   adFiles: Map<string, { body: Buffer | string; type: string }>
   /** Objects in the private `enquiry-photos` bucket: path -> JPEG bytes. */
   photoFiles: Map<string, Buffer>
+  /** What pilot_report returns. */
+  pilot: unknown
 }
 
 export function staffWorld(): StaffWorld {
@@ -85,6 +87,11 @@ export function staffWorld(): StaffWorld {
     testCalendar: { email: null },
     adFiles: new Map(),
     photoFiles: new Map(),
+    pilot: {
+      counted_from: new Date().toISOString(),
+      rows: [],
+      headline: { instagram_sessions: 0, instagram_suitable_attended: 0 },
+    },
     business: {
       trading_name: 'Q3 Interiors',
       legal_name: null,
@@ -238,6 +245,56 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         })
       }
       if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      if (table === 'rpc/pilot_report') {
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        return json(route, 200, world.pilot)
+      }
+      if (table === 'rpc/set_chase_details') {
+        // The server's rules (see 20261127140000_pilot_measures.sql).
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const body = req.postDataJSON() as {
+          p_enquiry_id: string
+          p_flagged: boolean
+          p_note: string
+        }
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === body.p_enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        const note = (body.p_note ?? '').trim()
+        if (body.p_flagged && (note.length < 3 || note.length > 500))
+          return json(route, 400, { code: '22023', message: 'say what was missing' })
+        const events = (row.enquiry_events ?? []) as Record<string, unknown>[]
+        const kind = !body.p_flagged
+          ? 'chase_cleared'
+          : row.chase_flagged_at
+            ? 'chase_updated'
+            : 'chase_flagged'
+        Object.assign(
+          row,
+          body.p_flagged
+            ? {
+                chase_flagged_at: row.chase_flagged_at ?? new Date().toISOString(),
+                chase_note: note,
+                chase_flagged_by_name: caller.display_name,
+              }
+            : { chase_flagged_at: null, chase_note: null, chase_flagged_by_name: null },
+        )
+        row.enquiry_events = [
+          {
+            id: events.length + 100,
+            kind,
+            detail: body.p_flagged ? note : null,
+            from_status: null,
+            to_status: null,
+            reason: null,
+            actor_name: caller.display_name,
+            created_at: new Date().toISOString(),
+          },
+          ...events,
+        ]
+        return json(route, 200, null)
+      }
       // The ad review RPCs, with the server's rules (see 20261126120000_ad_review.sql).
       type FakeVersion = {
         id: string

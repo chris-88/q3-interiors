@@ -6,7 +6,18 @@ import { ConfirmationPage } from '@/pages/confirmation-page'
 import { EnquiryPage } from '@/pages/enquiry-page'
 import { LandingPage } from '@/pages/landing-page'
 import { PrivacyPage } from '@/pages/privacy-page'
+import { countArrival } from '@/api/visits'
 import { staffHostUrl } from './staff-redirect'
+
+/** Counts this tab's arrival on the landing page or the form (once, never blocking). */
+function VisitCounter() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const id = window.setTimeout(() => countArrival(pathname), 0)
+    return () => window.clearTimeout(id)
+  }, [pathname])
+  return null
+}
 
 function NotFound() {
   return (
@@ -48,6 +59,7 @@ function Loading() {
 export default function App() {
   return (
     <Suspense fallback={<Loading />}>
+      <VisitCounter />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/enquire" element={<EnquiryPage />} />

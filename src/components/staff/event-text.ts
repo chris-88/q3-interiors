@@ -20,6 +20,9 @@ const EVENT_TEXT: Partial<Record<EnquiryEvent['kind'], string>> = {
   prepare_updated: 'Customer added to "Help us prepare" (after booking)',
   photo_added: 'Customer added a photo (after booking)',
   photo_removed: 'Customer removed a photo',
+  chase_flagged: 'Flagged: had to chase details',
+  chase_updated: 'Changed what was missing',
+  chase_cleared: 'Chase flag cleared',
 }
 
 /** An `email_sent` event's detail is the message template. */

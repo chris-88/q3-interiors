@@ -4,6 +4,7 @@ import { useFunnelReport } from '@/api/staff-booking'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { costRows, formatCost, formatEuroCents, type CostRow } from '@/lib/campaigns'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
+import { PilotMeasures } from '@/components/staff/pilot-measures'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
@@ -203,6 +204,7 @@ export function ReportPage() {
           ))}
         </>
       )}
+      {!invalid && <PilotMeasures from={from} to={to} />}
     </div>
   )
 }

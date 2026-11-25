@@ -169,6 +169,8 @@ export interface Db {
   bookingByKey(key: string): Promise<BookingRow | null>
   reserve(enquiryId: string, typeId: string, startIso: string, key: string): Promise<ReserveResult>
   saveSiteDetails(enquiryId: string, answers: Answers): Promise<void>
+  /** Phone, call-or-visit and visit address lines after the save (`private.update_enquiry_details`). */
+  updateDetails(enquiryId: string, details: Record<string, string>): Promise<void>
   requestContact(enquiryId: string, reason: string): Promise<void>
   bookingContext(bookingId: string): Promise<BookingContext | null>
   claimCalendarJobs(limit: number, bookingId?: string): Promise<CalendarJob[]>

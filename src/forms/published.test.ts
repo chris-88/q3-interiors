@@ -10,6 +10,7 @@ import { publishedFormsSql } from './sql'
 const PUBLISHED_FINGERPRINTS: Record<string, string> = {
   'enquiry@1': '5f53ee5b6d5cc79f0fce0781f21994cb881db34d2fa23a9bdcdb5ec90ff4098e',
   'site_details@1': 'd29862871f5a2f666231bbb981fb5244502a083116ab82b64506858271129eac',
+  'enquiry@2': 'a47f0c45cf5e9363815b440f0c4b64e8fbbb96f5069998bfaff4951c4877eeda',
 }
 
 async function fingerprint(value: unknown): Promise<string> {

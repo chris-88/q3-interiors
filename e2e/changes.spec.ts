@@ -8,17 +8,9 @@ const shot = async (page: Page, name: string) => {
 }
 
 async function bookPhone(page: Page) {
-  await page.goto('/#/enquire')
   await submitEnquiry(page)
-  await page.getByRole('radio', { name: /Phone consultation/ }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page
-    .getByRole('group', { name: /^Time on/ })
-    .getByRole('button')
-    .first()
-    .click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Book this time' }).click()
+  await page.getByRole('group', { name: 'Suggested times' }).getByRole('button').first().click()
+  await page.getByRole('button', { name: /^Book call · / }).click()
   await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
 }
 
@@ -30,7 +22,7 @@ test('a customer moves their appointment, then cancels it', async ({ page }) => 
   const firstStart = booking.starts_at
 
   // Move to a time on another day.
-  await page.getByRole('button', { name: 'Choose another time' }).click()
+  await page.getByRole('button', { name: 'Change time' }).click()
   await expect(page.getByRole('heading', { name: 'Choose a new time' })).toBeVisible()
   await page.getByRole('group', { name: 'Day' }).getByRole('button').nth(1).click()
   await page
@@ -59,9 +51,7 @@ test('a customer moves their appointment, then cancels it', async ({ page }) => 
   await shot(page, 'c4-cancel-confirm')
   await page.getByRole('button', { name: 'Yes, cancel it' }).click()
   await expect(page.getByText('Your appointment is cancelled')).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'How would you like to talk it through?' }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Choose a time for your call' })).toBeVisible()
   await shot(page, 'c5-cancelled')
   expect(db.bookings[0]!.state).toBe('cancelled')
   expect(calendar.events.get(eventId)?.status).toBe('cancelled')
@@ -94,4 +84,19 @@ test('inside the cut-off the customer is asked to ring', async ({ page }) => {
   )
   await expect(page.getByRole('button', { name: 'Cancel appointment' })).toHaveCount(0)
   await shot(page, 'c6-ring-us')
+})
+
+test('the email links open change time and cancel directly', async ({ page }) => {
+  const { db } = await installFakeBackend(page)
+  await bookPhone(page)
+  const url = page.url()
+  await page.goto(`${url}?do=cancel`)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Cancel your appointment?' })).toBeVisible()
+  await page.getByRole('button', { name: 'Keep my appointment' }).click()
+  await expect(page.getByRole('heading', { name: 'Your call is booked' })).toBeVisible()
+  await page.goto(`${url}?do=change`)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Choose a new time' })).toBeVisible()
+  expect(db.bookings[0]?.state).toBe('confirmed')
 })

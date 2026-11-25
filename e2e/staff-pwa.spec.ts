@@ -64,7 +64,9 @@ test('offline, the console says so instead of showing anything stale', async ({
 test('the customer build has no manifest and no service worker', async ({ page, request }) => {
   await page.route(/\/(rest|auth|functions|storage)\/v1\//, (route) => route.abort())
   await page.goto(`${PUBLIC_URL}/#/`)
-  await expect(page.getByRole('heading', { name: 'Planning a home renovation?' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Let’s talk about your renovation.' }),
+  ).toBeVisible()
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(0)
   await page.waitForTimeout(500)
   expect(

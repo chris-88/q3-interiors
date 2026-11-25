@@ -1,28 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useForm, useWatch } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Controller, useForm, useWatch } from 'react-hook-form'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
+import { minutesFor, usePublicAppointmentTypes } from '@/api/appointment-types'
 import { ApiError } from '@/api/errors'
 import { useSubmitEnquiry } from '@/api/submit'
 import { FormFieldInput, fieldDomId } from '@/components/enquiry/form-field'
-import { ReviewStep } from '@/components/enquiry/review-step'
+import {
+  BackLink,
+  ChoiceCards,
+  JourneyProgress,
+  ScreenHeading,
+} from '@/components/journey/journey-parts'
 import { PublicLayout } from '@/components/public-layout'
 import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from '@/components/ui/field'
-import { Progress, ProgressLabel } from '@/components/ui/progress'
-import { usePublicBusiness } from '@/api/business'
-import { currentEnquiryForm } from '@/forms/enquiry/v1'
-import { allFields, cleanAnswers, validateFields, visibleFields } from '@/forms/logic'
-import type { Answers, FormDefinition } from '@/forms/types'
+import { currentEnquiryForm } from '@/forms/enquiry/v2'
+import { cleanAnswers, findField, formatAnswer, validateFields, visibleFields } from '@/forms/logic'
+import type { Answers, FormDefinition, FormField, SingleChoiceField } from '@/forms/types'
 import { currentAttribution } from '@/lib/attribution'
+import { rememberBookingAccess } from '@/lib/booking-access'
 import {
   completeSubmission,
   definedAnswers,
@@ -31,7 +28,7 @@ import {
   saveDraft,
   type Draft,
 } from '@/lib/draft'
-import { rememberBookingAccess } from '@/lib/booking-access'
+import { ROUTE_COPY, isRoute, otherRoute, recapLine, routeTitle } from '@/lib/journey'
 import { safeStorage, type SafeStorage } from '@/lib/storage'
 
 type Props = {
@@ -40,133 +37,113 @@ type Props = {
   localStore?: SafeStorage
 }
 
+/*
+ * Enquiry form v2, screens 2 and 3 of the journey: Project, then Details. The route (call or
+ * visit) was chosen on the landing page (`/#/enquire?type=phone|on_site`) and is the
+ * `appointment_preference` answer. "Send enquiry & see times" saves the enquiry once and opens
+ * the time screen (`/#/book/<token>`). Answers live in a sessionStorage draft, so Back, a reload
+ * or a backgrounded in-app browser keep them.
+ */
+
+const PROJECT = 0
+const DETAILS = 1
+
 function focusField(id: string) {
   const container = document.querySelector(`[data-field="${id}"]`)
   const target =
     document.getElementById(fieldDomId(id)) ??
-    container?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ??
-    container?.querySelector<HTMLElement>('[role="radio"], [role="checkbox"], input, textarea')
+    container?.querySelector<HTMLElement>('input:checked') ??
+    container?.querySelector<HTMLElement>('input, textarea')
   target?.focus()
+}
+
+function stepFields(form: FormDefinition, id: string): FormField[] {
+  return form.steps.find((s) => s.id === id)?.fields ?? []
+}
+
+function field(form: FormDefinition, id: string): FormField {
+  const found = findField(form, id)
+  if (!found) throw new Error(`Form ${form.formId}@${form.version} has no field ${id}`)
+  return found
 }
 
 export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
   const navigate = useNavigate()
-  const tradingName = usePublicBusiness().trading_name
+  const [searchParams, setSearchParams] = useSearchParams()
   const [{ sessionStore, localStore }] = useState(() => ({
     sessionStore: stores.sessionStore ?? safeStorage('session'),
     localStore: stores.localStore ?? safeStorage('local'),
   }))
-  const reviewIndex = form.steps.length
-  const [initial] = useState(() => loadDraft(sessionStore, form.formId, form.version))
+  // The landing choice arrives as ?type=; it starts (or switches) the route and the Project
+  // screen. A draft from an older form version is discarded by loadDraft.
+  const [initial] = useState<Draft>(() => {
+    const draft = loadDraft(sessionStore, form.formId, form.version)
+    const chosen = searchParams.get('type')
+    if (!isRoute(chosen)) return { ...draft, step: Math.min(draft.step, DETAILS) }
+    return {
+      ...draft,
+      step: PROJECT,
+      answers: { ...draft.answers, appointment_preference: chosen },
+    }
+  })
   const draftRef = useRef<Draft>(initial)
-  const [step, setStep] = useState(() => Math.min(initial.step, reviewIndex))
-  const [marketingOptIn, setMarketingOptIn] = useState(initial.marketingOptIn)
-  const [returnToReview, setReturnToReview] = useState(false)
+  const [step, setStep] = useState(initial.step)
   // Honeypot: people never see or reach this field; bots that fill every input do.
   const [trap, setTrap] = useState('')
-  const headingRef = useRef<HTMLHeadingElement>(null)
-  const firstRender = useRef(true)
   const submit = useSubmitEnquiry()
+  const types = usePublicAppointmentTypes()
 
-  const { control, getValues, setError, clearErrors, formState, subscribe } = useForm<Answers>({
-    defaultValues: initial.answers,
-  })
+  const { control, getValues, setValue, setError, clearErrors, formState, subscribe } =
+    useForm<Answers>({ defaultValues: initial.answers })
   const answers = useWatch({ control })
 
   const persist = useCallback(
     (patch: Partial<Draft>) => {
-      draftRef.current = {
-        ...draftRef.current,
-        answers: definedAnswers(getValues()),
-        ...patch,
-      }
+      draftRef.current = { ...draftRef.current, answers: definedAnswers(getValues()), ...patch }
       saveDraft(sessionStore, draftRef.current)
     },
     [getValues, sessionStore],
   )
-
-  useEffect(() => {
-    return subscribe({ formState: { values: true }, callback: () => persist({}) })
-  }, [subscribe, persist])
-
-  useEffect(() => {
-    persist({ step, marketingOptIn })
-  }, [persist, step, marketingOptIn])
-
-  // Move focus to the new step's heading so keyboard and screen reader users start at the top.
-  useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false
-      return
-    }
-    window.scrollTo({ top: 0 })
-    headingRef.current?.focus()
-  }, [step])
-
-  const stepHasQuestions = useCallback(
-    (index: number) => {
-      const s = form.steps[index]
-      return s !== undefined && visibleFields(s.fields, getValues()).length > 0
-    },
-    [form, getValues],
+  useEffect(
+    () => subscribe({ formState: { values: true }, callback: () => persist({}) }),
+    [subscribe, persist],
   )
+  useEffect(() => persist({ step }), [persist, step])
+  // Drop ?type= once it is in the draft, so a reload or Back does not restart the route.
+  useEffect(() => {
+    if (searchParams.has('type')) setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
 
-  const showErrors = (errors: Record<string, string>) => {
+  const route = answers.appointment_preference
+  if (!isRoute(route)) return <Navigate to="/" replace />
+
+  const errorOf = (id: string) => formState.errors[id]?.message
+  const minutes = minutesFor(types.data, route)
+
+  const check = (stepId: string): boolean => {
+    const values = getValues()
+    const fields = stepFields(form, stepId)
+    const errors = validateFields(fields, values)
     clearErrors()
-    for (const [id, message] of Object.entries(errors)) setError(id, { type: 'validate', message })
+    const invalid = visibleFields(fields, values).filter((f) => f.id in errors)
+    for (const f of invalid) setError(f.id, { type: 'validate', message: errors[f.id] })
+    const first = invalid[0]
+    if (first) focusField(first.id)
+    return !first
   }
 
-  const goNext = () => {
-    const current = form.steps[step]
-    if (!current) return
-    const errors = validateFields(current.fields, getValues())
-    const first = visibleFields(current.fields, getValues()).find((f) => f.id in errors)
-    if (first) {
-      showErrors(errors)
-      focusField(first.id)
-      return
-    }
+  const switchRoute = () => {
+    setValue('appointment_preference', otherRoute(route), { shouldDirty: true })
     clearErrors()
-    if (returnToReview) {
-      setReturnToReview(false)
-      setStep(reviewIndex)
-      return
-    }
-    let next = step + 1
-    while (next < reviewIndex && !stepHasQuestions(next)) next += 1
-    setStep(next)
-  }
-
-  const goBack = () => {
-    let previous = step - 1
-    while (previous > 0 && !stepHasQuestions(previous)) previous -= 1
-    setReturnToReview(false)
-    clearErrors()
-    if (previous < 0) {
-      void navigate('/')
-      return
-    }
-    setStep(previous)
-  }
-
-  const editStep = (index: number) => {
-    submit.reset()
-    setReturnToReview(true)
-    setStep(index)
   }
 
   const send = () => {
-    const values = getValues()
-    const errors = validateFields(allFields(form), values)
-    const firstStep = form.steps.findIndex((s) =>
-      visibleFields(s.fields, values).some((f) => f.id in errors),
-    )
-    if (firstStep !== -1) {
-      setReturnToReview(true)
-      setStep(firstStep)
-      showErrors(errors)
+    if (!check('project')) {
+      setStep(PROJECT)
       return
     }
+    if (!check('contact')) return
+    const values = getValues()
     const { draft, key } = ensureIdempotencyKey(sessionStore, {
       ...draftRef.current,
       answers: definedAnswers(values),
@@ -178,7 +155,7 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
         formId: form.formId,
         formVersion: form.version,
         answers: cleanAnswers(form, values),
-        marketingOptIn,
+        marketingOptIn: false,
         attribution: currentAttribution(localStore),
         trap,
       },
@@ -191,121 +168,155 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
             return
           }
           rememberBookingAccess(localStore, { reference, token: accessToken })
-          // Straight on to scheduling. The token is opaque; nothing personal goes in the URL.
+          // Straight on to the time screen. The token is opaque; nothing personal in the URL.
           void navigate(`/book/${accessToken}`, { replace: true })
         },
       },
     )
   }
 
-  const total = reviewIndex + 1
-  const current = form.steps[step]
-  const isReview = step === reviewIndex
-  const isContactStep = current?.fields.some((f) => f.type === 'email') ?? false
-  const errorMessage = (id: string) => formState.errors[id]?.message
-  const stepFields = useMemo(
-    () => (current ? visibleFields(current.fields, answers) : []),
-    [current, answers],
+  const projectField = field(form, 'project_type') as SingleChoiceField
+  const layoutField = field(form, 'kitchen_layout') as SingleChoiceField
+  const text = (id: string, override?: Partial<FormField>) => (
+    <FormFieldInput
+      field={{ ...field(form, id), ...override } as FormField}
+      control={control}
+      error={errorOf(id)}
+      onEdit={(fieldId) => clearErrors(fieldId)}
+    />
   )
+  const projectLabel =
+    typeof answers.project_type === 'string'
+      ? formatAnswer(projectField, answers.project_type)
+      : null
+  const location = typeof answers.location === 'string' ? answers.location.trim() : ''
 
   return (
     <PublicLayout>
-      <Progress value={((step + 1) / total) * 100} className="mb-8 gap-2">
-        <ProgressLabel className="text-muted-foreground font-normal">
-          {isReview ? 'Review your enquiry' : `Step ${step + 1} of ${total}`}
-        </ProgressLabel>
-      </Progress>
-
-      {isReview ? (
-        <>
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="text-section text-ink font-medium outline-none"
-          >
-            Review your enquiry
-          </h1>
-          <p className="text-muted-foreground mt-2">You can change anything before you send it.</p>
-          <ReviewStep
-            form={form}
-            answers={answers}
-            marketingOptIn={marketingOptIn}
-            onEdit={editStep}
-            className="mt-6"
-          />
-          {submit.isError &&
-            (submit.error instanceof ApiError && submit.error.code === '22023' ? (
-              <Alert variant="destructive" className="mt-6" role="alert">
-                <AlertTitle>Your enquiry has not gone through</AlertTitle>
-                <AlertDescription>
-                  One of the answers could not be accepted. Please check them and try again.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <TroubleMessage
-                error={submit.error}
-                title="Your enquiry has not gone through"
-                keptNote="Your answers are still here."
-              />
-            ))}
-          <p className="text-muted-foreground mt-6 text-sm">
-            Read{' '}
-            <Link to="/privacy" className="underline underline-offset-4">
-              how we use your details
-            </Link>
-            .
-          </p>
-          <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="h-12 text-base"
-              onClick={goBack}
-              disabled={submit.isPending}
-            >
-              Back
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="h-12 text-base sm:px-6"
-              onClick={send}
-              disabled={submit.isPending}
-            >
-              {submit.isPending ? 'Sending…' : submit.isError ? 'Try again' : 'Send enquiry'}
-            </Button>
-          </div>
-        </>
-      ) : current ? (
-        <form
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault()
-            goNext()
+      <JourneyProgress current={step === PROJECT ? 0 : 1} />
+      <div className="mt-6 flex flex-col">
+        <BackLink
+          onClick={() => {
+            clearErrors()
+            if (step === PROJECT) void navigate('/')
+            else setStep(PROJECT)
           }}
-        >
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="text-section text-ink font-medium text-balance outline-none"
+        />
+        {step === PROJECT ? (
+          <form
+            noValidate
+            className="mt-2 flex flex-col"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (check('project')) setStep(DETAILS)
+            }}
           >
-            {current.title}
-          </h1>
-          {current.description && (
-            <p className="text-muted-foreground mt-2">{current.description}</p>
-          )}
-          <FieldGroup className="mt-6 gap-8">
-            {stepFields.map((field) => (
-              <FormFieldInput
-                key={field.id}
-                field={field}
+            <ScreenHeading focusKey="project">What work are you planning?</ScreenHeading>
+            <p className="text-muted-foreground mt-2">
+              {routeTitle(route, minutes)}, free.{' '}
+              <button
+                type="button"
+                onClick={switchRoute}
+                className="text-ink inline-flex min-h-12 items-center underline underline-offset-4"
+              >
+                Switch to a {ROUTE_COPY[otherRoute(route)].noun}
+              </button>
+            </p>
+            <div className="mt-6 flex flex-col gap-8">
+              <Controller
+                name="project_type"
                 control={control}
-                error={errorMessage(field.id)}
-                onEdit={(id) => clearErrors(id)}
+                render={({ field: rhf }) => (
+                  <ChoiceCards
+                    name="project_type"
+                    legend="Project type"
+                    options={projectField.options}
+                    value={typeof rhf.value === 'string' ? rhf.value : null}
+                    onChange={(value) => {
+                      rhf.onChange(value)
+                      clearErrors('project_type')
+                    }}
+                    error={errorOf('project_type')}
+                    reveal={(value) =>
+                      value === 'kitchen' ? (
+                        <Controller
+                          name="kitchen_layout"
+                          control={control}
+                          render={({ field: layout }) => (
+                            <ChoiceCards
+                              name="kitchen_layout"
+                              legend={layoutField.label}
+                              legendClassName="font-normal"
+                              optional
+                              options={layoutField.options}
+                              value={typeof layout.value === 'string' ? layout.value : null}
+                              onChange={layout.onChange}
+                            />
+                          )}
+                        />
+                      ) : value === 'several_rooms' ? (
+                        text('rooms_involved')
+                      ) : value === 'other' ? (
+                        text('project_type_other')
+                      ) : null
+                    }
+                  />
+                )}
               />
-            ))}
-            {isContactStep && (
+              {text('location')}
+            </div>
+            <Button
+              type="submit"
+              size="lg"
+              className="mt-8 h-auto min-h-12 py-3 text-base whitespace-normal"
+            >
+              Continue to your details
+            </Button>
+          </form>
+        ) : (
+          <form
+            noValidate
+            className="mt-2 flex flex-col"
+            onSubmit={(event) => {
+              event.preventDefault()
+              send()
+            }}
+          >
+            <ScreenHeading focusKey="details">How can we reach you?</ScreenHeading>
+            <p className="bg-soft text-ink mt-4 flex flex-wrap items-center gap-x-3 rounded-md px-4 py-2">
+              <span>{recapLine(route, projectLabel, location || null)}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  submit.reset()
+                  setStep(PROJECT)
+                }}
+                className="inline-flex min-h-12 items-center underline underline-offset-4"
+              >
+                Edit<span className="sr-only"> your project</span>
+              </button>
+            </p>
+            <div className="mt-6 flex flex-col gap-8">
+              {text('name')}
+              {text('email', { help: 'We send your confirmation and the link to change it here.' })}
+              {text('phone', { label: ROUTE_COPY[route].phoneLabel })}
+              {route === 'on_site' && (
+                <fieldset className="flex min-w-0 flex-col gap-6">
+                  <legend className="text-title text-ink mb-2 font-medium">Visit address</legend>
+                  {text('site_street')}
+                  {text('site_unit')}
+                  <p className="text-muted-foreground -mt-2 text-sm">
+                    Town or Eircode: <span className="text-ink">{location}</span>{' '}
+                    <button
+                      type="button"
+                      onClick={() => setStep(PROJECT)}
+                      className="inline-flex min-h-12 items-center underline underline-offset-4"
+                    >
+                      Change<span className="sr-only"> the town or Eircode</span>
+                    </button>
+                  </p>
+                </fieldset>
+              )}
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden"
@@ -321,48 +332,45 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
                   onChange={(e) => setTrap(e.target.value)}
                 />
               </div>
-            )}
-            {isContactStep && (
-              <FieldLabel htmlFor="marketing-opt-in" className="w-full">
-                <Field orientation="horizontal" className="items-start">
-                  <Checkbox
-                    id="marketing-opt-in"
-                    checked={marketingOptIn}
-                    onCheckedChange={(checked) => setMarketingOptIn(checked)}
-                    className="mt-0.5"
-                  />
-                  <FieldContent>
-                    <span className="text-base font-normal">
-                      Send me occasional news and offers from {tradingName}
-                    </span>
-                    <FieldDescription>
-                      Optional. You can ask us to stop at any time.
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-              </FieldLabel>
-            )}
-          </FieldGroup>
-          <div className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+            </div>
+            {submit.isError &&
+              (submit.error instanceof ApiError && submit.error.code === '22023' ? (
+                <Alert variant="destructive" className="mt-6" role="alert">
+                  <AlertTitle>Your enquiry has not gone through</AlertTitle>
+                  <AlertDescription>
+                    One of the answers could not be accepted. Please check them and try again.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <TroubleMessage
+                  error={submit.error}
+                  title="Your enquiry has not gone through"
+                  keptNote="Your answers are still here."
+                />
+              ))}
             <Button
-              type="button"
-              variant="outline"
+              type="submit"
               size="lg"
-              className="h-12 text-base"
-              onClick={goBack}
+              className="mt-8 h-auto min-h-12 py-3 text-base whitespace-normal"
+              disabled={submit.isPending}
             >
-              Back
+              {submit.isPending
+                ? 'Sending…'
+                : submit.isError
+                  ? 'Try again'
+                  : 'Send enquiry & see times'}
             </Button>
-            <Button type="submit" size="lg" className="h-12 text-base sm:px-6">
-              {returnToReview
-                ? 'Save and review'
-                : step === reviewIndex - 1
-                  ? 'Review your enquiry'
-                  : 'Continue'}
-            </Button>
-          </div>
-        </form>
-      ) : null}
+            <p className="text-muted-foreground mt-3 text-sm">
+              <Link
+                to="/privacy"
+                className="inline-flex min-h-12 items-center underline underline-offset-4"
+              >
+                How we use your details
+              </Link>
+            </p>
+          </form>
+        )}
+      </div>
     </PublicLayout>
   )
 }

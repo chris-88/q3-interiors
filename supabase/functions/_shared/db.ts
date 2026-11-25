@@ -118,6 +118,9 @@ export function createDb(): Db {
     async saveSiteDetails(enquiryId, answers) {
       await q`select private.save_site_details(${enquiryId}, ${q.json(answers)})`
     },
+    async updateDetails(enquiryId, details) {
+      await q`select private.update_enquiry_details(${enquiryId}, ${q.json(details)})`
+    },
     async requestContact(enquiryId, reason) {
       await q`select private.request_contact(${enquiryId}, ${reason})`
     },

@@ -44,6 +44,7 @@ export function bucketFor(
     case 'request_contact':
       return { bucket: 'booking_write', idemKey: `contact:${enquiryId}` }
     case 'site_details':
+    case 'update_details':
       return { bucket: 'booking_write', idemKey: null }
     default:
       return { bucket: 'booking_read', idemKey: null }

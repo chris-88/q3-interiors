@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import App from './App'
@@ -19,36 +19,66 @@ function renderAt(path: string) {
 beforeEach(() => window.sessionStorage.clear())
 
 describe('App', () => {
-  it('shows the landing page: guide heading, one action (repeated), how it works, no "Our work"', () => {
+  it('shows the landing page: the two free choices, how it works, no "Our work"', () => {
     renderAt('/')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Planning a home renovation?',
+      'Let’s talk about your renovation.',
     )
-    const actions = screen.getAllByRole('link', { name: 'Tell us about your project' })
-    expect(actions.length).toBeGreaterThan(0)
-    for (const a of actions) expect(a).toHaveAttribute('href', '/enquire')
+    const choices = screen.getByRole('navigation', { name: 'Book a free appointment' })
+    const links = within(choices).getAllByRole('link')
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      '/enquire?type=phone',
+      '/enquire?type=on_site',
+    ])
+    expect(links[0]).toHaveTextContent('Talk through your plans.')
+    expect(links[1]).toHaveTextContent('Show us the space so we can measure up for an estimate.')
+    expect(screen.getByText('Both are free.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
     expect(screen.queryByText(/our work/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Q3 Interiors home' })).toHaveAttribute('href', '/')
+    // No landing photo is configured yet, and no empty slot stands in for one.
+    expect(screen.queryAllByRole('img').filter((i) => i.getAttribute('alt'))).toHaveLength(1)
     // The header is the full wordmark alone: decorative image, no visible name beside it.
     const home = screen.getByRole('link', { name: 'Q3 Interiors home' })
+    expect(home).toHaveAttribute('href', '/')
     expect(home).toHaveTextContent('')
     expect(home.querySelector('img')).toHaveAttribute('src', '/brand/q3-full-black.svg')
     expect(home.querySelector('img')).toHaveAttribute('alt', '')
     expect(screen.getByText(/does not commit you to a quote/)).toBeInTheDocument()
   })
 
-  it('shows a visible, accessible error when a required question is skipped', async () => {
-    renderAt('/enquire')
-    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Choose an option.')
+  it('takes the landing choice into the Project screen', async () => {
+    renderAt('/enquire?type=on_site')
+    expect(screen.getByRole('heading', { name: 'What work are you planning?' })).toBeInTheDocument()
+    expect(screen.getByText(/Site visit, free\./)).toBeInTheDocument()
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Project')
   })
 
-  it('asks the conditional question only when it applies', async () => {
+  it('sends a customer with no route chosen back to the landing page', () => {
     renderAt('/enquire')
-    expect(screen.queryByLabelText('What kind of project?')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('renovation')
+  })
+
+  it('shows a visible, accessible error when a required question is skipped', async () => {
+    renderAt('/enquire?type=phone')
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to your details' }))
+    const alerts = await screen.findAllByRole('alert')
+    expect(alerts.map((a) => a.textContent)).toEqual(['Choose an option.', 'This is required.'])
+  })
+
+  it('reveals each follow-up in place, required only for "Something else"', async () => {
+    renderAt('/enquire?type=phone')
+    expect(screen.queryByLabelText(/Which rooms/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: 'Kitchen' }))
+    expect(
+      screen.getByRole('group', {
+        name: /Are you keeping the layout or changing it\? ?\(optional\)/,
+      }),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: 'Several rooms' }))
+    expect(screen.getByLabelText(/Which rooms are involved\? ?\(optional\)/)).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'Keeping it' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('radio', { name: 'Something else' }))
-    expect(await screen.findByLabelText('What kind of project?')).toBeInTheDocument()
+    expect(screen.getByLabelText('What would you like us to look at?')).toBeRequired()
   })
 
   it('does not show a confirmation without a saved enquiry', () => {

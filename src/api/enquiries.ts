@@ -26,6 +26,7 @@ const enquirySummarySchema = z.object({
   form_version: z.number(),
   answers: answersSchema,
   submitted_at: z.string(),
+  contact_requested_at: z.string().nullable(),
 })
 
 export type EnquirySummary = z.infer<typeof enquirySummarySchema>
@@ -64,6 +65,7 @@ const eventSchema = z.object({
     'attendance_recorded',
     'outcome_recorded',
     'outcome_cleared',
+    'details_updated',
   ]),
   detail: z.string().nullable(),
   from_status: statusSchema.nullable(),
@@ -97,7 +99,8 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
 
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
 
-const SUMMARY_COLUMNS = 'id, reference, status, form_id, form_version, answers, submitted_at'
+const SUMMARY_COLUMNS =
+  'id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at'
 
 export function useEnquiries() {
   return useQuery({
@@ -122,7 +125,7 @@ export function useEnquiry(id: string) {
         .from('enquiries')
         .select(
           `${SUMMARY_COLUMNS}, status_reason, marketing_opt_in, marketing_opt_in_at, updated_at,
-           site_details, site_details_form_version, contact_requested_at, contact_request_reason,
+           site_details, site_details_form_version, contact_request_reason,
            outcome, outcome_value, outcome_reason, outcome_note,
            enquiry_attribution (tracking, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
              click_id_present, landing_path, first_seen_at),

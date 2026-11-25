@@ -1,6 +1,7 @@
 import type { Page, Request } from '@playwright/test'
 import { handlePublic, type PublicDeps } from '../supabase/functions/_shared/public-booking.ts'
 import { FakeCalendar, FakeDb } from '../supabase/functions/_shared/testing/fakes.ts'
+import { composeSiteAddress } from '../src/forms/enquiry/v2.ts'
 
 export type SubmitBody = {
   p_idempotency_key: string
@@ -72,7 +73,19 @@ export async function installFakeBackend(
     let saved = byKey.get(body.p_idempotency_key)
     if (!saved) {
       const token = `tok-${body.p_idempotency_key}`
-      db.addEnquiry(body.p_answers, token)
+      // As submit_enquiry_with_access does: a v2 visit's address lines become its site details.
+      const a = body.p_answers as Record<string, string | undefined>
+      db.addEnquiry(
+        body.p_answers,
+        token,
+        a.site_street
+          ? {
+              siteDetails: {
+                site_address: composeSiteAddress(a.site_street, a.site_unit, a.location),
+              },
+            }
+          : {},
+      )
       const id = [...db.enquiries.keys()].at(-1) ?? ''
       saved = { reference: db.enquiries.get(id)?.reference ?? 'Q3-TEST00', token }
       byKey.set(body.p_idempotency_key, saved)
@@ -85,6 +98,19 @@ export async function installFakeBackend(
         access_token: saved.token,
         expires_at: '2099-01-01T00:00:00Z',
       }),
+    })
+  })
+
+  // The landing page's live durations, from the fake database's active types.
+  await page.route('**/rest/v1/rpc/public_appointment_types', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        db.types
+          .filter((t) => t.active)
+          .map((t) => ({ id: t.id, mode: t.mode, duration_minutes: t.duration_minutes })),
+      ),
     })
   })
 
@@ -108,20 +134,39 @@ export async function installFakeBackend(
   return { db, calendar, clock, submitBodies }
 }
 
-/** Fill the enquiry form with a whole-home project and send it. */
-export async function submitEnquiry(page: Page) {
-  await page.getByRole('radio', { name: 'Whole home renovation' }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByLabel('What would you like done?').fill('New kitchen and two bedrooms redone.')
-  await page.getByRole('checkbox', { name: 'Kitchen' }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByLabel('Eircode or area').fill('D07 X2Y3')
-  await page.getByRole('radio', { name: 'I am flexible' }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
+export type Route = 'phone' | 'on_site'
+
+/** Forward action 1: tap a choice on the landing page. */
+export async function startRoute(page: Page, route: Route = 'phone') {
+  await page.goto('/#/')
+  await page.getByRole('link', { name: route === 'phone' ? /^Phone call/ : /^Site visit/ }).click()
+  await page.getByRole('heading', { name: 'What work are you planning?' }).waitFor()
+}
+
+/** The Project screen: a whole-home project and a town; forward action 2. */
+export async function fillProject(page: Page, location = 'D07 X2Y3') {
+  await page.getByRole('radio', { name: 'Whole home renovation' }).check()
+  await page.getByLabel('Town or Eircode').fill(location)
+  await page.getByRole('button', { name: 'Continue to your details' }).click()
+  await page.getByRole('heading', { name: 'How can we reach you?' }).waitFor()
+}
+
+/** The Details screen, without sending. */
+export async function fillDetails(page: Page, route: Route = 'phone') {
   await page.getByLabel('Your name').fill('Test Person')
   await page.getByLabel('Email').fill('test@example.com')
-  await page.getByLabel('Phone').fill('087 123 4567')
-  await page.getByRole('button', { name: 'Review your enquiry' }).click()
-  await page.getByRole('button', { name: 'Send enquiry' }).click()
+  await page
+    .getByLabel(route === 'phone' ? 'Number we should ring' : 'Number we can ring on arrival')
+    .fill('087 123 4567')
+  if (route === 'on_site') {
+    await page.getByLabel('House name or number and street').fill('12 Example Road')
+  }
+}
+
+/** Landing to "Send enquiry & see times" (forward actions 1 to 3). */
+export async function submitEnquiry(page: Page, route: Route = 'phone') {
+  await startRoute(page, route)
+  await fillProject(page)
+  await fillDetails(page, route)
+  await page.getByRole('button', { name: 'Send enquiry & see times' }).click()
 }

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { openEnum, parseOne, parseRows } from '@/lib/tolerant'
 import { ApiError, toApiError } from './errors'
 
 /** Same rule as the server (staff-accounts.ts): length only, 12 to 72 characters. */
@@ -35,7 +36,7 @@ const staffRowSchema = z.object({
   user_id: z.string(),
   display_name: z.string(),
   email: z.string(),
-  role: z.enum(['admin', 'staff']),
+  role: openEnum(['admin', 'staff']),
   active: z.boolean(),
   created_at: z.string(),
 })
@@ -91,7 +92,7 @@ export function useStaffList() {
         .select('user_id, display_name, email, role, active, created_at')
         .order('created_at')
       if (error) throw toApiError(error)
-      return z.array(staffRowSchema).parse(data)
+      return parseRows(staffRowSchema, data, 'people')
     },
   })
 }
@@ -129,7 +130,7 @@ export function useSetPassword() {
 
 const connectionRowSchema = z.object({
   staff_user_id: z.string(),
-  status: z.enum(['connected', 'disconnected']),
+  status: openEnum(['connected', 'disconnected']),
   google_email: z.string().nullable(),
 })
 
@@ -142,7 +143,7 @@ export function useCalendarConnections() {
         .from('calendar_connections')
         .select('staff_user_id, status, google_email')
       if (error) throw toApiError(error)
-      return z.array(connectionRowSchema).parse(data)
+      return parseRows(connectionRowSchema, data, 'calendar connections')
     },
   })
 }
@@ -158,8 +159,11 @@ export function useBookablePerson() {
         .maybeSingle()
       if (error) throw toApiError(error)
       return (
-        z.object({ bookable_staff_user_id: z.string().nullable() }).nullable().parse(data)
-          ?.bookable_staff_user_id ?? null
+        parseOne(
+          z.object({ bookable_staff_user_id: z.string().nullable() }).nullable(),
+          data,
+          'who takes bookings',
+        )?.bookable_staff_user_id ?? null
       )
     },
   })

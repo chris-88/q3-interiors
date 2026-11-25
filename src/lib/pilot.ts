@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseRows } from './tolerant'
 
 /** The pilot report from `pilot_report(from, to)`, and the arithmetic the page shows. */
 
@@ -21,7 +22,8 @@ export type PilotRow = z.infer<typeof pilotRowSchema>
 
 export const pilotReportSchema = z.object({
   counted_from: z.string(),
-  rows: z.array(pilotRowSchema),
+  // Row by row: a dimension a newer release adds is left out, not fatal.
+  rows: z.array(z.unknown()).transform((rows) => parseRows(pilotRowSchema, rows, 'pilot measures')),
   headline: z.object({ instagram_sessions: count, instagram_suitable_attended: count }),
 })
 export type PilotReport = z.infer<typeof pilotReportSchema>

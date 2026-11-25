@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseOne } from '@/lib/tolerant'
 import { toApiError } from './errors'
 
 /** Same bounds as the database (go-live checklist migration). */
@@ -50,7 +51,7 @@ export function useLimits() {
         .select('enquiry_limit_per_hour, booking_write_limit_per_hour, booking_read_limit_per_hour')
         .single()
       if (error) throw toApiError(error)
-      return limitsSchema.parse(data)
+      return parseOne(limitsSchema, data, 'the request limits')
     },
   })
 }

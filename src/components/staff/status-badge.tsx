@@ -1,4 +1,5 @@
-import { STATUS_LABELS, type EnquiryStatus } from '@/api/enquiries'
+import { statusLabel, type EnquiryStatus } from '@/api/enquiries'
+import type { Open } from '@/lib/tolerant'
 import { Badge } from '@/components/ui/badge'
 
 const VARIANTS: Record<EnquiryStatus, 'default' | 'secondary' | 'outline'> = {
@@ -8,13 +9,15 @@ const VARIANTS: Record<EnquiryStatus, 'default' | 'secondary' | 'outline'> = {
   unsuitable: 'outline',
 }
 
-export function StatusBadge({ status }: { status: EnquiryStatus }) {
+export function StatusBadge({ status }: { status: Open<EnquiryStatus> }) {
   return (
     <Badge
-      variant={VARIANTS[status]}
+      variant={
+        (VARIANTS as Record<string, 'default' | 'secondary' | 'outline'>)[status] ?? 'outline'
+      }
       className={status === 'unsuitable' ? 'text-muted-foreground' : ''}
     >
-      {STATUS_LABELS[status]}
+      {statusLabel(status)}
     </Badge>
   )
 }

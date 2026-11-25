@@ -1,17 +1,17 @@
 // The staff console as an installed app (staff build only; imported from StaffApp).
 //
 // Updates: the service worker (dist-staff/sw.js) installs a new version and takes over at once;
-// the open page keeps running the code it loaded and shows "A new version is ready. Reload."
-// (useUpdateReady). If a deploy removed a chunk the old page still needs, the page reloads
-// instead of going blank (vite:preloadError).
+// the open page then checks /version.json and reloads, or shows a persistent bar while someone is
+// typing (src/staff-version.ts). If a deploy removed a chunk the old page still needs, the page
+// reloads instead of going blank (vite:preloadError).
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { checkForNewerBuild } from './staff-version'
 
 type InstallPrompt = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: string }>
 }
 
-let updateReady = false
 let installPrompt: InstallPrompt | null = null
 const listeners = new Set<() => void>()
 const notify = () => listeners.forEach((l) => l())
@@ -55,8 +55,7 @@ export function startStaffPwa() {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     // The first install claiming the page is not an update.
     if (!hadController) return
-    updateReady = true
-    notify()
+    void checkForNewerBuild()
   })
   void navigator.serviceWorker
     .register('/sw.js')
@@ -68,14 +67,6 @@ export function startStaffPwa() {
       window.setInterval(check, 30 * 60_000)
     })
     .catch(() => undefined)
-}
-
-export function useUpdateReady(): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => updateReady,
-    () => false,
-  )
 }
 
 /** Running as the installed app (Android, desktop, or an iPhone home-screen app). */

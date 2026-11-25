@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
+  ENQUIRY_STATUSES,
   useEnquiry,
   useEnquiryPhotoFile,
   useEnquiryPhotos,
@@ -25,8 +26,33 @@ import { BookingActions } from '@/components/staff/booking-actions'
 import { OutcomeForm } from '@/components/staff/outcome-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import { eventLine } from '@/components/staff/event-text'
+import { LOST_REASONS } from '@/api/staff-booking'
+import { isKnown } from '@/lib/tolerant'
 import { EnquiryFlags } from '@/components/staff/enquiry-flags'
 import { ChaseForm } from '@/components/staff/chase-form'
+
+const OUTCOMES = ['won', 'lost'] as const
+const LOST_REASON_VALUES = LOST_REASONS.map(([value]) => value)
+
+/** A value a newer release wrote: shown plainly, changeable after a reload. */
+function NewerValue({ what }: { what: string }) {
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p>{what.trim()}</p>
+      <p className="text-muted-foreground">
+        This was set by a newer version of the console. Reload to change it here.
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 self-start"
+        onClick={() => window.location.reload()}
+      >
+        Reload
+      </Button>
+    </div>
+  )
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
@@ -494,20 +520,29 @@ export function EnquiryDetailPage() {
       </Section>
 
       <Section title="Outcome">
-        <OutcomeForm
-          key={`${data.outcome}-${data.outcome_value}-${data.outcome_reason}`}
-          enquiryId={data.id}
-          current={{
-            outcome: data.outcome,
-            value: data.outcome_value,
-            reason: data.outcome_reason,
-            note: data.outcome_note,
-          }}
-        />
+        {(data.outcome === null || isKnown(OUTCOMES, data.outcome)) &&
+        (data.outcome_reason === null || isKnown(LOST_REASON_VALUES, data.outcome_reason)) ? (
+          <OutcomeForm
+            key={`${data.outcome}-${data.outcome_value}-${data.outcome_reason}`}
+            enquiryId={data.id}
+            current={{
+              outcome: data.outcome,
+              value: data.outcome_value,
+              reason: data.outcome_reason,
+              note: data.outcome_note,
+            }}
+          />
+        ) : (
+          <NewerValue what={`Outcome: ${data.outcome ?? ''} ${data.outcome_reason ?? ''}`} />
+        )}
       </Section>
 
       <Section title="Change status">
-        <StatusForm enquiryId={data.id} current={data.status} />
+        {isKnown(ENQUIRY_STATUSES, data.status) ? (
+          <StatusForm enquiryId={data.id} current={data.status} />
+        ) : (
+          <NewerValue what={`Status: ${data.status}`} />
+        )}
       </Section>
       <History events={data.enquiry_events} />
       <Attribution attribution={data.enquiry_attribution} />

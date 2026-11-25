@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseOne } from '@/lib/tolerant'
 import { toApiError } from './errors'
 
 /** The brand name, used in the header and wherever the business has not set a trading name. */
@@ -147,7 +148,7 @@ export function useBusinessDetails() {
         )
         .single()
       if (error) throw toApiError(error)
-      return businessRowSchema.parse(data)
+      return parseOne(businessRowSchema, data, 'the business details')
     },
   })
 }

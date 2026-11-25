@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { openEnum, parseOne } from '@/lib/tolerant'
 import { toApiError } from './errors'
 
 export type SessionState = { status: 'loading' } | { status: 'ready'; session: Session | null }
@@ -33,7 +34,8 @@ export function useSession(): SessionState {
 
 const staffSchema = z.object({
   user_id: z.string(),
-  role: z.enum(['admin', 'staff']),
+  // Open: a role a newer release adds is treated as not admin here (the server decides anyway).
+  role: openEnum(['admin', 'staff']),
   display_name: z.string(),
   active: z.boolean(),
 })
@@ -52,7 +54,7 @@ export function useStaffMember(userId: string | undefined) {
         .eq('user_id', userId ?? '')
         .maybeSingle()
       if (error) throw toApiError(error)
-      return data === null ? null : staffSchema.parse(data)
+      return data === null ? null : parseOne(staffSchema, data, 'your staff record')
     },
   })
 }

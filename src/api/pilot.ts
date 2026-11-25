@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { pilotReportSchema, type PilotReport } from '@/lib/pilot'
 import { supabase } from '@/lib/supabase'
+import { parseOne } from '@/lib/tolerant'
 import { toApiError } from './errors'
 
 /** The pilot measures for an Irish date range. Staff only (the function checks). */
@@ -11,7 +12,7 @@ export function usePilotReport(from: string, to: string) {
     queryFn: async (): Promise<PilotReport> => {
       const { data, error } = await supabase.rpc('pilot_report', { p_from: from, p_to: to })
       if (error) throw toApiError(error)
-      return pilotReportSchema.parse(data)
+      return parseOne(pilotReportSchema, data, 'the pilot measures')
     },
   })
 }

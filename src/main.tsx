@@ -5,6 +5,7 @@ import { HashRouter } from 'react-router'
 import './index.css'
 import { initAttribution } from './lib/attribution'
 import { safeStorage } from './lib/storage'
+import { DataShapeError } from './lib/tolerant'
 
 /*
  * Two builds from one codebase, chosen at build time (VITE_SURFACE): the customer site
@@ -18,7 +19,13 @@ const App = STAFF ? lazy(() => import('./StaffApp.tsx')) : lazy(() => import('./
 // Read campaign tags from the arrival URL before anything navigates (customer site only).
 if (!STAFF) initAttribution(safeStorage('local'))
 
-const queryClient = new QueryClient()
+// Data this build cannot read will not read better on a retry: fail at once (the staff console
+// then checks for a newer build); other failures keep TanStack's default three retries.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: (count, error) => !(error instanceof DataShapeError) && count < 3 },
+  },
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

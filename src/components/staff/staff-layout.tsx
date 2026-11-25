@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, NavLink } from 'react-router'
@@ -16,7 +16,9 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useOnline, useUpdateReady } from '@/staff-pwa'
+import { useOnline } from '@/staff-pwa'
+import { useStaleState } from '@/staff-version'
+import { skippedSnapshot, subscribeSkipped } from '@/lib/tolerant'
 import { useAdsWaitingCount } from '@/api/ads'
 
 const StaffContext = createContext<StaffMember | null>(null)
@@ -57,11 +59,26 @@ function Offline() {
   )
 }
 
-function UpdateBar() {
+/**
+ * Persistent (not dismissible) notices about this build: a newer version is waiting (shown only
+ * while someone is typing or saving; otherwise the app reloads by itself), a screen could not
+ * read its data, or rows were left out because this build cannot read them.
+ */
+function VersionBar() {
+  const { stale, unreadable } = useStaleState()
+  const skipped = useSyncExternalStore(subscribeSkipped, skippedSnapshot, skippedSnapshot)
+  const message = stale
+    ? 'A new version of the staff console is ready.'
+    : unreadable
+      ? `This version of the staff console could not read ${unreadable}.`
+      : skipped.length > 0
+        ? `Some ${skipped.map(([where]) => where).join(', ')} could not be shown by this version of the staff console.`
+        : null
+  if (!message) return null
   return (
-    <div className="bg-panel text-on-panel on-panel" aria-live="polite">
+    <div className="bg-panel text-on-panel on-panel" role="alert">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
-        <span>A new version of the staff console is ready.</span>
+        <span>{message}</span>
         <Button
           size="sm"
           className="bg-on-panel text-ink hover:bg-on-panel-hover h-10 px-4"
@@ -77,7 +94,6 @@ function UpdateBar() {
 function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }) {
   const signOut = useSignOut()
   const online = useOnline()
-  const updateReady = useUpdateReady()
   return (
     <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">
@@ -146,7 +162,7 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
           </ul>
         </nav>
       )}
-      {updateReady && <UpdateBar />}
+      <VersionBar />
       <main className="mx-auto max-w-3xl px-4 py-6">{online ? children : <Offline />}</main>
     </div>
   )

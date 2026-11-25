@@ -1,6 +1,6 @@
-import { STATUS_LABELS, type EnquiryEvent } from '@/api/enquiries'
+import { statusLabel, type EnquiryEvent } from '@/api/enquiries'
 
-const EVENT_TEXT: Partial<Record<EnquiryEvent['kind'], string>> = {
+const EVENT_TEXT: Record<string, string> = {
   submitted: 'Enquiry received',
   site_details_added: 'Customer added the property address',
   contact_requested: 'Customer asked to be contacted',
@@ -45,10 +45,14 @@ export function eventLine(event: EnquiryEvent): { title: string; detail: string 
   }
   const fixed = EVENT_TEXT[event.kind]
   if (fixed) return { title: fixed, detail }
-  const to = event.to_status ? STATUS_LABELS[event.to_status] : 'unknown'
-  const from = event.from_status ? STATUS_LABELS[event.from_status] : null
-  return {
-    title: from ? `Status changed from ${from} to ${to}` : `Status set to ${to}`,
-    detail,
+  if (event.kind === 'status_changed') {
+    const to = event.to_status ? statusLabel(event.to_status) : 'unknown'
+    const from = event.from_status ? statusLabel(event.from_status) : null
+    return {
+      title: from ? `Status changed from ${from} to ${to}` : `Status set to ${to}`,
+      detail,
+    }
   }
+  // A kind added by a newer release: a plain line rather than a failed page.
+  return { title: 'Update recorded', detail }
 }

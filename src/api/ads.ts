@@ -1,19 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { openEnum, parseOne, parseRows } from '@/lib/tolerant'
 import { toApiError } from './errors'
 
-export const AD_STATUS_LABELS = {
+export const AD_STATUS_LABELS: Record<string, string> = {
   new: 'New',
   changes_requested: 'Changes requested',
   approved: 'Approved',
   archived: 'Archived',
-} as const
+}
 
-const status = z.enum(['new', 'changes_requested', 'approved', 'archived'])
+export const adStatusLabel = (status: string) => AD_STATUS_LABELS[status] ?? status
+
+// Open enums and row-by-row lists: values added by a newer release must not break the pages.
+const status = openEnum(['new', 'changes_requested', 'approved', 'archived'])
 
 const variantSchema = z.object({
   id: z.string(),
+  // Closed on purpose: a size this build cannot frame is left out of the list (row by row).
   size: z.enum(['portrait', 'vertical', 'square']),
   width: z.number(),
   height: z.number(),
@@ -21,7 +26,7 @@ const variantSchema = z.object({
   export_path: z.string(),
   export_bytes: z.number().nullable(),
   /** image: a PNG (still ad); video: an MP4 with its loop length and a poster PNG. */
-  export_type: z.enum(['image', 'video']).default('image'),
+  export_type: openEnum(['image', 'video']).default('image'),
   duration_ms: z.number().nullable().default(null),
   poster_path: z.string().nullable().default(null),
 })
@@ -36,7 +41,7 @@ const versionSchema = z.object({
   created_at: z.string(),
   approved_at: z.string().nullable().default(null),
   approved_by_name: z.string().nullable().default(null),
-  ad_variants: z.array(variantSchema),
+  ad_variants: z.array(z.unknown()).transform((rows) => parseRows(variantSchema, rows, 'ad sizes')),
 })
 
 export const REQUEST_SIZES = {
@@ -46,12 +51,15 @@ export const REQUEST_SIZES = {
   square: 'Square',
 } as const
 
+export const requestSizeLabel = (size: string) =>
+  (REQUEST_SIZES as Record<string, string>)[size] ?? size
+
 const requestSchema = z.object({
   id: z.string(),
   version_id: z.string(),
-  size: z.enum(['both', 'portrait', 'vertical', 'square']),
+  size: openEnum(['both', 'portrait', 'vertical', 'square']),
   body: z.string(),
-  state: z.enum(['open', 'done', 'withdrawn']),
+  state: openEnum(['open', 'done', 'withdrawn']),
   done_in_version: z.number().nullable(),
   created_by: z.string().nullable(),
   created_by_name: z.string(),
@@ -72,7 +80,9 @@ const creativeSchema = z
         utm_medium: z.string(),
         landing_route: z.enum(['/', '/enquire']),
       })
-      .nullable(),
+      .nullable()
+      // A campaign this build cannot build a link for: the ad shows without the link.
+      .catch(null),
   })
   .nullable()
 
@@ -83,33 +93,36 @@ const adSchema = z.object({
   created_at: z.string(),
   created_by_name: z.string().nullable(),
   campaign_creatives: creativeSchema,
-  ad_versions: z.array(versionSchema),
-  ad_requests: z.array(requestSchema).default([]),
+  ad_versions: z
+    .array(z.unknown())
+    .transform((rows) => parseRows(versionSchema, rows, 'ad versions')),
+  ad_requests: z
+    .array(z.unknown())
+    .default([])
+    .transform((rows) => parseRows(requestSchema, rows, 'ad change requests')),
 })
 
 export type Ad = z.infer<typeof adSchema>
 export type AdVersion = z.infer<typeof versionSchema>
 export type AdVariant = z.infer<typeof variantSchema>
 
-const listSchema = z.array(
-  z.object({
-    id: z.string(),
-    name: z.string(),
-    status,
-    created_at: z.string(),
-    ad_versions: z.array(
-      z.object({
-        version: z.number(),
-        ad_variants: z
-          .array(z.object({ duration_ms: z.number().nullable().default(null) }))
-          .default([]),
-      }),
-    ),
-    ad_requests: z.array(z.object({ state: z.string() })).default([]),
-  }),
-)
+const listItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status,
+  created_at: z.string(),
+  ad_versions: z.array(
+    z.object({
+      version: z.number(),
+      ad_variants: z
+        .array(z.object({ duration_ms: z.number().nullable().default(null) }))
+        .default([]),
+    }),
+  ),
+  ad_requests: z.array(z.object({ state: z.string() })).default([]),
+})
 
-export type AdListItem = z.infer<typeof listSchema>[number]
+export type AdListItem = z.infer<typeof listItemSchema>
 
 export function useAds() {
   return useQuery({
@@ -122,7 +135,7 @@ export function useAds() {
         )
         .order('created_at', { ascending: false })
       if (error) throw toApiError(error)
-      return listSchema.parse(data)
+      return parseRows(listItemSchema, data, 'ads')
     },
   })
 }
@@ -139,7 +152,7 @@ export function useAd(id: string) {
         .eq('id', id)
         .maybeSingle()
       if (error) throw toApiError(error)
-      return data === null ? null : adSchema.parse(data)
+      return data === null ? null : parseOne(adSchema, data, 'this ad')
     },
   })
 }

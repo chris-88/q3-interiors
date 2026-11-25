@@ -7,6 +7,7 @@ import {
   type Slot,
 } from '@/api/booking'
 import { BookingConfirmed } from '@/components/booking/booking-outcome'
+import { PreparePanel } from '@/components/booking/prepare-panel'
 import { SlotPicker } from '@/components/booking/slot-picker'
 import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -16,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { formatClock, formatLongDate } from '@/lib/format'
 
-type Mode = 'view' | 'move' | 'move_confirm' | 'cancel'
+type Mode = 'view' | 'move' | 'move_confirm' | 'cancel' | 'prepare'
 
 function Heading({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLHeadingElement>(null)
@@ -70,11 +71,19 @@ export function ManageBooking({
   reference: string
   /** Lets the page start a fresh booking once this one is cancelled. */
   onCancelled: () => void
-  /** From the email's "Change time" / "Cancel appointment" links (`?do=change|cancel`). */
-  initialAction?: 'change' | 'cancel' | null
+  /** From the email's links (`?do=change|cancel|prepare`). */
+  initialAction?: 'change' | 'cancel' | 'prepare' | null
 }) {
+  // When the page was opened: the offer is for appointments still to come.
+  const [openedAt] = useState(() => Date.now())
   const [mode, setMode] = useState<Mode>(() =>
-    !booking.canChange || !initialAction ? 'view' : initialAction === 'change' ? 'move' : 'cancel',
+    initialAction === 'prepare'
+      ? 'prepare'
+      : !booking.canChange || !initialAction
+        ? 'view'
+        : initialAction === 'change'
+          ? 'move'
+          : 'cancel',
   )
   const [slot, setSlot] = useState<Slot | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -103,6 +112,10 @@ export function ManageBooking({
         </div>
       </section>
     )
+  }
+
+  if (mode === 'prepare') {
+    return <PreparePanel token={token} booking={booking} onBack={() => setMode('view')} />
   }
 
   if (mode === 'cancel') {
@@ -359,6 +372,31 @@ export function ManageBooking({
               <RingUs phone={booking.businessPhone} />
             </div>
           )
+        }
+        offer={
+          Date.parse(booking.start) > openedAt ? (
+            <section
+              aria-labelledby="prepare-offer"
+              className="bg-soft mt-8 flex flex-col gap-3 rounded-md p-4"
+            >
+              <h2 id="prepare-offer" className="text-title text-ink font-medium">
+                Help us prepare (optional)
+              </h2>
+              <p className="text-ink">
+                Photos of the space, a rough budget or when you would like the work to start help us
+                make the most of your {booking.type.mode === 'on_site' ? 'visit' : 'call'}.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-auto min-h-12 self-start bg-white py-3 text-base whitespace-normal"
+                onClick={() => setMode('prepare')}
+              >
+                Help us prepare
+              </Button>
+            </section>
+          ) : null
         }
       />
     </>

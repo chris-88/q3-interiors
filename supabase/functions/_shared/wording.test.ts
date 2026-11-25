@@ -90,7 +90,7 @@ describe('wording blocks', () => {
   it('lead the confirmation with the time, length and what will happen, then the reference', () => {
     const visit = renderMessage('booking_confirmation', { ...base, ctx: ctx() }).text
     expect(visit).toMatch(
-      /Thursday 4 March 2027 at 10:00 \(Irish time\)\nAbout 60 minutes\n\nPat will meet you at 12 Example Road\.\n\nYour enquiry reference is Q3-ABC123\.\n\nChange time: https:\/\/q3.example\/#\/book\/tok\?do=change\n\nCancel appointment: https:\/\/q3.example\/#\/book\/tok\?do=cancel/,
+      /Thursday 4 March 2027 at 10:00 \(Irish time\)\nAbout 60 minutes\n\nPat will meet you at 12 Example Road\.\n\nYour enquiry reference is Q3-ABC123\.\n\nChange time: https:\/\/q3.example\/#\/book\/tok\?do=change\n\nCancel appointment: https:\/\/q3.example\/#\/book\/tok\?do=cancel\n\nHelp us prepare \(optional\): https:\/\/q3.example\/#\/book\/tok\?do=prepare/,
     )
     const call = renderMessage('booking_confirmation', { ...base, ctx: ctx('phone') })
     expect(call.text).toContain('Pat will ring you on 087 123 4567.')

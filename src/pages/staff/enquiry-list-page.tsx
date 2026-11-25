@@ -113,6 +113,7 @@ export function EnquiryListPage() {
                     <EnquiryFlags
                       answers={enquiry.answers}
                       contactRequestedAt={enquiry.contact_requested_at}
+                      addedAfterBookingAt={enquiry.added_after_booking_at}
                     />
                     <span className="text-muted-foreground text-xs">
                       <span className="font-mono">{enquiry.reference}</span> ·{' '}

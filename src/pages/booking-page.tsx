@@ -593,7 +593,8 @@ export function BookingPage() {
   const { token = '' } = useParams()
   const [search] = useSearchParams()
   const doParam = search.get('do')
-  const initialAction = doParam === 'change' || doParam === 'cancel' ? doParam : null
+  const initialAction =
+    doParam === 'change' || doParam === 'cancel' || doParam === 'prepare' ? doParam : null
   const context = useBookingContext(token)
   const [round, setRound] = useState(0)
   const latest = context.data?.booking ?? null

@@ -1,6 +1,10 @@
 import type { Page, Request } from '@playwright/test'
 import { handlePublic, type PublicDeps } from '../supabase/functions/_shared/public-booking.ts'
-import { FakeCalendar, FakeDb } from '../supabase/functions/_shared/testing/fakes.ts'
+import {
+  FakeCalendar,
+  FakeDb,
+  FakePhotoStore,
+} from '../supabase/functions/_shared/testing/fakes.ts'
 import { composeSiteAddress } from '../src/forms/enquiry/v2.ts'
 
 export type SubmitBody = {
@@ -26,6 +30,7 @@ export async function installFakeBackend(
   const now = () => Date.now() + clock.offset
   const db = new FakeDb(now)
   const calendar = new FakeCalendar()
+  const photos = new FakePhotoStore()
   const deps: PublicDeps = {
     db,
     calendar,
@@ -33,7 +38,10 @@ export async function installFakeBackend(
     mailer: { send: async () => 'msg_fake' },
     appUrl: 'https://q3.example',
     now,
+    photos,
   }
+  /** Every public-booking request body, in order (to check what left the browser). */
+  const bookingBodies: Record<string, unknown>[] = []
   // Safety net: anything else bound for a real Supabase backend fails instead of writing to it.
   // (Playwright matches the most recently registered route first, so the routes below win.)
   await page.route(/\/(rest|auth|functions|storage)\/v1\//, (route) =>
@@ -122,7 +130,9 @@ export async function installFakeBackend(
       })
       return
     }
-    const result = await handlePublic(route.request().postDataJSON(), deps)
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    bookingBodies.push(body)
+    const result = await handlePublic(body, deps)
     await route.fulfill({
       status: result.status,
       contentType: 'application/json',
@@ -131,7 +141,7 @@ export async function installFakeBackend(
     })
   })
 
-  return { db, calendar, clock, submitBodies }
+  return { db, calendar, clock, submitBodies, photos, bookingBodies }
 }
 
 export type Route = 'phone' | 'on_site'

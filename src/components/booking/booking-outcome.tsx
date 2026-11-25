@@ -49,10 +49,13 @@ export function BookingConfirmed({
   booking,
   reference,
   actions,
+  offer,
 }: {
   booking: CustomerBooking
   reference: string
   actions?: ReactNode
+  /** "Help us prepare (optional)", after the actions. */
+  offer?: ReactNode
 }) {
   const visitDisclaimer = usePublicVisitDisclaimer()
   return (
@@ -72,6 +75,7 @@ export function BookingConfirmed({
         Reference <span className="text-ink font-mono">{reference}</span>
       </p>
       {actions}
+      {offer}
       <p className="text-muted-foreground mt-8">We will email you a confirmation.</p>
       <h2 className="text-title text-ink mt-8 font-medium">To prepare</h2>
       <p className="text-muted-foreground mt-2">{booking.whatToPrepare}</p>

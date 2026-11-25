@@ -48,6 +48,8 @@ export type StaffWorld = {
   testCalendar: { email: string | null }
   /** Objects in the private `ads` bucket: path -> body and type. */
   adFiles: Map<string, { body: Buffer | string; type: string }>
+  /** Objects in the private `enquiry-photos` bucket: path -> JPEG bytes. */
+  photoFiles: Map<string, Buffer>
 }
 
 export function staffWorld(): StaffWorld {
@@ -82,6 +84,7 @@ export function staffWorld(): StaffWorld {
     funnel: [],
     testCalendar: { email: null },
     adFiles: new Map(),
+    photoFiles: new Map(),
     business: {
       trading_name: 'Q3 Interiors',
       legal_name: null,
@@ -530,6 +533,29 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       contentType: file.type,
       headers: { 'access-control-allow-origin': '*' },
       body: file.body,
+    })
+  })
+
+  // Private photo storage: only an active staff session may read a customer's photo.
+  await page.route('**/storage/v1/object/enquiry-photos/**', async (route) => {
+    const req = route.request()
+    if (req.method() === 'OPTIONS') return json(route, 204, undefined)
+    const caller = world.staff.get(subOf(req.headers().authorization) ?? '')
+    const objectPath = decodeURIComponent(
+      new URL(req.url()).pathname.split('/storage/v1/object/enquiry-photos/')[1] ?? '',
+    )
+    const file = world.photoFiles.get(objectPath)
+    if (!caller?.active || !file)
+      return json(route, 400, {
+        statusCode: '404',
+        error: 'not_found',
+        message: 'Object not found',
+      })
+    return route.fulfill({
+      status: 200,
+      contentType: 'image/jpeg',
+      headers: { 'access-control-allow-origin': '*' },
+      body: file,
     })
   })
 

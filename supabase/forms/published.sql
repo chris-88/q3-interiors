@@ -482,3 +482,81 @@ select public.publish_form_version(
   ]
 }$form$::jsonb
 );
+
+select public.publish_form_version(
+  'prepare',
+  1,
+  $form${
+  "formId": "prepare",
+  "version": 1,
+  "title": "Help us prepare",
+  "steps": [
+    {
+      "id": "prepare",
+      "title": "Help us prepare",
+      "fields": [
+        {
+          "id": "budget",
+          "type": "single",
+          "label": "Rough budget",
+          "required": false,
+          "options": [
+            {
+              "value": "under_10k",
+              "label": "Under €10,000"
+            },
+            {
+              "value": "10k_25k",
+              "label": "€10,000 to €25,000"
+            },
+            {
+              "value": "25k_50k",
+              "label": "€25,000 to €50,000"
+            },
+            {
+              "value": "50k_100k",
+              "label": "€50,000 to €100,000"
+            },
+            {
+              "value": "over_100k",
+              "label": "Over €100,000"
+            },
+            {
+              "value": "need_guidance",
+              "label": "I’d like guidance"
+            }
+          ]
+        },
+        {
+          "id": "timing",
+          "type": "single",
+          "label": "When would you like the work to start?",
+          "required": false,
+          "options": [
+            {
+              "value": "asap",
+              "label": "As soon as possible"
+            },
+            {
+              "value": "within_3_months",
+              "label": "Within 3 months"
+            },
+            {
+              "value": "3_to_6_months",
+              "label": "In 3 to 6 months"
+            },
+            {
+              "value": "6_to_12_months",
+              "label": "In 6 to 12 months"
+            },
+            {
+              "value": "flexible",
+              "label": "I’m flexible"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}$form$::jsonb
+);

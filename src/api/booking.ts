@@ -93,14 +93,32 @@ export class InvalidLinkError extends Error {
   }
 }
 
-async function call<T>(body: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
+/** A refusal from public-booking: the HTTP status and the function's error code. */
+export class BookingApiError extends ApiError {
+  readonly reason: string | null
+  constructor(status: number, reason: string | null) {
+    super(`public-booking returned ${status}`, String(status))
+    this.name = 'BookingApiError'
+    this.reason = reason
+  }
+}
+
+export async function call<T>(body: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('public-booking', { body })
   if (error) {
     if (error instanceof FunctionsHttpError) {
-      const status = (error.context as Response).status
+      const response = error.context as Response
+      const status = response.status
       if (status === 401) throw new InvalidLinkError()
       if (status === 429) throw new RateLimitedError()
-      throw new ApiError(`public-booking returned ${status}`, String(status))
+      let reason: string | null = null
+      try {
+        const parsed = z.object({ error: z.string() }).safeParse(await response.json())
+        if (parsed.success) reason = parsed.data.error
+      } catch {
+        // not JSON
+      }
+      throw new BookingApiError(status, reason)
     }
     throw new ApiError(error.message)
   }

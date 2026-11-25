@@ -18,6 +18,8 @@ import type {
   Communication,
   Db,
   EnquiryRow,
+  PhotoReservation,
+  PrepareState,
   ReserveResult,
   StaffAvailability,
 } from './types.ts'
@@ -165,6 +167,38 @@ export function createDb(): Db {
     },
     async recordCalendarError(staffId, error) {
       await q`select private.record_calendar_error(${staffId}, ${error})`
+    },
+    async prepareState(enquiryId) {
+      const [row] = await q`select private.prepare_state(${enquiryId}) as s`
+      return row?.s as PrepareState
+    },
+    async savePrepare(enquiryId, patch) {
+      const [row] = await q`select private.save_prepare(${enquiryId}, ${q.json(patch)}) as r`
+      return row?.r as { status: 'saved' | 'closed'; reason?: string }
+    },
+    async reservePhoto(enquiryId, key, photo) {
+      // bytea goes over as hex: the driver's binary handling differs between runtimes.
+      const thumb = Array.from(photo.thumb, (b) => b.toString(16).padStart(2, '0')).join('')
+      const [row] = await q`select private.reserve_photo(${enquiryId}, ${key}, ${photo.bytes},
+        ${photo.width}, ${photo.height}, decode(${thumb}, 'hex')) as r`
+      return row?.r as PhotoReservation
+    },
+    async photoStored(enquiryId, photoId) {
+      await q`select private.photo_stored(${enquiryId}, ${photoId})`
+    },
+    async removePhoto(enquiryId, photoId) {
+      const [row] = await q`select private.remove_photo(${enquiryId}, ${photoId}) as r`
+      return row?.r as { status: 'removed' | 'not_found' | 'closed'; path?: string }
+    },
+    async claimPhotoDeletions(limit) {
+      const rows = await q`select private.claim_photo_deletions(${limit}) as p`
+      return rows.map((r) => String(r.p))
+    },
+    async photoDeletionDone(paths) {
+      await q`select private.photo_deletion_done(${paths}::text[])`
+    },
+    async photoDeletionFailed(path, error) {
+      await q`select private.photo_deletion_failed(${path}, ${error})`
     },
     async getWording() {
       const rows = await q`select key, body from public.message_blocks`

@@ -22,9 +22,13 @@ import type {
   Communication,
   Db,
   EnquiryRow,
+  PhotoReservation,
+  PrepareState,
+  PrepareWindow,
   ReserveResult,
   StaffAvailability,
 } from '../types.ts'
+import type { PhotoStore } from '../storage.ts'
 
 const LIVE = new Set(['reserved', 'calendar_pending', 'confirmed'])
 const MIN = 60_000
@@ -113,7 +117,7 @@ export class FakeDb implements Db {
   comms: Comm[] = []
   events: { enquiryId: string; kind: string; detail?: string }[] = []
   calendarErrors: string[] = []
-  private seq = 0
+  seq = 0
 
   constructor(now: () => number) {
     this.now = now
@@ -732,6 +736,181 @@ export class FakeDb implements Db {
     const token = `minted-${++this.mintedTokens}-0123456789abcdefghij`
     this.tokens.set(token, { enquiryId, expiresAt: this.now() + 30 * 24 * 60 * MIN })
     return token
+  }
+
+  // Form v2 part B, mirroring 20261127120000_help_us_prepare.sql.
+  prepare = new Map<
+    string,
+    { answers: Record<string, string>; marketing: boolean; addedAfterBookingAt: string | null }
+  >()
+  photos: {
+    id: string
+    enquiry_id: string
+    key: string
+    path: string
+    bytes: number
+    width: number
+    height: number
+    thumb: Uint8Array
+    uploaded_at: string | null
+  }[] = []
+  pendingPhotoDeletions: string[] = []
+  private prepareOf(enquiryId: string) {
+    let p = this.prepare.get(enquiryId)
+    if (!p) {
+      p = { answers: {}, marketing: false, addedAfterBookingAt: null }
+      this.prepare.set(enquiryId, p)
+    }
+    return p
+  }
+  private touch(enquiryId: string, kind: string, detail?: string) {
+    this.prepareOf(enquiryId).addedAfterBookingAt = new Date(this.now()).toISOString()
+    this.events.push({ enquiryId, kind, detail })
+  }
+  window(enquiryId: string): PrepareWindow {
+    const live = this.bookings
+      .filter((b) => b.enquiry_id === enquiryId && LIVE.has(b.state))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+    if (!live) return { open: false, reason: 'no_booking', mode: null }
+    const mode = this.types.find((t) => t.id === live.appointment_type_id)?.mode ?? null
+    if (Date.parse(live.starts_at) <= this.now()) return { open: false, reason: 'started', mode }
+    return { open: true, reason: null, mode }
+  }
+  async prepareState(enquiryId: string): Promise<PrepareState> {
+    const e = this.enquiries.get(enquiryId)!
+    const p = this.prepareOf(enquiryId)
+    const notes = e.site_details?.access_notes
+    return {
+      window: this.window(enquiryId),
+      answers: { ...p.answers },
+      access_notes: typeof notes === 'string' ? notes : null,
+      marketing_opt_in: p.marketing,
+      max_photos: 8,
+      photos: this.photos
+        .filter((x) => x.enquiry_id === enquiryId && x.uploaded_at)
+        .map((x) => ({
+          id: x.id,
+          thumb: btoa(String.fromCharCode(...x.thumb)),
+          added_at: x.uploaded_at ?? '',
+        })),
+    }
+  }
+  async savePrepare(enquiryId: string, patch: Record<string, string | boolean>) {
+    const invalid = () => Object.assign(new Error('invalid'), { code: '22023' })
+    const w = this.window(enquiryId)
+    if (!w.open) return { status: 'closed' as const, reason: w.reason ?? undefined }
+    const p = this.prepareOf(enquiryId)
+    const values: Record<string, string[]> = {
+      budget: ['under_10k', '10k_25k', '25k_50k', '50k_100k', 'over_100k', 'need_guidance'],
+      timing: ['asap', 'within_3_months', '3_to_6_months', '6_to_12_months', 'flexible'],
+    }
+    const changed: string[] = []
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === 'budget' || key === 'timing') {
+        if (typeof value !== 'string') throw invalid()
+        if (value !== '' && !values[key]?.includes(value)) throw invalid()
+        if ((p.answers[key] ?? '') !== value) changed.push(key)
+        if (value === '') delete p.answers[key]
+        else p.answers[key] = value
+      } else if (key === 'access_notes') {
+        if (typeof value !== 'string' || value.length > 500 || w.mode !== 'on_site') throw invalid()
+        const e = this.enquiries.get(enquiryId)!
+        const next = { ...(e.site_details ?? {}) }
+        if (value.trim()) next.access_notes = value.trim()
+        else delete next.access_notes
+        e.site_details = next
+        changed.push(key)
+      } else if (key === 'marketing_opt_in') {
+        if (typeof value !== 'boolean') throw invalid()
+        if (p.marketing !== value) changed.push(key)
+        p.marketing = value
+      } else throw invalid()
+    }
+    if (changed.length) this.touch(enquiryId, 'prepare_updated', changed.join(', '))
+    return { status: 'saved' as const }
+  }
+  async reservePhoto(
+    enquiryId: string,
+    key: string,
+    photo: { bytes: number; width: number; height: number; thumb: Uint8Array },
+  ): Promise<PhotoReservation> {
+    const existing = this.photos.find((x) => x.key === key)
+    if (existing) {
+      if (existing.enquiry_id !== enquiryId) return { status: 'forbidden' }
+      return {
+        status: existing.uploaded_at ? 'stored' : 'reserved',
+        id: existing.id,
+        path: existing.path,
+      }
+    }
+    const w = this.window(enquiryId)
+    if (!w.open) return { status: 'closed', reason: w.reason ?? '' }
+    if (this.photos.filter((x) => x.enquiry_id === enquiryId).length >= 8)
+      return { status: 'limit' }
+    const id = `00000000-0000-4000-9000-${String(++this.seq).padStart(12, '0')}`
+    const row = {
+      id,
+      enquiry_id: enquiryId,
+      key,
+      path: `enquiries/${enquiryId}/${id}.jpg`,
+      ...photo,
+      uploaded_at: null,
+    }
+    this.photos.push(row)
+    return { status: 'reserved', id, path: row.path }
+  }
+  async photoStored(enquiryId: string, photoId: string) {
+    const row = this.photos.find((x) => x.id === photoId && x.enquiry_id === enquiryId)
+    if (!row || row.uploaded_at) return
+    row.uploaded_at = new Date(this.now()).toISOString()
+    this.touch(enquiryId, 'photo_added')
+  }
+  async removePhoto(enquiryId: string, photoId: string) {
+    const w = this.window(enquiryId)
+    if (!w.open) return { status: 'closed' as const, reason: w.reason ?? undefined }
+    const row = this.photos.find((x) => x.id === photoId && x.enquiry_id === enquiryId)
+    if (!row) return { status: 'not_found' as const }
+    this.photos = this.photos.filter((x) => x !== row)
+    this.pendingPhotoDeletions.push(row.path)
+    this.touch(enquiryId, 'photo_removed')
+    return { status: 'removed' as const, path: row.path }
+  }
+  /** As the cascade trigger does when an enquiry is deleted. */
+  deleteEnquiry(enquiryId: string) {
+    for (const row of this.photos.filter((x) => x.enquiry_id === enquiryId))
+      this.pendingPhotoDeletions.push(row.path)
+    this.photos = this.photos.filter((x) => x.enquiry_id !== enquiryId)
+    this.enquiries.delete(enquiryId)
+  }
+  async claimPhotoDeletions(limit: number) {
+    return this.pendingPhotoDeletions.slice(0, limit)
+  }
+  async photoDeletionDone(paths: string[]) {
+    this.pendingPhotoDeletions = this.pendingPhotoDeletions.filter((p) => !paths.includes(p))
+  }
+  async photoDeletionFailed() {}
+}
+
+/** An in-memory private bucket; `failPuts` makes the next N uploads fail (an interrupted upload). */
+export class FakePhotoStore implements PhotoStore {
+  files = new Map<string, Uint8Array>()
+  failPuts = 0
+  failRemoves = 0
+  puts = 0
+  async put(path: string, bytes: Uint8Array) {
+    this.puts += 1
+    if (this.failPuts > 0) {
+      this.failPuts -= 1
+      throw new Error('storage put 503')
+    }
+    this.files.set(path, bytes)
+  }
+  async remove(paths: string[]) {
+    if (this.failRemoves > 0) {
+      this.failRemoves -= 1
+      throw new Error('storage remove 503')
+    }
+    for (const p of paths) this.files.delete(p)
   }
 }
 

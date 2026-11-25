@@ -10,6 +10,20 @@ rest="$url/rest/v1"
 headers=(-H "apikey: $key" -H "Authorization: Bearer $key" -H 'content-type: application/json')
 fail=0
 
+# Cloudflare rate-limits the public API (50 requests per 10 seconds per address). This script tests
+# the public URL on purpose, so it paces itself: a 3-second pause after every 8 requests keeps it
+# under about 27 a window, and two runs in a row pass. (curl runs in subshells, hence the file.)
+pace_file="$(mktemp)"
+trap 'rm -f "$pace_file"' EXIT
+echo 0 >"$pace_file"
+curl() {
+  local n
+  n=$(($(cat "$pace_file") + 1))
+  echo "$n" >"$pace_file"
+  if ((n % 8 == 0)); then sleep 3; fi
+  command curl "$@"
+}
+
 expect_code() {
   local what="$1" want="$2" body="$3"
   if [[ "$body" == *"\"code\":\"$want\""* ]]; then

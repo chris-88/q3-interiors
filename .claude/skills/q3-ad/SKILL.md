@@ -61,6 +61,12 @@ Staff ask for changes on the ad page in the staff console. When Chris says "pick
 6. **Publish as the next version** once Chris is happy, naming the requests it answers: `npm run ad:publish -- ads/work/<slug> --done <request id>,<request id>`. Because `ad.json` has the `ad_id`, this adds version N+1 to the same ad, marks those requests "done in version N+1", and puts the ad back to "New" for review. Requests you did not address stay open.
 7. **Tell Chris** which requests are done in which version, which are still open and why, and that the new version is waiting for review in Ads.
 
+## Where the commands connect
+
+`ad:publish`, `ad:requests` and `ad:pull` use the stack's gateway on this machine (`http://localhost:8003`), not the public URL, so they are not rate-limited by Cloudflare. If one says the gateway is not answering, the q3-interiors stack is down on this machine: tell Chris rather than pointing the command elsewhere. `Q3_STACK_URL` overrides the address only when Chris asks for it.
+
+## Do not
+
 - Do not commit anything under `ads/work/`, and do not put ad files anywhere else in the repo.
 - Do not change the wordmark artwork, the colours or the kit to suit one ad; raise it with Chris instead.
 - Do not publish an ad Chris has not seen. A change to a published ad is a new version of it (keep `ad_id` in `ad.json`), not a new ad.

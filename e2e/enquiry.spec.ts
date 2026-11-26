@@ -133,7 +133,7 @@ test('a call, from an Instagram link to booked in four forward actions', async (
   expect(submitBodies[1]?.p_idempotency_key).toBe(submitBodies[0]?.p_idempotency_key)
   expect(submitBodies[1]).toMatchObject({
     p_form_id: 'enquiry',
-    p_form_version: 2,
+    p_form_version: 3,
     p_marketing_opt_in: false,
     p_answers: {
       appointment_preference: 'phone',

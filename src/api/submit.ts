@@ -16,6 +16,8 @@ export type SubmitEnquiryInput = {
   trap: string
   /** This tab's visit id (no personal data), so the enquiry joins its landing session. */
   sessionId?: string | null
+  /** The website project slug the visitor came from (known slugs only), or null. */
+  inspiration?: string | null
 }
 
 const submittedSchema = z.object({
@@ -41,6 +43,8 @@ export async function submitEnquiry(input: SubmitEnquiryInput): Promise<Submitte
     p_attribution: input.attribution,
     p_trap: input.trap || null,
     p_session_id: input.sessionId ?? null,
+    // Sent only when there is one, so an ordinary submission matches every signature.
+    ...(input.inspiration ? { p_inspiration: input.inspiration } : {}),
   })
   if (error) {
     if (error.code === 'PT429' || error.message === 'rate_limited') throw new RateLimitedError()

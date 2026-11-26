@@ -12,6 +12,7 @@ const PUBLISHED_FINGERPRINTS: Record<string, string> = {
   'site_details@1': 'd29862871f5a2f666231bbb981fb5244502a083116ab82b64506858271129eac',
   'enquiry@2': 'a47f0c45cf5e9363815b440f0c4b64e8fbbb96f5069998bfaff4951c4877eeda',
   'prepare@1': '0a6a8c2418d6d1dc8b6c7ebcda431b742c5e375f6b7d78355c51728809c58a6c',
+  'enquiry@3': '365f985456c341444d7ea775436fec7864a3f8d3d84217ab91d0720dc9264005',
 }
 
 async function fingerprint(value: unknown): Promise<string> {

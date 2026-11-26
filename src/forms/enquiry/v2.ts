@@ -2,7 +2,8 @@ import type { FormDefinition } from '../types.ts'
 
 /**
  * Enquiry form, version 2 (the booking-first journey). PUBLISHED: this object is stored in
- * `form_versions` and enquiries made with it are read through it. Do not edit it; add a v3.
+ * `form_versions` and enquiries made with it are read through it. Do not edit it. New enquiries use v3
+ * (`./v3.ts`, which adds "Workplace fit-out").
  *
  * Field ids and option values carried over from v1 keep their meaning (`project_type` and its
  * values, `project_type_other`, `location`, `name`, `email`, `phone`). New in v2:
@@ -145,9 +146,6 @@ export const enquiryV2: FormDefinition = {
     },
   ],
 }
-
-/** The version new enquiries are made with. */
-export const currentEnquiryForm: FormDefinition = enquiryV2
 
 /** Joins the visit address lines and the town or Eircode, as the database does on save. */
 export function composeSiteAddress(

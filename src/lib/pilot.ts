@@ -79,6 +79,7 @@ const LABELS: Record<string, string> = {
   'all:all': 'All',
   'version:1': 'Form v1',
   'version:2': 'Form v2',
+  'version:3': 'Form v3',
   'route:phone': 'Phone call',
   'route:on_site': 'Site visit',
   'route:none': 'No route chosen',

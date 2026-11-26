@@ -16,7 +16,7 @@ import { PublicLayout } from '@/components/public-layout'
 import { TroubleMessage } from '@/components/trouble-message'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { currentEnquiryForm } from '@/forms/enquiry/v2'
+import { currentEnquiryForm } from '@/forms/enquiry/v3'
 import { cleanAnswers, findField, formatAnswer, validateFields, visibleFields } from '@/forms/logic'
 import type { Answers, FormDefinition, FormField, SingleChoiceField } from '@/forms/types'
 import { currentAttribution } from '@/lib/attribution'
@@ -29,8 +29,10 @@ import {
   saveDraft,
   type Draft,
 } from '@/lib/draft'
+import { clearInspiration, readEntry, takePendingProjectType } from '@/lib/entry'
 import { ROUTE_COPY, isRoute, otherRoute, recapLine, routeTitle } from '@/lib/journey'
 import { safeStorage, type SafeStorage } from '@/lib/storage'
+import { findProject, projectUrl } from '@/lib/website'
 
 type Props = {
   form?: FormDefinition
@@ -75,16 +77,25 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
     sessionStore: stores.sessionStore ?? safeStorage('session'),
     localStore: stores.localStore ?? safeStorage('local'),
   }))
+  // What a website link brought (src/lib/entry.ts): a project to show as context and a project
+  // type to pre-select (once; the customer can change it).
+  const [entry] = useState(() => readEntry(sessionStore))
+  const inspiration = findProject(entry.inspiration)
   // The landing choice arrives as ?type=; it starts (or switches) the route and the Project
   // screen. A draft from an older form version is discarded by loadDraft.
   const [initial] = useState<Draft>(() => {
     const draft = loadDraft(sessionStore, form.formId, form.version)
     const chosen = searchParams.get('type')
-    if (!isRoute(chosen)) return { ...draft, step: Math.min(draft.step, DETAILS) }
+    const suggested = entry.pendingProjectType
+    const answers =
+      suggested && findField(form, 'project_type')
+        ? { ...draft.answers, project_type: suggested }
+        : draft.answers
+    if (!isRoute(chosen)) return { ...draft, answers, step: Math.min(draft.step, DETAILS) }
     return {
       ...draft,
       step: PROJECT,
-      answers: { ...draft.answers, appointment_preference: chosen },
+      answers: { ...answers, appointment_preference: chosen },
     }
   })
   const draftRef = useRef<Draft>(initial)
@@ -110,6 +121,10 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
     [subscribe, persist],
   )
   useEffect(() => persist({ step }), [persist, step])
+  // The suggested project type is in the draft now; a reload keeps the customer's own choice.
+  useEffect(() => {
+    if (entry.pendingProjectType) takePendingProjectType(sessionStore)
+  }, [entry.pendingProjectType, sessionStore])
   // Drop ?type= once it is in the draft, so a reload or Back does not restart the route.
   useEffect(() => {
     if (!searchParams.has('type')) return
@@ -163,10 +178,12 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
         attribution: currentAttribution(localStore),
         trap,
         sessionId: currentVisitId(sessionStore),
+        inspiration: inspiration?.slug ?? null,
       },
       {
         onSuccess: ({ reference, accessToken }) => {
           completeSubmission(sessionStore, reference)
+          clearInspiration(sessionStore)
           if (!accessToken) {
             // The server saw a bot (honeypot): show the ordinary confirmation, nothing more.
             void navigate('/enquire/sent', { replace: true })
@@ -227,6 +244,23 @@ export function EnquiryPage({ form = currentEnquiryForm, ...stores }: Props) {
                 Switch to a {ROUTE_COPY[otherRoute(route)].noun}
               </button>
             </p>
+            {inspiration && (
+              <aside
+                aria-label="The project you were looking at"
+                className="bg-soft text-ink mt-4 flex flex-col rounded-md px-4 pt-3"
+              >
+                <span className="text-muted-foreground text-sm">You were looking at</span>
+                <span>
+                  {inspiration.title}, {inspiration.location}
+                </span>
+                <a
+                  href={projectUrl(inspiration.slug)}
+                  className="inline-flex min-h-12 items-center self-start text-sm underline underline-offset-4"
+                >
+                  Back to the project
+                </a>
+              </aside>
+            )}
             <div className="mt-6 flex flex-col gap-8">
               <Controller
                 name="project_type"

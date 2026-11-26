@@ -95,6 +95,11 @@ test('after booking, the customer adds photos and answers; staff need no alert f
   for (const file of photos.files.values()) expect(hasExif(file)).toBe(false)
   expect(db.photos.every((p) => Math.max(p.width, p.height) === 2048)).toBe(true)
 
+  // The budget question carries its hint, tied to the group for screen readers.
+  const budget = page.getByRole('group', { name: /^Rough budget/ })
+  await expect(budget).toHaveAccessibleDescription(
+    'This helps us suggest what fits. It isn’t a commitment.',
+  )
   // Answers save on their own.
   await page.getByRole('radio', { name: '€25,000 to €50,000' }).check()
   await expect(page.getByText('Saved').first()).toBeVisible()

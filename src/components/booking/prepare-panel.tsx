@@ -73,6 +73,14 @@ function uploadError(error: unknown): { message: string; retryable: boolean } {
   }
 }
 
+/**
+ * Screen hints under the prepare questions. Presentational, like the access-notes hint below: the
+ * published form prepare@1 is not changed (a hint in it would need a new form version).
+ */
+const PREPARE_HINTS: Record<string, string> = {
+  budget: 'This helps us suggest what fits. It isn’t a commitment.',
+}
+
 function SavedNote({ show }: { show: boolean }) {
   return (
     <p aria-live="polite" className="text-muted-foreground min-h-5 text-sm">
@@ -276,6 +284,7 @@ function Choice({
         name={`prepare-${field.id}`}
         legend={field.label}
         optional
+        hint={PREPARE_HINTS[field.id]}
         options={field.options}
         value={shown}
         onChange={(v) => {

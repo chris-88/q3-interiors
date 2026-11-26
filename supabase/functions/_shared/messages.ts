@@ -3,7 +3,8 @@
 // TEXT BLOCKS inside it that an admin may reword in Settings > Wording. The defaults below are
 // used for any block not reworded. Blocks are plain text: they are escaped like every other value,
 // and may only use the tokens listed for them. Vocabulary follows the brand guide: an enquiry; a
-// call or a site visit; an estimate is a price range; a quote covers an agreed scope.
+// call or a site visit; an estimate is a price range after a call or visit; a written quote is the
+// price for an agreed scope (never "full quote", "estimated range" or "quotation").
 import { formatLocal } from './time.ts'
 import type {
   BookingContext,
@@ -94,7 +95,7 @@ export const WORDING = {
     label: 'Site visit: what it is and is not',
     where: 'Confirmation email for a site visit, and the booked page',
     default:
-      'A site visit is for us to assess the work and give you an estimate, which is a price range. It does not commit you to a quote, and it is not a start date.',
+      'A site visit is for us to look at the work and price it. You get an estimate, which is a price range. You’re not committing to anything, and it isn’t a start date.',
     max: 400,
     tokens: [],
   },

@@ -30,9 +30,16 @@ describe('App', () => {
       '/enquire?type=phone',
       '/enquire?type=on_site',
     ])
-    expect(links[0]).toHaveTextContent('Talk through your plans.')
-    expect(links[1]).toHaveTextContent('Show us the space so we can measure up for an estimate.')
-    expect(screen.getByText('Both are free.')).toBeInTheDocument()
+    expect(links[0]).toHaveTextContent(
+      'We ring you at a time you pick and talk through your plans.',
+    )
+    expect(links[1]).toHaveTextContent(
+      'We come out, look at the space and measure up for an estimate.',
+    )
+    expect(
+      screen.getByText('Both are free. You can change or cancel the time online.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/we send a written quote\./)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
     expect(screen.queryByText(/our work/i)).not.toBeInTheDocument()
     // No landing photo is configured yet, and no empty slot stands in for one.
@@ -43,7 +50,11 @@ describe('App', () => {
     expect(home).toHaveTextContent('')
     expect(home.querySelector('img')).toHaveAttribute('src', '/brand/q3-full-black.svg')
     expect(home.querySelector('img')).toHaveAttribute('alt', '')
-    expect(screen.getByText(/does not commit you to a quote/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'A site visit is for us to look at the work and price it. You get an estimate, which is a price range. You’re not committing to anything, and it isn’t a start date.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('takes the landing choice into the Project screen', async () => {

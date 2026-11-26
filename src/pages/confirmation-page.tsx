@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { PublicLayout } from '@/components/public-layout'
 import { buttonVariants } from '@/components/ui/button'
 import { contactLine, usePublicBusiness } from '@/api/business'
+import { usePublicVisitDisclaimer } from '@/api/wording'
 import { readBookingAccess } from '@/lib/booking-access'
 import { readSubmittedReference } from '@/lib/draft'
 import { safeStorage } from '@/lib/storage'
@@ -13,6 +14,7 @@ export function ConfirmationPage() {
   const [reference] = useState(() => readSubmittedReference(safeStorage('session')))
   const [access] = useState(() => readBookingAccess(safeStorage('local')))
   const contact = contactLine(usePublicBusiness())
+  const visitNote = usePublicVisitDisclaimer()
 
   if (!reference) {
     return (
@@ -48,12 +50,9 @@ export function ConfirmationPage() {
         <li>We will read your enquiry and get in touch by phone or email to talk it through.</li>
         <li>
           If a visit makes sense, we will arrange a time to see the space, take measurements and
-          give you an estimated range.
+          give you an estimate.
         </li>
-        <li>
-          A site visit is for us to assess and price the work. It does not commit you to a quote,
-          and it is not a start date.
-        </li>
+        <li>{visitNote}</li>
       </ul>
       {contact && (
         <p className="text-muted-foreground mt-6 text-sm">

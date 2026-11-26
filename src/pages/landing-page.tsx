@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router'
 import { minutesFor, usePublicAppointmentTypes } from '@/api/appointment-types'
+import { usePublicVisitDisclaimer } from '@/api/wording'
 import { PublicLayout } from '@/components/public-layout'
 import { ROUTE_COPY, ROUTES, routeTitle, type Route } from '@/lib/journey'
 
@@ -29,7 +30,7 @@ const steps = [
   },
   {
     title: 'Discuss the estimate',
-    body: 'We give you an estimate: a price range for the work. When the scope is agreed and you want to go ahead, a full quote follows.',
+    body: 'We give you an estimate: a price range for the work. When the scope is agreed and you want to go ahead, we send a written quote.',
   },
 ]
 
@@ -52,6 +53,8 @@ export function LandingPage() {
   const location = useLocation()
   const howRef = useRef<HTMLHeadingElement>(null)
   const types = usePublicAppointmentTypes()
+  // The same site-visit note as the booked page and the email (reworded in Settings, or the default).
+  const visitNote = usePublicVisitDisclaimer()
   // A route with no active appointment type is left out, once we know (never both).
   const offered = ROUTES.filter((r) => !types.data || minutesFor(types.data, r) !== null)
   const routes = offered.length > 0 ? offered : ROUTES
@@ -79,7 +82,9 @@ export function LandingPage() {
               <RouteChoice key={route} route={route} minutes={minutesFor(types.data, route)} />
             ))}
           </nav>
-          <p className="text-body text-ink font-medium">Both are free.</p>
+          <p className="text-body text-ink font-medium">
+            Both are free. You can change or cancel the time online.
+          </p>
           {LANDING_PHOTO && (
             <img
               src={LANDING_PHOTO.src}
@@ -119,8 +124,7 @@ export function LandingPage() {
             ))}
           </ol>
           <p className="border-action bg-soft text-ink mt-10 max-w-prose border-l-4 px-4 py-3">
-            A site visit is for us to assess and price the work. Booking one does not commit you to
-            a quote, and it is not a start date.
+            {visitNote}
           </p>
         </div>
       </section>

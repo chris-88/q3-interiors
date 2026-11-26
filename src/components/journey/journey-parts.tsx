@@ -102,6 +102,7 @@ export function ChoiceCards({
   error,
   reveal,
   optional,
+  hint,
 }: {
   name: string
   legend: ReactNode
@@ -112,18 +113,27 @@ export function ChoiceCards({
   error?: string
   reveal?: (value: string) => ReactNode
   optional?: boolean
+  /** A short line under the question (screen copy, not part of a stored form). */
+  hint?: string
 }) {
   const errorId = `${name}-error`
+  const hintId = `${name}-hint`
+  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ')
   return (
     <fieldset
       data-field={name}
-      aria-describedby={error ? errorId : undefined}
+      aria-describedby={describedBy || undefined}
       className="flex min-w-0 flex-col gap-2"
     >
       <legend className={cn('text-ink mb-2 text-base font-medium', legendClassName)}>
         {legend}
         {optional && <span className="text-muted-foreground font-normal"> (optional)</span>}
       </legend>
+      {hint && (
+        <p id={hintId} className="text-muted-foreground -mt-1 mb-1 text-sm">
+          {hint}
+        </p>
+      )}
       {options.map((option) => {
         const id = `${name}-${option.value}`
         const selected = value === option.value

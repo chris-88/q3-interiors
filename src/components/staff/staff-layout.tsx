@@ -1,7 +1,7 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link, NavLink } from 'react-router'
+import { Link, NavLink, useLocation } from 'react-router'
 import {
   signInSchema,
   useSession,
@@ -94,6 +94,8 @@ function VersionBar() {
 function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }) {
   const signOut = useSignOut()
   const online = useOnline()
+  // The Ads screens use the width of a desktop (a poster grid; preview beside the details).
+  const wide = useLocation().pathname.startsWith('/ads')
   return (
     <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">
@@ -163,7 +165,9 @@ function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }
         </nav>
       )}
       <VersionBar />
-      <main className="mx-auto max-w-3xl px-4 py-6">{online ? children : <Offline />}</main>
+      <main className={`mx-auto max-w-3xl px-4 py-6 ${wide ? 'lg:max-w-6xl' : ''}`}>
+        {online ? children : <Offline />}
+      </main>
     </div>
   )
 }

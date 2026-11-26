@@ -22,6 +22,7 @@ expect_absent dist 'ad_variants'
 expect_absent dist 'request_ad_change'
 expect_absent dist 'Download the image'
 expect_absent dist 'Download the video'
+expect_absent dist 'Download reel video'
 # The customer journey must not reach the staff site.
 expect_absent dist-staff 'Show us the space so we can measure up'
 expect_absent dist-staff 'What work are you planning?'

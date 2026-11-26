@@ -41,5 +41,5 @@ supabase/functions/deno.lock
 ads/work/
 
 # Business documents kept out of this public repo (the vault holds the filed copies)
-strategy.md
+strategy*.md
 Q3_Interiors_Enquiry_Form_V2_Brief.md

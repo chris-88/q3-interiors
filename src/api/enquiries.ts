@@ -25,11 +25,15 @@ export function statusLabel(status: Open<EnquiryStatus>): string {
 const statusSchema = openEnum(ENQUIRY_STATUSES)
 const answersSchema = z.record(z.string(), z.union([z.string(), z.array(z.string())]))
 
-const summaryBookingSchema = z.object({
-  starts_at: z.string(),
-  confirmed_at: z.string().nullable(),
-  state: z.string(),
-})
+const summaryBookingSchema = z
+  .object({
+    starts_at: z.string(),
+    confirmed_at: z.string().nullable(),
+    state: z.string(),
+    // The type's mode (call or visit) for the list line; absent from older reads.
+    appointment_types: z.object({ mode: z.string() }).nullable().default(null),
+  })
+  .transform(({ appointment_types, ...b }) => ({ ...b, mode: appointment_types?.mode ?? null }))
 
 const enquirySummarySchema = z.object({
   id: z.string(),
@@ -43,6 +47,11 @@ const enquirySummarySchema = z.object({
   added_after_booking_at: z.string().nullable().default(null),
   // Slice 7: the commercial stage, and the appointments behind "awaiting quote".
   outcome: openEnum(['quoted', 'won', 'lost']).nullable().default(null),
+  // The figures and reason behind the list line ("Quoted €18,450", "Lost: Price").
+  quote_amount: z.coerce.number().nullable().default(null),
+  outcome_value: z.coerce.number().nullable().default(null),
+  // Any string: retired reasons (project_cancelled) and ones a newer release adds.
+  outcome_reason: z.string().nullable().default(null),
   bookings: z
     .array(z.unknown())
     .default([])
@@ -98,10 +107,6 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
   chase_flagged_by_name: z.string().nullable().default(null),
   contact_requested_at: z.string().nullable(),
   contact_request_reason: z.string().nullable(),
-  outcome_value: z.coerce.number().nullable(),
-  // Any string: retired reasons (project_cancelled) and ones a newer release adds.
-  outcome_reason: z.string().nullable(),
-  quote_amount: z.coerce.number().nullable().default(null),
   quote_date: z.string().nullable().default(null),
   won_date: z.string().nullable().default(null),
   outcome_note: z.string().nullable(),
@@ -113,7 +118,7 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
 
 const SUMMARY_COLUMNS =
-  'id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome'
+  'id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, bookings (starts_at, confirmed_at, state, appointment_types (mode))'
 
 export function useEnquiries() {
   return useQuery({
@@ -121,7 +126,7 @@ export function useEnquiries() {
     queryFn: async (): Promise<EnquirySummary[]> => {
       const { data, error } = await supabase
         .from('enquiries')
-        .select(`${SUMMARY_COLUMNS}, bookings (starts_at, confirmed_at, state)`)
+        .select(SUMMARY_COLUMNS)
         .order('submitted_at', { ascending: false })
         .limit(200)
       if (error) throw toApiError(error)
@@ -140,7 +145,7 @@ export function useEnquiry(id: string) {
           `${SUMMARY_COLUMNS}, status_reason, marketing_opt_in, marketing_opt_in_at, updated_at,
            site_details, site_details_form_version, contact_request_reason,
            prepare_details, prepare_form_version, chase_flagged_at, chase_note, chase_flagged_by_name,
-           outcome_value, outcome_reason, outcome_note, quote_amount, quote_date, won_date,
+           outcome_note, quote_date, won_date,
            enquiry_attribution (tracking, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
              click_id_present, landing_path, first_seen_at),
            enquiry_events (id, kind, from_status, to_status, reason, detail, actor_name, created_at)`,
@@ -193,6 +198,30 @@ export function useSetEnquiryStatus() {
         queryClient.invalidateQueries({ queryKey: ['enquiries', id] }),
         queryClient.invalidateQueries({ queryKey: ['enquiries'], exact: true }),
       ]),
+  })
+}
+
+export const NOTE_MAX = 1000
+
+/** What a note may be: 1 to 1,000 characters after trimming (the server checks the same). */
+export const noteSchema = z
+  .string()
+  .trim()
+  .min(1, 'Write the note first.')
+  .max(NOTE_MAX, 'Keep the note under 1,000 characters.')
+
+/** Add a staff note to an enquiry's history (`add_enquiry_note`, active staff only). */
+export function useAddNote(enquiryId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (note: string) => {
+      const { error } = await supabase.rpc('add_enquiry_note', {
+        p_enquiry_id: enquiryId,
+        p_note: note,
+      })
+      if (error) throw toApiError(error)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['enquiries', enquiryId] }),
   })
 }
 

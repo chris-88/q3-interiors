@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, Copy, Play } from 'lucide-react'
+import { Check, ChevronLeft, Copy, Play } from 'lucide-react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router'
 import {
   adErrorMessage,
@@ -23,6 +23,8 @@ import {
   type AdVersion,
 } from '@/api/ads'
 import { AdFrame } from '@/components/staff/ad-frame'
+import { chip } from '@/components/staff/chips'
+import { ListWalk } from '@/components/staff/list-walk'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -49,9 +51,6 @@ import { SITE_URL } from '../../../supabase/functions/_shared/site.ts'
 function StatusBadge({ status }: { status: string }) {
   return <Badge variant={status === 'new' ? 'default' : 'outline'}>{adStatusLabel(status)}</Badge>
 }
-
-const chip =
-  'relative border-edge has-[:checked]:border-action has-[:checked]:bg-action has-[:focus-visible]:outline-action inline-flex min-h-12 shrink-0 cursor-pointer items-center rounded-full border px-4 text-sm has-[:checked]:text-white has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-solid'
 
 const currentOf = (ad: AdListItem) => [...ad.ad_versions].sort((a, b) => b.version - a.version)[0]
 
@@ -850,37 +849,12 @@ function Walk({ id, filter }: { id: string; filter: AdFilter }) {
   const ads = useAds()
   const place = ads.data ? neighbours(adOrder(ads.data, filter), id) : null
   if (!place) return null
-  const to = (target: string) => `/ads/${target}?show=${filter}`
-  const step =
-    'inline-flex min-h-12 items-center gap-1 px-2 text-sm underline-offset-4 hover:underline'
   return (
-    <nav aria-label="Ads in this list" className="flex items-center justify-between gap-2">
-      {place.previous ? (
-        <Link to={to(place.previous)} className={step}>
-          <ChevronLeft className="size-4" aria-hidden="true" />
-          Previous
-        </Link>
-      ) : (
-        <span className={`${step} text-muted-foreground`} aria-hidden="true">
-          <ChevronLeft className="size-4" />
-          Previous
-        </span>
-      )}
-      <span className="text-muted-foreground text-sm">
-        {place.position} of {place.total}
-      </span>
-      {place.next ? (
-        <Link to={to(place.next)} className={step}>
-          Next
-          <ChevronRight className="size-4" aria-hidden="true" />
-        </Link>
-      ) : (
-        <span className={`${step} text-muted-foreground`} aria-hidden="true">
-          Next
-          <ChevronRight className="size-4" />
-        </span>
-      )}
-    </nav>
+    <ListWalk
+      label="Ads in this list"
+      place={place}
+      to={(target) => `/ads/${target}?show=${filter}`}
+    />
   )
 }
 

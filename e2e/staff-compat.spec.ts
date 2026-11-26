@@ -201,16 +201,19 @@ test('screens cope with values, kinds, fields and rows a newer release added', a
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
 
-  // The list: unknown status shown plainly, the unreadable row left out with a note.
+  // The list: an unknown outcome shown plainly as the stage, the unreadable row left out with a
+  // note. (The redesign shows one stage per row; the outcome outranks the status.)
   const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('link')
   await expect(rows).toHaveCount(2)
-  await expect(rows.first()).toContainText('awaiting_survey')
+  const future = rows.filter({ hasText: 'deferred' })
+  await expect(future).toHaveCount(1)
   await expect(bar(page)).toContainText(/Some enquiries.* could not be shown by this version/)
   await expect(bar(page).getByRole('button', { name: 'Reload' })).toBeVisible()
 
   // The detail: unknown history kind and outcome degrade, the page works.
-  await rows.first().click()
-  await expect(page.getByRole('heading', { name: 'Q3-NEWW22' })).toBeVisible()
+  await future.click()
+  await expect(page.getByText('Q3-NEWW22')).toBeVisible()
+  await page.getByText('More', { exact: true }).click()
   await expect(page.getByText('Update recorded')).toBeVisible()
   await expect(page.getByText('Sent the pre-visit survey')).toBeVisible()
   await expect(
@@ -289,6 +292,8 @@ test('while someone is typing, a newer build waits behind a bar that cannot be d
   )
   await page.goto('/#/enquiries/e-1')
   await signIn(page, 'staff@example.com', 'another long password')
+  // The status select lives under Notes now, one tap down.
+  await page.getByText(/^Change status/).click()
   await page
     .getByRole('region', { name: 'Change status' })
     .getByLabel('Note (optional)')

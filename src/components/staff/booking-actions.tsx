@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { formatClock, formatLongDate } from '@/lib/format'
+import { formatClock } from '@/lib/format'
 
 const LIVE = new Set(['reserved', 'calendar_pending', 'confirmed'])
 
@@ -24,7 +24,7 @@ function MovePanel({ booking, onDone }: { booking: StaffBooking; onDone: () => v
   const [message, setMessage] = useState<string | null>(null)
   const data = options.data
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border p-3">
+    <div className="flex flex-col gap-3 rounded-md border p-3">
       <p className="text-muted-foreground text-sm">
         Pick a new time (Irish time). The customer is emailed the new time and the Google event
         moves.
@@ -47,7 +47,7 @@ function MovePanel({ booking, onDone }: { booking: StaffBooking; onDone: () => v
       )}
       <div className="flex flex-wrap gap-2">
         <Button
-          className="h-10"
+          className="h-12"
           disabled={!slot || move.isPending}
           onClick={() =>
             slot &&
@@ -67,7 +67,7 @@ function MovePanel({ booking, onDone }: { booking: StaffBooking; onDone: () => v
         >
           {move.isPending ? 'Moving…' : slot ? `Move to ${formatClock(slot.start)}` : 'Move'}
         </Button>
-        <Button variant="ghost" className="h-10" onClick={onDone} disabled={move.isPending}>
+        <Button variant="ghost" className="h-12" onClick={onDone} disabled={move.isPending}>
           Close
         </Button>
       </div>
@@ -84,7 +84,7 @@ function CancelPanel({ booking, onDone }: { booking: StaffBooking; onDone: () =>
   const cancel = useStaffCancel()
   const [reason, setReason] = useState('')
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border p-3">
+    <div className="flex flex-col gap-3 rounded-md border p-3">
       <Field>
         <FieldLabel htmlFor={`cancel-${booking.id}`}>Reason (shown in history)</FieldLabel>
         <Textarea
@@ -102,13 +102,13 @@ function CancelPanel({ booking, onDone }: { booking: StaffBooking; onDone: () =>
       <div className="flex flex-wrap gap-2">
         <Button
           variant="destructive"
-          className="h-10"
+          className="h-12"
           disabled={cancel.isPending}
           onClick={() => cancel.mutate({ bookingId: booking.id, reason }, { onSuccess: onDone })}
         >
           {cancel.isPending ? 'Cancelling…' : 'Cancel appointment'}
         </Button>
-        <Button variant="ghost" className="h-10" onClick={onDone} disabled={cancel.isPending}>
+        <Button variant="ghost" className="h-12" onClick={onDone} disabled={cancel.isPending}>
           Keep it
         </Button>
       </div>
@@ -121,8 +121,20 @@ function CancelPanel({ booking, onDone }: { booking: StaffBooking; onDone: () =>
   )
 }
 
-/** Move, cancel and attendance for one booking on the enquiry page. */
-export function BookingActions({ booking }: { booking: StaffBooking }) {
+/**
+ * Move, cancel and attendance for one booking on the enquiry page. `moveCancel` and `attendance`
+ * choose which controls show (the Next step card has Move and Cancel; past appointments keep
+ * attendance).
+ */
+export function BookingActions({
+  booking,
+  moveCancel = true,
+  attendance: showAttendance = true,
+}: {
+  booking: StaffBooking
+  moveCancel?: boolean
+  attendance?: boolean
+}) {
   const [panel, setPanel] = useState<'none' | 'move' | 'cancel'>('none')
   const attendance = useSetAttendance()
   const [now] = useState(() => Date.now())
@@ -130,30 +142,23 @@ export function BookingActions({ booking }: { booking: StaffBooking }) {
   const started = Date.parse(booking.starts_at) <= now
 
   return (
-    <div className="mt-2">
+    <div className="flex flex-col gap-2">
       {booking.calendar_mismatch && (
-        <Alert className="mb-2 border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50">
+        <Alert className="border-amber-300 bg-amber-50 text-amber-950">
           <AlertDescription className="text-current">
             {booking.calendar_mismatch}. The booking keeps its time here; fix the calendar or move
             the booking.
           </AlertDescription>
         </Alert>
       )}
-      {booking.state === 'cancelled' && (
-        <p className="text-muted-foreground text-sm">
-          Cancelled by {booking.cancelled_by ?? 'unknown'}
-          {booking.cancel_reason ? `: ${booking.cancel_reason}` : ''}
-        </p>
-      )}
-      {booking.state === 'confirmed' && started && (
-        <fieldset className="mt-2">
-          <legend className="text-muted-foreground text-sm">Attendance</legend>
+      {showAttendance && booking.state === 'confirmed' && started && (
+        <fieldset>
+          <legend className="text-muted-foreground text-sm">Did it go ahead?</legend>
           <div className="mt-1 flex flex-wrap gap-2">
             {(['attended', 'no_show'] as const).map((value) => (
               <Button
                 key={value}
-                size="sm"
-                className="h-9"
+                className="h-12 px-4"
                 variant={booking.attendance === value ? 'default' : 'outline'}
                 aria-pressed={booking.attendance === value}
                 disabled={attendance.isPending}
@@ -168,23 +173,18 @@ export function BookingActions({ booking }: { booking: StaffBooking }) {
           )}
         </fieldset>
       )}
-      {live && !started && panel === 'none' && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" className="h-9" onClick={() => setPanel('move')}>
+      {moveCancel && live && !started && panel === 'none' && (
+        <div className="grid grid-cols-2 gap-2 sm:flex">
+          <Button variant="outline" className="h-12 px-6" onClick={() => setPanel('move')}>
             Move
           </Button>
-          <Button size="sm" variant="ghost" className="h-9" onClick={() => setPanel('cancel')}>
+          <Button variant="outline" className="h-12 px-6" onClick={() => setPanel('cancel')}>
             Cancel
           </Button>
         </div>
       )}
       {panel === 'move' && <MovePanel booking={booking} onDone={() => setPanel('none')} />}
       {panel === 'cancel' && <CancelPanel booking={booking} onDone={() => setPanel('none')} />}
-      {live && !started && panel === 'none' && (
-        <p className="text-muted-foreground mt-1 text-xs">
-          {formatLongDate(booking.starts_at)} at {formatClock(booking.starts_at)}
-        </p>
-      )}
     </div>
   )
 }

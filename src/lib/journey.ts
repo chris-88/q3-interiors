@@ -24,7 +24,7 @@ export const ROUTE_COPY: Record<
 > = {
   phone: {
     title: 'Phone call',
-    blurb: 'Talk through your plans.',
+    blurb: 'We ring you at a time you pick and talk through your plans.',
     noun: 'call',
     book: 'Book call',
     phoneLabel: 'Number we should ring',
@@ -32,7 +32,7 @@ export const ROUTE_COPY: Record<
   },
   on_site: {
     title: 'Site visit',
-    blurb: 'Show us the space so we can measure up for an estimate.',
+    blurb: 'We come out, look at the space and measure up for an estimate.',
     noun: 'site visit',
     book: 'Book site visit',
     phoneLabel: 'Number we can ring on arrival',

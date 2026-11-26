@@ -83,7 +83,7 @@ describe('wording blocks', () => {
     })
     expect(m.text).toMatch(/Parking is on the road\.\n\nQ3 Interiors/)
     expect(renderMessage('booking_confirmation', { ...base, ctx: ctx() }).text).toMatch(
-      /price range\. It does not commit you to a quote, and it is not a start date\.\n\nQ3 Interiors/,
+      /price range\. You’re not committing to anything, and it isn’t a start date\.\n\nQ3 Interiors/,
     )
   })
 

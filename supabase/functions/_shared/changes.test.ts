@@ -314,8 +314,8 @@ describe('messages', () => {
     ctx.type = { ...ctx.type, mode: 'on_site' }
     const m = renderMessage('booking_confirmation', { ctx, manageUrl: null, businessPhone: null })
     expect(m.subject).toMatch(/^Booked: your site visit on /)
-    expect(m.text).toContain('give you an estimate, which is a price range')
-    expect(m.text).toContain('does not commit you to a quote')
+    expect(m.text).toContain('You get an estimate, which is a price range.')
+    expect(m.text).toContain('You’re not committing to anything, and it isn’t a start date.')
     expect(m.html).not.toContain('Change time')
     expect(m.html).not.toContain('Cancel appointment')
   })

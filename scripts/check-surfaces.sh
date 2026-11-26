@@ -24,7 +24,7 @@ expect_absent dist 'Download the image'
 expect_absent dist 'Download the video'
 expect_absent dist 'Download reel video'
 # The customer journey must not reach the staff site.
-expect_absent dist-staff 'Show us the space so we can measure up'
+expect_absent dist-staff 'We come out, look at the space and measure up'
 expect_absent dist-staff 'What work are you planning?'
 expect_absent dist-staff 'A photo from the doorway helps us see the whole room.'
 # Only the staff console reads the photo bucket.
@@ -41,7 +41,7 @@ expect_present dist-staff/version.json 'StaffApp-'
 expect_absent dist 'version.json'
 expect_absent dist-staff 'What kind of project is it?'
 # Each has its own.
-expect_present dist 'Show us the space so we can measure up'
+expect_present dist 'We come out, look at the space and measure up'
 expect_present dist-staff 'Who takes bookings'
 expect_present dist-staff 'ad_variants'
 expect_present dist-staff/CNAME 'staff.q3interiors.ie'

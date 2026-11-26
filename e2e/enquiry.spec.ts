@@ -45,11 +45,13 @@ test('a call, from an Instagram link to booked in four forward actions', async (
   // Lengths come from the live appointment types.
   const call = page.getByRole('link', { name: /^Phone call/ })
   await expect(call).toContainText('Phone call · 20 minutes')
-  await expect(call).toContainText('Talk through your plans.')
+  await expect(call).toContainText('We ring you at a time you pick and talk through your plans.')
   await expect(page.getByRole('link', { name: /^Site visit/ })).toContainText(
     'Site visit · 60 minutes',
   )
-  await expect(page.getByText('Both are free.', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText('Both are free. You can change or cancel the time online.', { exact: true }),
+  ).toBeVisible()
   await shot(page, '01-landing')
 
   // 1. The landing choice.

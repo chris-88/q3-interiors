@@ -94,8 +94,9 @@ function VersionBar() {
 function Shell({ children, staff }: { children: ReactNode; staff?: StaffMember }) {
   const signOut = useSignOut()
   const online = useOnline()
-  // The Ads screens use the width of a desktop (a poster grid; preview beside the details).
-  const wide = useLocation().pathname.startsWith('/ads')
+  // The Ads screens and the enquiry page use the width of a desktop (two columns from 1024px).
+  const path = useLocation().pathname
+  const wide = path.startsWith('/ads') || path.startsWith('/enquiries/')
   return (
     <div className="bg-background text-foreground min-h-svh">
       <header className="bg-background border-b">

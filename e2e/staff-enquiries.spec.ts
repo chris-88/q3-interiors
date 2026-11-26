@@ -115,47 +115,46 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
 
-  // The list: the choice, the follow-up and the contact request at a glance.
+  // The list (redesigned 2026-11-28): name, project and town, where it stands, one stage badge.
+  // The layout follow-up and the preference moved to the enquiry page (no pile of pills).
   const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
-  await expect(rows.first()).toContainText('Kitchen')
-  await expect(rows.first()).toContainText('Dublin 8 · Layout: Changing it')
-  await expect(rows.first()).toContainText('Wants a site visit')
-  await expect(rows.first()).toContainText('Contact request')
+  await expect(rows.first()).toContainText('Sample Customer')
+  await expect(rows.first()).toContainText('Kitchen · Dublin 8')
+  await expect(rows.first()).toContainText('Asked to be contacted')
+  await expect(rows.first()).toContainText('Call back')
   await expect(rows.nth(1)).toContainText('Whole home renovation')
-  await expect(rows.nth(1)).not.toContainText('Wants a')
+  await expect(rows.nth(1)).toContainText('Not booked yet')
   await shot(page, 's1-enquiry-list')
 
   // A v2 enquiry with a contact request.
   await rows.first().getByRole('link').click()
-  await expect(page.getByRole('heading', { name: 'Q3-BBBB22' })).toBeVisible()
-  await expect(page.getByText('Wants a site visit')).toBeVisible()
-  await expect(
-    page.getByText('Contact request: the customer asked us to contact them'),
-  ).toBeVisible()
-  await expect(page.getByText(/No suitable time online/).first()).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sample Customer')
+  await expect(page.getByText('Q3-BBBB22')).toBeVisible()
+  // The contact request is the Next step (it was a red alert at the top).
+  const next = page.getByRole('region', { name: 'Next step' })
+  await expect(next).toContainText('Asked to be contacted')
+  await expect(next).toContainText('No suitable time online')
   const project = page.getByRole('region', { name: 'Project' })
   await expect(project).toContainText('Appointment preference')
   await expect(project).toContainText('Site visit')
   await expect(project).toContainText('Are you keeping the layout or changing it?')
   await expect(project).toContainText('Changing it')
   await expect(project).toContainText('Town or Eircode')
-  const contact = page.getByRole('region', { name: 'Contact' })
-  await expect(contact).toContainText('Phone number')
-  await expect(contact).toContainText('House name or number and street')
-  await expect(page.getByRole('region', { name: 'Property' })).toContainText(
-    '12 Example Road, Dublin 8',
-  )
+  // Contact answers and the street are part of Project now (one section of their answers).
+  await expect(project).toContainText('Phone number')
+  await expect(project).toContainText('House name or number and street')
+  await expect(project).toContainText('12 Example Road')
   await shot(page, '11-staff-v2-contact-request')
 
   // A v1 enquiry still renders through its own version.
   await page.goto('/#/enquiries/e-v1')
-  await expect(page.getByRole('heading', { name: 'Q3-AAAA11' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Test Person')
   const v1Project = page.getByRole('region', { name: 'Project' })
   await expect(v1Project).toContainText('What would you like done?')
   await expect(v1Project).toContainText('Full refit of the ground floor.')
   await expect(v1Project).toContainText('Kitchen, Bedrooms')
   await expect(v1Project).toContainText('Form: enquiry version 1')
-  await expect(page.getByText('Contact request')).toHaveCount(0)
+  await expect(page.getByText('Asked to be contacted')).toHaveCount(0)
   await shot(page, 's2-staff-v1')
 })
 
@@ -234,7 +233,9 @@ test('staff see what a customer added after booking: the marker, the answers and
   await expect(prepared).toContainText('Rough budget')
   await expect(prepared).toContainText('€25,000 to €50,000')
   await expect(prepared).toContainText('I’m flexible')
-  await expect(page.getByRole('region', { name: 'Property' })).toContainText('Side gate')
+  // Access notes sit with the rest of "Help us prepare" now.
+  await expect(prepared).toContainText('Side gate')
+  await page.getByText('More', { exact: true }).click()
   await expect(page.getByText('Customer added a photo (after booking)')).toBeVisible()
   await shot(page, '05-staff-photos')
 

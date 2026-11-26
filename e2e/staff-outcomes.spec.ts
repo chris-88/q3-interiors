@@ -80,18 +80,18 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
 
+  // Redesign: Open (the default) hides lost ones; awaiting quote is under Needs action.
   const list = page.getByRole('list', { name: 'Enquiries' })
-  await expect(list.getByRole('listitem')).toHaveCount(3)
-  await page.getByText('Awaiting quote', { exact: true }).first().click()
+  await expect(list.getByRole('listitem')).toHaveCount(2)
+  await page.getByRole('radio', { name: /^Needs action/ }).check({ force: true })
   await expect(list.getByRole('listitem')).toHaveCount(1)
-  await expect(list).toContainText('Q3-VISIT1')
   await expect(list).toContainText('Awaiting quote')
   await shot(page, 'list-filter-awaiting-390')
   await list.getByRole('link').first().click()
 
-  // Record the quote: a bad amount is caught beside the field.
-  const outcome = page.getByRole('region', { name: 'Outcome' })
-  await expect(outcome).toContainText('No outcome yet')
+  // Record the quote from the Next step card (the Outcome section moved there).
+  const outcome = page.getByRole('region', { name: 'Next step' })
+  await expect(outcome).toContainText('No quote recorded yet')
   await outcome.getByRole('button', { name: 'Record quote' }).click()
   await outcome.getByLabel('Quote amount (€, incl. VAT)').fill('lots')
   await outcome.getByRole('button', { name: 'Save quote' }).click()
@@ -120,6 +120,7 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await outcome.getByLabel('Agreed value (€, incl. VAT)').fill('18000')
   await outcome.getByRole('button', { name: 'Save as won' }).click()
   await expect(outcome).toContainText('Won €18,000.00 on 24 Nov 2026')
+  await page.getByText('More', { exact: true }).click()
   const history = page.getByRole('region', { name: 'History' })
   await expect(history.getByText(/^Won €18,000\.00 on 2026-11-24 \(was won\)$/)).toBeVisible()
   await expect(history.getByText(/^Quoted €18,450\.50 on 2026-11-21$/)).toBeVisible()
@@ -128,7 +129,9 @@ test('staff record a quote, then the win, then correct it; the list filters by o
 
   // Mark another lost: a reason is required, "other" needs a note.
   await page.goto('/#/enquiries/e-new')
-  const other = page.getByRole('region', { name: 'Outcome' })
+  // Contacted, nothing booked: the outcome is one tap away on the Next step card.
+  const other = page.getByRole('region', { name: 'Next step' })
+  await other.getByRole('button', { name: 'Record a quote or result' }).click()
   await other.getByRole('button', { name: 'Mark lost' }).click()
   await other.getByRole('button', { name: 'Save as lost' }).click()
   await expect(other.getByRole('alert')).toHaveText('Choose a reason.')
@@ -141,10 +144,10 @@ test('staff record a quote, then the win, then correct it; the list filters by o
 
   // The list by outcome.
   await page.goto('/#/')
-  await page.getByText('Won', { exact: true }).first().click()
+  await page.getByRole('radio', { name: /^Won/ }).check({ force: true })
   await expect(list.getByRole('listitem')).toHaveCount(1)
-  await expect(list).toContainText('Outcome: Won')
-  await page.getByText('Lost', { exact: true }).first().click()
+  await expect(list).toContainText('Won €18,000')
+  await page.getByRole('radio', { name: /^Lost/ }).check({ force: true })
   await expect(list.getByRole('listitem')).toHaveCount(2)
 
   expect(
@@ -155,10 +158,10 @@ test('staff record a quote, then the win, then correct it; the list filters by o
 
   // Desktop width.
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.getByText('Won', { exact: true }).first().click()
+  await page.getByRole('radio', { name: /^Won/ }).check({ force: true })
   await shot(page, 'list-filter-won-desktop')
   await page.goto('/#/enquiries/e-visit')
-  await expect(page.getByRole('region', { name: 'Outcome' })).toContainText('Won €18,000.00')
+  await expect(page.getByRole('region', { name: 'Next step' })).toContainText('Won €18,000.00')
   await shot(page, 'enquiry-won-desktop')
 })
 

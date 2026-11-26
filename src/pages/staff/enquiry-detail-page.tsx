@@ -1,35 +1,65 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Mail, MapPin, Phone } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
   ENQUIRY_STATUSES,
+  NOTE_MAX,
+  noteSchema,
+  useAddNote,
+  useEnquiries,
   useEnquiry,
   useEnquiryPhotoFile,
   useEnquiryPhotos,
   useFormVersions,
-  type EnquiryPhoto,
+  useSetEnquiryStatus,
   type EnquiryAttribution,
   type EnquiryDetail,
   type EnquiryEvent,
+  type EnquiryPhoto,
 } from '@/api/enquiries'
-import { StatusBadge } from '@/components/staff/status-badge'
+import { useEnquiryBookings, type StaffBooking } from '@/api/staff-booking'
+import { BookingActions } from '@/components/staff/booking-actions'
+import { ChaseForm } from '@/components/staff/chase-form'
+import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
+import {
+  enquiryName,
+  projectLine,
+  storedFilter,
+  storedSearch,
+} from '@/components/staff/enquiry-text'
+import { eventLine } from '@/components/staff/event-text'
+import { ListWalk } from '@/components/staff/list-walk'
+import { OutcomeForm } from '@/components/staff/outcome-form'
+import { StageBadge } from '@/components/staff/stage-badge'
+import { useLoadedAt } from '@/components/staff/use-loaded-at'
 import { StatusForm } from '@/components/staff/status-form'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import { formatAnswer, visibleFields } from '@/forms/logic'
-import type { FormDefinition, FormField } from '@/forms/types'
-import { formatClock, formatDateTime, formatLongDate } from '@/lib/format'
-import { useEnquiryBookings } from '@/api/staff-booking'
-import { BookingStateBadge } from '@/components/staff/booking-state-badge'
-import { BookingActions } from '@/components/staff/booking-actions'
-import { OutcomeForm } from '@/components/staff/outcome-form'
-import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
-import { eventLine } from '@/components/staff/event-text'
+import type { FormDefinition } from '@/forms/types'
+import { appointmentBadge } from '@/lib/agenda'
+import {
+  directionsHref,
+  enquiryStage,
+  mailHref,
+  nextStep,
+  passedBooking,
+  siteAddress,
+  telHref,
+  upcomingBooking,
+  visibleEnquiries,
+} from '@/lib/enquiry-stage'
+import { formatDateTime, formatShortWhen } from '@/lib/format'
 import { OUTCOME_STAGES } from '@/lib/outcome'
 import { isKnown } from '@/lib/tolerant'
-import { EnquiryFlags } from '@/components/staff/enquiry-flags'
-import { ChaseForm } from '@/components/staff/chase-form'
+import { neighbours } from '@/lib/walk'
+
+// ---------------------------------------------------------------------------------------------
+// Small parts
+// ---------------------------------------------------------------------------------------------
 
 /** A value a newer release wrote: shown plainly, changeable after a reload. */
 function NewerValue({ what }: { what: string }) {
@@ -41,8 +71,7 @@ function NewerValue({ what }: { what: string }) {
       </p>
       <Button
         variant="outline"
-        size="sm"
-        className="h-9 self-start"
+        className="h-12 self-start"
         onClick={() => window.location.reload()}
       >
         Reload
@@ -54,8 +83,8 @@ function NewerValue({ what }: { what: string }) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = `section-${title.toLowerCase().replace(/\W+/g, '-')}`
   return (
-    <section aria-labelledby={id} className="bg-background rounded-xl border p-4">
-      <h2 id={id} className="text-muted-foreground text-sm font-medium">
+    <section aria-labelledby={id} className="bg-background rounded-md border p-4">
+      <h2 id={id} className="text-base font-medium">
         {title}
       </h2>
       <div className="mt-3">{children}</div>
@@ -72,223 +101,366 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function ContactValue({ field, value }: { field: FormField; value: string | null }) {
-  if (value === null) return <span className="text-muted-foreground">Not given</span>
-  if (field.type === 'email') {
-    return (
-      <a className="underline underline-offset-4" href={`mailto:${value}`}>
-        {value}
-      </a>
-    )
-  }
-  if (field.type === 'tel') {
-    return (
-      <a className="underline underline-offset-4" href={`tel:${value.replace(/[^\d+]/g, '')}`}>
-        {value}
-      </a>
-    )
-  }
-  return <>{value}</>
+function ContactValue({ type, value }: { type: string; value: string }) {
+  const href = type === 'email' ? mailHref(value) : type === 'tel' ? telHref(value) : null
+  return href ? (
+    <a className="underline underline-offset-4" href={href}>
+      {value}
+    </a>
+  ) : (
+    <>{value}</>
+  )
 }
 
-/** Answers rendered through the form version the customer actually answered. */
-function Answers({ enquiry, form }: { enquiry: EnquiryDetail; form: FormDefinition }) {
-  const contactStep = form.steps.find((s) => s.fields.some((f) => f.type === 'email'))
-  const otherSteps = form.steps.filter((s) => s !== contactStep)
+// ---------------------------------------------------------------------------------------------
+// Top: walk, header, quick actions
+// ---------------------------------------------------------------------------------------------
+
+/** Previous / "3 of 12" / Next through the list as last shown (chip and search, this tab). */
+function EnquiryWalk({ id }: { id: string }) {
+  const list = useEnquiries()
+  const now = useLoadedAt(list.dataUpdatedAt)
+  if (!list.data) return null
+  const ids = visibleEnquiries(list.data, storedFilter(), storedSearch(), now).map((e) => e.id)
+  const place = neighbours(ids, id)
+  return place ? (
+    <ListWalk label="Enquiries in this list" place={place} to={(t) => `/enquiries/${t}`} />
+  ) : null
+}
+
+const quick =
+  'border-edge hover:bg-soft flex min-h-14 flex-col items-center justify-center gap-1 rounded-md border px-2 text-sm font-medium'
+
+function QuickActions({ enquiry }: { enquiry: EnquiryDetail }) {
+  const call = telHref(enquiry.answers.phone)
+  const email = mailHref(enquiry.answers.email)
+  const directions = directionsHref(siteAddress(enquiry.answers, enquiry.site_details))
+  const items = [
+    call && { href: call, label: 'Call', icon: Phone },
+    email && { href: email, label: 'Email', icon: Mail },
+    directions && { href: directions, label: 'Directions', icon: MapPin, external: true },
+  ].filter((x) => !!x)
+  if (items.length === 0) return null
+  return (
+    <nav aria-label="Quick actions" className="grid auto-cols-fr grid-flow-col gap-2">
+      {items.map(({ href, label, icon: Icon, ...rest }) => (
+        <a
+          key={label}
+          href={href}
+          className={quick}
+          {...('external' in rest ? { target: '_blank', rel: 'noreferrer' } : {})}
+        >
+          <Icon className="size-5" aria-hidden="true" />
+          {label}
+        </a>
+      ))}
+    </nav>
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Next step: the one thing to do at this stage
+// ---------------------------------------------------------------------------------------------
+
+function MarkContacted({ enquiry }: { enquiry: EnquiryDetail }) {
+  const setStatus = useSetEnquiryStatus()
+  if (enquiry.status === 'contacted' || !isKnown(ENQUIRY_STATUSES, enquiry.status)) return null
   return (
     <>
-      {contactStep && (
-        <Section title="Contact">
-          <dl className="flex flex-col gap-3">
-            {visibleFields(contactStep.fields, enquiry.answers).map((field) => (
-              <Row key={field.id} label={field.label}>
-                <ContactValue
-                  field={field}
-                  value={formatAnswer(field, enquiry.answers[field.id])}
-                />
-              </Row>
-            ))}
-            <Row label="News and offers">
-              {enquiry.marketing_opt_in && enquiry.marketing_opt_in_at
-                ? `Asked for them (${formatDateTime(enquiry.marketing_opt_in_at)})`
-                : 'Not asked for'}
-            </Row>
-          </dl>
-        </Section>
-      )}
-      <Section title="Project">
-        <dl className="flex flex-col gap-3">
-          {otherSteps.flatMap((step) =>
-            visibleFields(step.fields, enquiry.answers).map((field) => (
-              <Row key={field.id} label={field.label}>
-                {formatAnswer(field, enquiry.answers[field.id]) ?? (
-                  <span className="text-muted-foreground">Not answered</span>
-                )}
-              </Row>
-            )),
-          )}
-        </dl>
-        <p className="text-muted-foreground mt-4 text-xs">
-          Form: {form.formId} version {form.version}
+      <Button
+        variant="outline"
+        className="h-12 w-full sm:w-auto sm:px-6"
+        disabled={setStatus.isPending}
+        onClick={() => setStatus.mutate({ id: enquiry.id, status: 'contacted', reason: null })}
+      >
+        {setStatus.isPending ? 'Saving…' : 'Mark as contacted'}
+      </Button>
+      {setStatus.isError && (
+        <p role="alert" className="text-destructive text-sm">
+          Not saved. Try again.
         </p>
-      </Section>
+      )}
     </>
   )
 }
 
-function RawAnswers({ enquiry }: { enquiry: EnquiryDetail }) {
+function outcomeOf(e: EnquiryDetail) {
+  return {
+    stage: isKnown(OUTCOME_STAGES, e.outcome) ? e.outcome : null,
+    quoteAmount: e.quote_amount,
+    quoteDate: e.quote_date,
+    wonValue: e.outcome_value,
+    wonDate: e.won_date,
+    reason: e.outcome_reason,
+    note: e.outcome_note,
+  }
+}
+
+const outcomeKey = (e: EnquiryDetail) =>
+  `${e.outcome}-${e.outcome_value}-${e.quote_amount}-${e.outcome_reason}-${e.won_date}-${e.quote_date}-${e.outcome_note}`
+
+/** For stages before an outcome: record a quote, win or loss without hunting for it. */
+function OutcomeLater({ enquiry }: { enquiry: EnquiryDetail }) {
+  const [open, setOpen] = useState(false)
+  if (!open)
+    return (
+      <Button
+        variant="ghost"
+        className="h-12 self-start px-2 underline underline-offset-4"
+        onClick={() => setOpen(true)}
+      >
+        Record a quote or result
+      </Button>
+    )
   return (
-    <Section title="Answers">
-      <Alert className="mb-3">
-        <AlertDescription>
-          Form version {enquiry.form_version} could not be loaded, so answers are shown by field ID.
-        </AlertDescription>
-      </Alert>
-      <dl className="flex flex-col gap-3">
-        {Object.entries(enquiry.answers).map(([key, value]) => (
-          <Row key={key} label={key}>
-            {Array.isArray(value) ? value.join(', ') : value}
-          </Row>
-        ))}
-      </dl>
-    </Section>
+    <div className="border-t pt-3">
+      <OutcomeForm
+        key={outcomeKey(enquiry)}
+        enquiryId={enquiry.id}
+        current={outcomeOf(enquiry)}
+        badge={false}
+        primary="quote"
+      />
+    </div>
   )
 }
 
-function Attribution({ attribution }: { attribution: EnquiryAttribution | null }) {
-  if (!attribution || attribution.tracking === 'unknown') {
+function AppointmentSummary({ booking }: { booking: StaffBooking }) {
+  const badge = appointmentBadge(booking)
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-muted-foreground text-sm">{booking.appointment_types.label}</p>
+      <p className="text-title text-ink leading-tight font-medium tabular-nums">
+        {formatShortWhen(booking.starts_at)}
+      </p>
+      {badge && (
+        <div>
+          <Badge variant="outline">{badge.label}</Badge>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NextStepCard({
+  enquiry,
+  bookings,
+  now,
+}: {
+  enquiry: EnquiryDetail
+  bookings: ReturnType<typeof useEnquiryBookings>
+  now: number
+}) {
+  const stage = enquiryStage(enquiry, now)
+  const step = nextStep(stage.key)
+  const call = telHref(enquiry.answers.phone)
+  const first = enquiryName(enquiry).split(' ')[0]
+  const needsBooking = step === 'appointment' || step === 'record'
+  const featured = featuredBooking(enquiry, bookings.data ?? [], now)
+
+  let body: ReactNode
+  if (needsBooking && bookings.isPending) body = <Skeleton className="h-24 w-full" />
+  else if (needsBooking && bookings.isError)
+    body = <p className="text-destructive text-sm">Could not load the appointment.</p>
+  else if (step === 'contact')
+    body = (
+      <>
+        <p>
+          Asked to be contacted
+          {enquiry.contact_requested_at ? `, ${formatDateTime(enquiry.contact_requested_at)}` : ''}
+          {enquiry.contact_request_reason ? `: ${enquiry.contact_request_reason}` : ''}.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {call && (
+            <a
+              href={call}
+              className={buttonVariants({ className: 'h-12 w-full sm:w-auto sm:px-6' })}
+            >
+              Ring {first}
+            </a>
+          )}
+          <MarkContacted enquiry={enquiry} />
+        </div>
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  else if (step === 'reach')
+    body = (
+      <>
+        <p>Not booked yet. Ring or email to arrange a time.</p>
+        <MarkContacted enquiry={enquiry} />
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  else if (step === 'waiting')
+    body = (
+      <>
+        <p>Contacted. Nothing booked yet.</p>
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  else if (step === 'appointment' && featured)
+    body = (
+      <>
+        <AppointmentSummary booking={featured} />
+        <BookingActions booking={featured} attendance={false} />
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  else if (step === 'record')
+    body = (
+      <>
+        {featured ? (
+          <>
+            <AppointmentSummary booking={featured} />
+            <BookingActions booking={featured} moveCancel={false} />
+          </>
+        ) : (
+          <p>The appointment has happened.</p>
+        )}
+        <p className="text-sm">No quote recorded yet.</p>
+        <OutcomeForm
+          key={outcomeKey(enquiry)}
+          enquiryId={enquiry.id}
+          current={outcomeOf(enquiry)}
+          badge={false}
+          primary="quote"
+        />
+      </>
+    )
+  else if (step === 'quoted' || step === 'result')
+    body = (
+      <OutcomeForm
+        key={outcomeKey(enquiry)}
+        enquiryId={enquiry.id}
+        current={outcomeOf(enquiry)}
+        badge={false}
+        primary={step === 'quoted' ? 'won' : 'none'}
+      />
+    )
+  else if (step === 'closed')
+    body = (
+      <>
+        <p>Marked not suitable{enquiry.status_reason ? `: ${enquiry.status_reason}` : ''}.</p>
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  else if (step === 'appointment')
+    // The list said booked but the appointment is gone (moved or cancelled since): show the rest.
+    body = <p>No upcoming appointment now. Reload to see the latest.</p>
+  else
+    body = (
+      <NewerValue
+        what={
+          enquiry.outcome !== null && !isKnown(OUTCOME_STAGES, enquiry.outcome)
+            ? `Outcome: ${enquiry.outcome} ${enquiry.outcome_reason ?? ''}`
+            : `Status: ${enquiry.status}`
+        }
+      />
+    )
+
+  return (
+    <section
+      aria-labelledby="next-step"
+      className="bg-background border-action flex flex-col gap-3 rounded-md border-2 p-4"
+    >
+      <h2 id="next-step" className="text-base font-medium">
+        Next step
+      </h2>
+      {body}
+    </section>
+  )
+}
+
+/**
+ * The booking the Next step card holds (the next appointment, or the one that just happened), so
+ * the list below does not repeat its controls. A full booking row has no confirmed time; its
+ * state stands in for it.
+ */
+function featuredBooking(
+  enquiry: EnquiryDetail,
+  bookings: StaffBooking[],
+  now: number,
+): StaffBooking | null {
+  const step = nextStep(enquiryStage(enquiry, now).key)
+  const rows = bookings.map((b) => ({
+    ...b,
+    confirmed_at: b.state === 'confirmed' ? b.starts_at : null,
+  }))
+  if (step === 'appointment') return upcomingBooking(rows, now)
+  if (step === 'record') return passedBooking(rows, now)
+  return null
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------------------------
+
+/** Their answers, through the form version they answered; empty answers are left out. */
+function Project({
+  enquiry,
+  form,
+  siteForm,
+}: {
+  enquiry: EnquiryDetail
+  form: FormDefinition | undefined
+  siteForm: FormDefinition | undefined
+}) {
+  if (!form) {
     return (
-      <Section title="Where they came from">
-        <p className="text-sm">Unknown. The link they used carried no campaign tags.</p>
+      <Section title="Project">
+        <p className="text-muted-foreground mb-3 text-sm">
+          Form version {enquiry.form_version} could not be loaded, so answers are shown by field ID.
+        </p>
+        <dl className="flex flex-col gap-3">
+          {Object.entries(enquiry.answers).map(([key, value]) => (
+            <Row key={key} label={key}>
+              {Array.isArray(value) ? value.join(', ') : value}
+            </Row>
+          ))}
+        </dl>
       </Section>
     )
   }
-  const rows: [string, string | null][] = [
-    ['Source', attribution.utm_source],
-    ['Medium', attribution.utm_medium],
-    ['Campaign', attribution.utm_campaign],
-    ['Content', attribution.utm_content],
-    ['Term', attribution.utm_term],
-  ]
-  return (
-    <Section title="Where they came from">
-      <dl className="grid grid-cols-2 gap-3">
-        {rows.map(([label, value]) => (
-          <Row key={label} label={label}>
-            {value ?? <span className="text-muted-foreground">Unknown</span>}
-          </Row>
-        ))}
-        <Row label="Ad click id">
-          {attribution.click_id_present === null
-            ? 'Unknown'
-            : attribution.click_id_present
-              ? 'Present'
-              : 'None'}
-        </Row>
-        <Row label="First seen">
-          {attribution.first_seen_at ? formatDateTime(attribution.first_seen_at) : 'Unknown'}
-        </Row>
-      </dl>
-    </Section>
+  const rows = form.steps.flatMap((step) =>
+    visibleFields(step.fields, enquiry.answers).flatMap((field) => {
+      const value = formatAnswer(field, enquiry.answers[field.id])
+      return value === null
+        ? []
+        : [
+            <Row key={field.id} label={field.label}>
+              <ContactValue type={field.type} value={value} />
+            </Row>,
+          ]
+    }),
   )
-}
-
-function History({ events }: { events: EnquiryEvent[] }) {
+  // A v1 enquiry's address came later, as site details; v2 answers already hold the street.
+  const site = enquiry.site_details
+  if (site && !enquiry.answers.site_street) {
+    for (const field of siteForm?.steps.flatMap((s) => s.fields) ?? []) {
+      if (field.id === 'access_notes') continue
+      const value = formatAnswer(field, site[field.id])
+      if (value !== null)
+        rows.push(
+          <Row key={`site-${field.id}`} label={field.label}>
+            {value}
+          </Row>,
+        )
+    }
+  }
   return (
-    <Section title="History">
-      {events.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No history recorded.</p>
-      ) : (
-        <ol className="flex flex-col gap-4">
-          {events.map((event) => {
-            const line = eventLine(event)
-            return (
-              <li key={event.id} className="flex flex-col gap-0.5 border-l-2 pl-3">
-                <span className="text-sm font-medium">{line.title}</span>
-                {line.detail && (
-                  <span className="text-sm break-words whitespace-pre-line">{line.detail}</span>
-                )}
-                <span className="text-muted-foreground text-xs">
-                  <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>
-                  {event.actor_name ? ` · ${event.actor_name}` : ''}
-                </span>
-              </li>
-            )
-          })}
-        </ol>
-      )}
-    </Section>
-  )
-}
-
-function BookingsSection({ enquiryId }: { enquiryId: string }) {
-  const bookings = useEnquiryBookings(enquiryId)
-  return (
-    <Section title="Appointments">
-      {bookings.isPending ? (
-        <Skeleton className="h-16 w-full" />
-      ) : bookings.isError ? (
-        <p className="text-destructive text-sm">Could not load appointments.</p>
-      ) : bookings.data.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No appointment booked.</p>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {bookings.data.map((b) => (
-            <li key={b.id} className="flex flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">
-                  {formatLongDate(b.starts_at)}, {formatClock(b.starts_at)}
-                </span>
-                <BookingStateBadge state={b.state} />
-              </div>
-              <span className="text-sm">{b.appointment_types.label}</span>
-              <BookingActions booking={b} />
-              {b.failure_reason && (
-                <span className="text-destructive text-sm break-words">{b.failure_reason}</span>
-              )}
-              {b.calendar_event_link && (
-                <a
-                  href={b.calendar_event_link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm underline underline-offset-4"
-                >
-                  Open in Google Calendar
-                </a>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  )
-}
-
-function SiteDetails({
-  answers,
-  form,
-}: {
-  answers: EnquiryDetail['answers']
-  form: FormDefinition | undefined
-}) {
-  const fields = form ? form.steps.flatMap((s) => s.fields) : []
-  return (
-    <Section title="Property">
+    <Section title="Project">
       <dl className="flex flex-col gap-3">
-        {form
-          ? fields.map((field) => (
-              <Row key={field.id} label={field.label}>
-                {formatAnswer(field, answers[field.id]) ?? (
-                  <span className="text-muted-foreground">Not given</span>
-                )}
-              </Row>
-            ))
-          : Object.entries(answers).map(([key, value]) => (
-              <Row key={key} label={key}>
-                {Array.isArray(value) ? value.join(', ') : value}
-              </Row>
-            ))}
+        {rows}
+        {enquiry.marketing_opt_in && enquiry.marketing_opt_in_at && (
+          <Row label="News and offers">
+            Asked for them ({formatDateTime(enquiry.marketing_opt_in_at)})
+          </Row>
+        )}
       </dl>
+      <p className="text-muted-foreground mt-4 text-xs">
+        Form: {form.formId} version {form.version}
+      </p>
     </Section>
   )
 }
@@ -307,12 +479,12 @@ function PhotoViewer({ photo, onClose }: { photo: EnquiryPhoto; onClose: () => v
       ref={ref}
       aria-label="Photo, full size"
       onClose={onClose}
-      className="bg-background m-auto max-h-[95svh] w-[min(95vw,1000px)] rounded-xl border p-3 backdrop:bg-black/70"
+      className="bg-background m-auto max-h-[95svh] w-[min(95vw,1000px)] rounded-md border p-3 backdrop:bg-black/70"
     >
       <div className="flex flex-col gap-2">
         <Button
           variant="outline"
-          className="h-10 self-end"
+          className="h-12 self-end"
           autoFocus
           onClick={() => ref.current?.close()}
         >
@@ -336,15 +508,32 @@ function PhotoViewer({ photo, onClose }: { photo: EnquiryPhoto; onClose: () => v
   )
 }
 
-/** "Help us prepare": what the customer added after booking, with a clear marker. */
-function Prepared({ enquiry, form }: { enquiry: EnquiryDetail; form: FormDefinition | undefined }) {
+/** "Help us prepare": budget, timing, access notes and photos the customer added after booking. */
+function Prepared({
+  enquiry,
+  form,
+  siteForm,
+}: {
+  enquiry: EnquiryDetail
+  form: FormDefinition | undefined
+  siteForm: FormDefinition | undefined
+}) {
   const photos = useEnquiryPhotos(enquiry.id)
   const [open, setOpen] = useState<EnquiryPhoto | null>(null)
   const answers = enquiry.prepare_details ?? {}
-  const fields = form ? form.steps.flatMap((s) => s.fields) : []
-  const hasPhotos = (photos.data?.length ?? 0) > 0
-  if (!enquiry.added_after_booking_at && Object.keys(answers).length === 0 && !hasPhotos)
-    return null
+  const rows = (form ? form.steps.flatMap((s) => s.fields) : []).flatMap((field) => {
+    const value = formatAnswer(field, answers[field.id])
+    return value === null ? [] : [{ id: field.id, label: field.label, value }]
+  })
+  const access = enquiry.site_details?.access_notes
+  if (typeof access === 'string' && access.trim()) {
+    const label = siteForm
+      ? siteForm.steps.flatMap((s) => s.fields).find((f) => f.id === 'access_notes')?.label
+      : undefined
+    rows.push({ id: 'access_notes', label: label ?? 'Access notes', value: access.trim() })
+  }
+  const shownPhotos = photos.data ?? []
+  if (!enquiry.added_after_booking_at && rows.length === 0 && shownPhotos.length === 0) return null
   return (
     <Section title="Help us prepare">
       {enquiry.added_after_booking_at && (
@@ -358,196 +547,384 @@ function Prepared({ enquiry, form }: { enquiry: EnquiryDetail; form: FormDefinit
           </span>
         </p>
       )}
-      <dl className="flex flex-col gap-3">
-        {fields.map((field) => (
-          <Row key={field.id} label={field.label}>
-            {formatAnswer(field, answers[field.id]) ?? (
-              <span className="text-muted-foreground">Not given</span>
-            )}
-          </Row>
-        ))}
-      </dl>
-      <h3 className="text-muted-foreground mt-4 text-sm">Photos</h3>
-      {photos.isPending ? (
-        <Skeleton className="mt-2 h-24 w-full" />
-      ) : photos.isError ? (
-        <p className="text-destructive mt-2 text-sm">Could not load the photos.</p>
-      ) : photos.data.length === 0 ? (
-        <p className="text-muted-foreground mt-2 text-sm">None added.</p>
-      ) : (
-        <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {photos.data.map((photo, index) => (
-            <li key={photo.id}>
-              <button
-                type="button"
-                onClick={() => setOpen(photo)}
-                className="focus-visible:ring-ring/50 block w-full rounded-md focus-visible:ring-3 focus-visible:outline-none"
-              >
-                <img
-                  src={photo.thumbUrl}
-                  alt={`Customer upload ${index + 1}, added ${formatDateTime(photo.uploadedAt)}; open full size`}
-                  className="aspect-square w-full rounded-md border object-cover"
-                />
-              </button>
+      {rows.length > 0 && (
+        <dl className="flex flex-col gap-3">
+          {rows.map((r) => (
+            <Row key={r.id} label={r.label}>
+              {r.value}
+            </Row>
+          ))}
+        </dl>
+      )}
+      {photos.isError ? (
+        <p className="text-destructive mt-3 text-sm">Could not load the photos.</p>
+      ) : photos.isPending ? (
+        <Skeleton className="mt-3 h-24 w-full" />
+      ) : shownPhotos.length > 0 ? (
+        <>
+          <h3 className="text-muted-foreground mt-4 text-sm">Photos</h3>
+          <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {shownPhotos.map((photo, index) => (
+              <li key={photo.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(photo)}
+                  className="block w-full rounded-md"
+                >
+                  <img
+                    src={photo.thumbUrl}
+                    alt={`Customer upload ${index + 1}, added ${formatDateTime(photo.uploadedAt)}; open full size`}
+                    className="aspect-square w-full rounded-md border object-cover"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {open && <PhotoViewer photo={open} onClose={() => setOpen(null)} />}
+    </Section>
+  )
+}
+
+function Appointments({
+  bookings,
+  featured,
+}: {
+  bookings: ReturnType<typeof useEnquiryBookings>
+  featured: string | null
+}) {
+  if (bookings.isPending)
+    return (
+      <Section title="Appointments">
+        <Skeleton className="h-16 w-full" />
+      </Section>
+    )
+  if (bookings.isError)
+    return (
+      <Section title="Appointments">
+        <p className="text-destructive text-sm">Could not load appointments.</p>
+      </Section>
+    )
+  if (bookings.data.length === 0) return null
+  const list = [...bookings.data].sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))
+  return (
+    <Section title="Appointments">
+      <ul className="flex flex-col">
+        {list.map((b) => {
+          const badge = appointmentBadge(b)
+          return (
+            <li
+              key={b.id}
+              className="flex flex-col gap-1 border-t py-3 first:border-t-0 first:pt-0"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium tabular-nums">{formatShortWhen(b.starts_at)}</span>
+                {badge && <Badge variant="outline">{badge.label}</Badge>}
+                {b.attendance === 'attended' && (
+                  <span className="text-muted-foreground text-sm">Attended</span>
+                )}
+              </div>
+              <span className="text-sm">{b.appointment_types.label}</span>
+              {b.state === 'cancelled' && (
+                <span className="text-muted-foreground text-sm">
+                  Cancelled{b.cancelled_by ? ` by ${b.cancelled_by}` : ''}
+                  {b.cancel_reason ? `: ${b.cancel_reason}` : ''}
+                </span>
+              )}
+              {b.failure_reason && (
+                <span className="text-destructive text-sm break-words">{b.failure_reason}</span>
+              )}
+              {b.id !== featured && b.state === 'confirmed' && (
+                <BookingActions booking={b} moveCancel={false} />
+              )}
+              {b.calendar_event_link && (
+                <a
+                  href={b.calendar_event_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-12 items-center self-start text-sm underline underline-offset-4"
+                >
+                  Open in Google Calendar
+                </a>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </Section>
+  )
+}
+
+function Notes({ enquiry }: { enquiry: EnquiryDetail }) {
+  const add = useAddNote(enquiry.id)
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const notes = enquiry.enquiry_events.filter((e) => e.kind === 'note_added')
+  const save = () => {
+    const parsed = noteSchema.safeParse(text)
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Check the note.')
+      document.getElementById('new-note')?.focus()
+      return
+    }
+    setError(null)
+    add.mutate(parsed.data, { onSuccess: () => setText('') })
+  }
+  return (
+    <Section title="Notes">
+      {notes.length > 0 && (
+        <ul className="mb-4 flex flex-col gap-3">
+          {notes.map((n) => (
+            <li key={n.id} className="border-l-2 pl-3">
+              <p className="break-words whitespace-pre-line">{n.detail}</p>
+              <p className="text-muted-foreground text-xs">
+                {n.actor_name ?? 'Staff'} ·{' '}
+                <time dateTime={n.created_at}>{formatDateTime(n.created_at)}</time>
+              </p>
             </li>
           ))}
         </ul>
       )}
-      {open && <PhotoViewer photo={open} onClose={() => setOpen(null)} />}
+      <form
+        noValidate
+        className="flex flex-col gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save()
+        }}
+      >
+        <label htmlFor="new-note" className="text-sm font-medium">
+          Add a note
+        </label>
+        <Textarea
+          id="new-note"
+          rows={2}
+          maxLength={NOTE_MAX}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'new-note-error' : undefined}
+          className="text-base md:text-base"
+        />
+        {error && (
+          <p id="new-note-error" role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        )}
+        {add.isError && (
+          <p role="alert" className="text-destructive text-sm">
+            The note was not saved. Try again.
+          </p>
+        )}
+        <Button type="submit" className="h-12 self-start px-6" disabled={add.isPending}>
+          {add.isPending ? 'Saving…' : 'Save note'}
+        </Button>
+      </form>
+      <details className="group mt-4 border-t pt-2">
+        <summary className="text-muted-foreground flex min-h-12 cursor-pointer items-center text-sm">
+          Change status (now: {enquiry.status.replace(/_/g, ' ')})
+        </summary>
+        <section aria-label="Change status" className="pt-2">
+          {isKnown(ENQUIRY_STATUSES, enquiry.status) ? (
+            <StatusForm enquiryId={enquiry.id} current={enquiry.status} />
+          ) : (
+            <NewerValue what={`Status: ${enquiry.status}`} />
+          )}
+        </section>
+      </details>
     </Section>
+  )
+}
+
+function Attribution({ attribution }: { attribution: EnquiryAttribution | null }) {
+  if (!attribution || attribution.tracking === 'unknown') {
+    return (
+      <Section title="Where they came from">
+        <p className="text-sm">Unknown. The link they used carried no campaign tags.</p>
+      </Section>
+    )
+  }
+  const rows: [string, string | null][] = [
+    ['Source', attribution.utm_source],
+    ['Medium', attribution.utm_medium],
+    ['Campaign', attribution.utm_campaign],
+    ['Content', attribution.utm_content],
+    ['Term', attribution.utm_term],
+  ]
+  return (
+    <Section title="Where they came from">
+      <dl className="grid grid-cols-2 gap-3">
+        {rows.map(([label, value]) =>
+          value ? (
+            <Row key={label} label={label}>
+              {value}
+            </Row>
+          ) : null,
+        )}
+        {attribution.click_id_present !== null && (
+          <Row label="Ad click id">{attribution.click_id_present ? 'Present' : 'None'}</Row>
+        )}
+        {attribution.first_seen_at && (
+          <Row label="First seen">{formatDateTime(attribution.first_seen_at)}</Row>
+        )}
+      </dl>
+    </Section>
+  )
+}
+
+function History({ events }: { events: EnquiryEvent[] }) {
+  return (
+    <Section title="History">
+      {events.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No history recorded.</p>
+      ) : (
+        <ol className="flex flex-col gap-4">
+          {events.map((event) => {
+            const line =
+              event.kind === 'note_added'
+                ? { title: 'Note added', detail: event.detail }
+                : eventLine(event)
+            return (
+              <li key={event.id} className="flex flex-col gap-0.5 border-l-2 pl-3">
+                <span className="text-sm font-medium">{line.title}</span>
+                {line.detail && (
+                  <span className="text-sm break-words whitespace-pre-line">{line.detail}</span>
+                )}
+                <span className="text-muted-foreground text-xs">
+                  <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>
+                  {event.actor_name ? ` · ${event.actor_name}` : ''}
+                </span>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </Section>
+  )
+}
+
+function More({ enquiry }: { enquiry: EnquiryDetail }) {
+  return (
+    <details className="bg-background group rounded-md border">
+      <summary className="flex min-h-12 cursor-pointer items-center px-4 text-base font-medium">
+        More
+      </summary>
+      <div className="flex flex-col gap-3 border-t p-3">
+        <History events={enquiry.enquiry_events} />
+        <Attribution attribution={enquiry.enquiry_attribution} />
+        <Section title="Had to chase details">
+          <ChaseForm
+            key={`${enquiry.chase_flagged_at}-${enquiry.chase_note}`}
+            enquiryId={enquiry.id}
+            current={{
+              at: enquiry.chase_flagged_at,
+              note: enquiry.chase_note,
+              by: enquiry.chase_flagged_by_name,
+            }}
+          />
+        </Section>
+        <Section title="Delete">
+          <DeleteEnquiry enquiryId={enquiry.id} reference={enquiry.reference} />
+        </Section>
+      </div>
+    </details>
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The page
+// ---------------------------------------------------------------------------------------------
+
+function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) {
+  const forms = useFormVersions()
+  const bookings = useEnquiryBookings(enquiry.id)
+  const form = forms.data?.get(`${enquiry.form_id}@${enquiry.form_version}`)
+  const siteForm = forms.data?.get(`site_details@${enquiry.site_details_form_version ?? 1}`)
+  const stage = enquiryStage(enquiry, now)
+  const featured = featuredBooking(enquiry, bookings.data ?? [], now)?.id ?? null
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+      <div className="flex flex-col gap-4 lg:sticky lg:top-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-title text-ink leading-tight font-medium break-words">
+            {enquiryName(enquiry)}
+          </h1>
+          <p className="text-muted-foreground">{projectLine(enquiry, form)}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <StageBadge stage={stage} />
+            <span className="text-muted-foreground font-mono text-xs">{enquiry.reference}</span>
+            <span className="text-muted-foreground text-xs">
+              Received{' '}
+              <time dateTime={enquiry.submitted_at}>{formatDateTime(enquiry.submitted_at)}</time>
+            </span>
+          </div>
+        </div>
+        <QuickActions enquiry={enquiry} />
+        <NextStepCard enquiry={enquiry} bookings={bookings} now={now} />
+      </div>
+      <div className="flex flex-col gap-4">
+        {forms.isPending ? (
+          <Skeleton className="h-40 w-full" />
+        ) : (
+          <Project enquiry={enquiry} form={form} siteForm={siteForm} />
+        )}
+        <Prepared
+          enquiry={enquiry}
+          form={forms.data?.get(`prepare@${enquiry.prepare_form_version ?? 1}`)}
+          siteForm={siteForm}
+        />
+        <Appointments bookings={bookings} featured={featured} />
+        <Notes enquiry={enquiry} />
+        <More enquiry={enquiry} />
+      </div>
+    </div>
   )
 }
 
 export function EnquiryDetailPage() {
   const { id = '' } = useParams()
   const enquiry = useEnquiry(id)
-  const forms = useFormVersions()
+  const now = useLoadedAt(enquiry.dataUpdatedAt)
 
-  const back = (
-    <Link
-      to="/"
-      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 inline-flex items-center gap-1 text-sm focus-visible:rounded-sm focus-visible:ring-3 focus-visible:outline-none"
-    >
-      <ChevronLeft className="size-4" aria-hidden="true" /> All enquiries
-    </Link>
+  const top = (
+    <div className="flex flex-wrap items-center justify-between gap-x-4">
+      <Link
+        to="/"
+        className="text-primary inline-flex min-h-12 items-center gap-1 text-sm underline"
+      >
+        <ChevronLeft className="size-4" aria-hidden="true" />
+        All enquiries
+      </Link>
+      <EnquiryWalk id={id} />
+    </div>
   )
 
-  if (enquiry.isPending) {
-    return (
-      <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading enquiry">
-        {back}
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    )
-  }
-  if (enquiry.isError) {
-    return (
-      <div className="flex flex-col gap-4">
-        {back}
+  return (
+    <div className="flex flex-col gap-2">
+      {top}
+      {enquiry.isPending ? (
+        <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading enquiry">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ) : enquiry.isError ? (
         <Alert variant="destructive" role="alert">
           <AlertTitle>Could not load this enquiry</AlertTitle>
           <AlertDescription>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={() => void enquiry.refetch()}
-            >
+            <Button variant="outline" className="mt-2 h-12" onClick={() => void enquiry.refetch()}>
               Try again
             </Button>
           </AlertDescription>
         </Alert>
-      </div>
-    )
-  }
-  if (!enquiry.data) {
-    return (
-      <div className="flex flex-col gap-4">
-        {back}
-        <p className="bg-background text-muted-foreground rounded-xl border p-6">
+      ) : !enquiry.data ? (
+        <p className="bg-background text-muted-foreground rounded-md border p-6">
           No enquiry with this link.
         </p>
-      </div>
-    )
-  }
-
-  const data = enquiry.data
-  const form = forms.data?.get(`${data.form_id}@${data.form_version}`)
-
-  return (
-    <div className="flex flex-col gap-4">
-      {back}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="font-mono text-xl font-semibold tracking-wider">{data.reference}</h1>
-        <StatusBadge status={data.status} />
-      </div>
-      <p className="text-muted-foreground -mt-2 text-sm">
-        Received <time dateTime={data.submitted_at}>{formatDateTime(data.submitted_at)}</time>
-        {data.status === 'unsuitable' && data.status_reason
-          ? ` · Unsuitable: ${data.status_reason}`
-          : ''}
-      </p>
-      <EnquiryFlags
-        answers={data.answers}
-        contactRequestedAt={data.contact_requested_at}
-        addedAfterBookingAt={data.added_after_booking_at}
-      />
-      {data.contact_requested_at && (
-        <Alert variant="destructive">
-          <AlertTitle>Contact request: the customer asked us to contact them</AlertTitle>
-          <AlertDescription>
-            {formatDateTime(data.contact_requested_at)}
-            {data.contact_request_reason ? `: ${data.contact_request_reason}` : ''}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {forms.isPending ? (
-        <Skeleton className="h-40 w-full" />
-      ) : form ? (
-        <Answers enquiry={data} form={form} />
       ) : (
-        <RawAnswers enquiry={data} />
+        <EnquiryView key={enquiry.data.id} enquiry={enquiry.data} now={now} />
       )}
-
-      <BookingsSection enquiryId={data.id} />
-      <Prepared
-        enquiry={data}
-        form={forms.data?.get(`prepare@${data.prepare_form_version ?? 1}`)}
-      />
-      {data.site_details && (
-        <SiteDetails
-          answers={data.site_details}
-          form={forms.data?.get(`site_details@${data.site_details_form_version ?? 1}`)}
-        />
-      )}
-
-      <Section title="Had to chase details">
-        <ChaseForm
-          key={`${data.chase_flagged_at}-${data.chase_note}`}
-          enquiryId={data.id}
-          current={{
-            at: data.chase_flagged_at,
-            note: data.chase_note,
-            by: data.chase_flagged_by_name,
-          }}
-        />
-      </Section>
-
-      <Section title="Outcome">
-        {data.outcome === null || isKnown(OUTCOME_STAGES, data.outcome) ? (
-          <OutcomeForm
-            key={`${data.outcome}-${data.outcome_value}-${data.quote_amount}-${data.outcome_reason}-${data.won_date}-${data.quote_date}`}
-            enquiryId={data.id}
-            current={{
-              stage: data.outcome,
-              quoteAmount: data.quote_amount,
-              quoteDate: data.quote_date,
-              wonValue: data.outcome_value,
-              wonDate: data.won_date,
-              reason: data.outcome_reason,
-              note: data.outcome_note,
-            }}
-          />
-        ) : (
-          <NewerValue what={`Outcome: ${data.outcome} ${data.outcome_reason ?? ''}`} />
-        )}
-      </Section>
-
-      <Section title="Change status">
-        {isKnown(ENQUIRY_STATUSES, data.status) ? (
-          <StatusForm enquiryId={data.id} current={data.status} />
-        ) : (
-          <NewerValue what={`Status: ${data.status}`} />
-        )}
-      </Section>
-      <History events={data.enquiry_events} />
-      <Attribution attribution={data.enquiry_attribution} />
-      <Section title="Delete">
-        <DeleteEnquiry enquiryId={data.id} reference={data.reference} />
-      </Section>
     </div>
   )
 }

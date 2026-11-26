@@ -39,7 +39,7 @@ const formatDay = (iso: string) => day.format(new Date(`${iso}T00:00:00Z`))
 
 const big = 'h-12 w-full text-base sm:w-auto sm:px-6'
 
-function Summary({ current }: { current: CurrentOutcome }) {
+function Summary({ current, badge }: { current: CurrentOutcome; badge: boolean }) {
   const lines: string[] = []
   if (current.stage === 'won')
     lines.push(
@@ -52,11 +52,13 @@ function Summary({ current }: { current: CurrentOutcome }) {
     lines.push(`Quoted ${formatEuro(current.quoteAmount)} on ${formatDay(current.quoteDate)}`)
   return (
     <div className="flex flex-col gap-1">
-      <div>
-        <Badge variant={current.stage === 'won' ? 'default' : 'outline'}>
-          {stageLabel(current.stage)}
-        </Badge>
-      </div>
+      {badge && (
+        <div>
+          <Badge variant={current.stage === 'won' ? 'default' : 'outline'}>
+            {stageLabel(current.stage)}
+          </Badge>
+        </div>
+      )}
       {lines.map((line) => (
         <p key={line} className="tabular-nums">
           {line}
@@ -84,9 +86,15 @@ function FieldError({ id, message }: { id: string; message: string | undefined }
 export function OutcomeForm({
   enquiryId,
   current,
+  badge = true,
+  primary,
 }: {
   enquiryId: string
   current: CurrentOutcome
+  /** Show the stage badge (the enquiry page already shows the stage at the top). */
+  badge?: boolean
+  /** The one action drawn filled: Record quote after an appointment, Mark won once quoted. */
+  primary?: 'quote' | 'won' | 'none'
 }) {
   const save = useRecordOutcome(enquiryId)
   const [mode, setMode] = useState<Mode>('view')
@@ -154,21 +162,29 @@ export function OutcomeForm({
 
   if (mode === 'view') {
     const has = current.stage !== null
+    const filled = primary ?? (current.stage === 'won' ? 'none' : 'won')
     return (
       <div className="flex flex-col gap-4">
-        <Summary current={current} />
+        {(badge || has || current.quoteAmount !== null) && (
+          <Summary current={current} badge={badge} />
+        )}
         {save.isSuccess && (
           <p aria-live="polite" className="text-muted-foreground text-sm">
             Saved.
           </p>
         )}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button type="button" variant="outline" className={big} onClick={() => open('quoted')}>
+          <Button
+            type="button"
+            variant={filled === 'quote' ? 'default' : 'outline'}
+            className={big}
+            onClick={() => open('quoted')}
+          >
             {current.quoteAmount !== null ? 'Edit quote' : 'Record quote'}
           </Button>
           <Button
             type="button"
-            variant={current.stage === 'won' ? 'outline' : 'default'}
+            variant={filled === 'won' ? 'default' : 'outline'}
             className={big}
             onClick={() => open('won')}
           >

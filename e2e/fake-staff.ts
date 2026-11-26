@@ -54,6 +54,8 @@ export type StaffWorld = {
   pilot: unknown
   /** What pilot_report_by_content returns, by campaign. */
   pilotByContent: Record<string, unknown>
+  /** What staff-booking's move_options returns. */
+  moveOptions: unknown
 }
 
 export function staffWorld(): StaffWorld {
@@ -90,6 +92,7 @@ export function staffWorld(): StaffWorld {
     adFiles: new Map(),
     photoFiles: new Map(),
     pilotByContent: {},
+    moveOptions: { status: 'unavailable', reason: 'calendar' },
     pilot: {
       counted_from: new Date().toISOString(),
       rows: [],
@@ -146,8 +149,50 @@ function select(rows: Record<string, unknown>[], url: URL) {
   for (const [key, value] of url.searchParams) {
     if (['select', 'order', 'limit', 'offset'].includes(key)) continue
     if (value.startsWith('eq.')) out = out.filter((r) => String(r[key]) === value.slice(3))
+    if (value === 'is.null') out = out.filter((r) => r[key] === null || r[key] === undefined)
+    if (value === 'not.is.null') out = out.filter((r) => r[key] !== null && r[key] !== undefined)
+    if (value.startsWith('in.(')) {
+      const set = value.slice(4, -1).split(',')
+      out = out.filter((r) => set.includes(String(r[key])))
+    }
   }
   return out
+}
+
+/**
+ * The list's embedded bookings for one enquiry, rebuilt from the bookings table after a staff
+ * change (move, cancel, attendance), as PostgREST would return them.
+ */
+function syncEnquiryBookings(world: StaffWorld, enquiryId: string) {
+  const enquiry = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+    (e) => e.id === enquiryId,
+  )
+  if (!enquiry) return
+  enquiry.bookings = ((world.tables.bookings ?? []) as Record<string, unknown>[])
+    .filter((b) => b.enquiry_id === enquiryId)
+    .map((b) => ({
+      starts_at: b.starts_at,
+      confirmed_at: b.confirmed_at ?? null,
+      state: b.state,
+      appointment_types: { mode: (b.appointment_types as { mode: string }).mode },
+    }))
+}
+
+function pushEvent(row: Record<string, unknown>, event: Record<string, unknown>) {
+  const events = (row.enquiry_events ?? []) as Record<string, unknown>[]
+  row.enquiry_events = [
+    {
+      id: events.length + 300,
+      detail: null,
+      from_status: null,
+      to_status: null,
+      reason: null,
+      actor_name: null,
+      created_at: new Date().toISOString(),
+      ...event,
+    },
+    ...events,
+  ]
 }
 
 export async function installFakeStaff(page: Page, world: StaffWorld = staffWorld()) {
@@ -333,6 +378,54 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
           },
           ...events,
         ]
+        return json(route, 200, null)
+      }
+      if (table === 'rpc/add_enquiry_note') {
+        // The server's rules (see 20261128160000_enquiry_notes.sql).
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as { p_enquiry_id: string; p_note: string | null }
+        const note = (b.p_note ?? '').trim()
+        if (!note || note.length > 1000) return json(route, 400, { code: '22023', message: 'note' })
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === b.p_enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        pushEvent(row, { kind: 'note_added', detail: note, actor_name: caller.display_name })
+        return json(route, 200, null)
+      }
+      if (table === 'rpc/set_enquiry_status') {
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as {
+          p_enquiry_id: string
+          p_status: string
+          p_reason: string | null
+        }
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === b.p_enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        if (row.status !== b.p_status) {
+          pushEvent(row, {
+            kind: 'status_changed',
+            from_status: row.status,
+            to_status: b.p_status,
+            reason: b.p_reason,
+            actor_name: caller.display_name,
+          })
+          row.status = b.p_status
+          row.status_reason = b.p_status === 'unsuitable' ? b.p_reason : null
+        }
+        return json(route, 200, null)
+      }
+      if (table === 'rpc/set_booking_attendance') {
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as { p_booking_id: string; p_attendance: string }
+        const booking = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
+          (x) => x.id === b.p_booking_id,
+        )
+        if (!booking) return json(route, 404, { code: 'P0002', message: 'booking not found' })
+        booking.attendance = b.p_attendance
+        syncEnquiryBookings(world, String(booking.enquiry_id))
         return json(route, 200, null)
       }
       if (table === 'rpc/set_chase_details') {
@@ -700,6 +793,43 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       headers: { 'access-control-allow-origin': '*' },
       body: file,
     })
+  })
+
+  // staff-booking (move and cancel any booking), with the outcomes the real function returns.
+  await page.route('**/functions/v1/staff-booking', async (route) => {
+    const req = route.request()
+    if (req.method() === 'OPTIONS') return json(route, 204, undefined)
+    const caller = world.staff.get(subOf(req.headers().authorization) ?? '')
+    if (!caller?.active) return json(route, 401, { error: 'not staff' })
+    const input = req.postDataJSON() as {
+      action: string
+      bookingId: string
+      start?: string
+      reason?: string
+    }
+    const booking = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
+      (b) => b.id === input.bookingId,
+    )
+    if (!booking) return json(route, 404, { error: 'not found' })
+    if (input.action === 'move_options') return json(route, 200, world.moveOptions)
+    if (input.action === 'reschedule' && input.start) {
+      const length = Date.parse(String(booking.ends_at)) - Date.parse(String(booking.starts_at))
+      booking.starts_at = input.start
+      booking.ends_at = new Date(Date.parse(input.start) + length).toISOString()
+      syncEnquiryBookings(world, String(booking.enquiry_id))
+      return json(route, 200, { status: 'rescheduled', changed: true })
+    }
+    if (input.action === 'cancel') {
+      Object.assign(booking, {
+        state: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: 'staff',
+        cancel_reason: input.reason ?? null,
+      })
+      syncEnquiryBookings(world, String(booking.enquiry_id))
+      return json(route, 200, { status: 'cancelled', changed: true })
+    }
+    return json(route, 400, { error: 'unknown action' })
   })
 
   await page.route('**/functions/v1/staff-accounts', async (route) => {

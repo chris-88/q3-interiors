@@ -53,6 +53,8 @@ test('any staff member flags "had to chase details" with what was missing; histo
   await installFakeStaff(page, world)
   await page.goto('/#/enquiries/e-chase')
   await signIn(page, 'staff@example.com', 'another long password')
+  // The redesign keeps the flag under More (with History, where they came from and Delete).
+  await page.getByText('More', { exact: true }).click()
   const chase = page.getByRole('region', { name: 'Had to chase details' })
   await chase.getByRole('checkbox', { name: 'Had to chase details' }).click()
   await chase.getByLabel('What was missing?').fill('x')

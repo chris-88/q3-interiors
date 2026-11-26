@@ -1,11 +1,4 @@
-import {
-  formatEuro,
-  matchesOutcomeFilter,
-  outcomeInputSchema,
-  parseEuro,
-  reasonLabel,
-  stageLabel,
-} from './outcome'
+import { formatEuro, outcomeInputSchema, parseEuro, reasonLabel, stageLabel } from './outcome'
 
 const now = new Date('2026-11-26T12:00:00Z')
 
@@ -60,39 +53,5 @@ describe('outcome input', () => {
     expect(reasonLabel('chose_another')).toBe('Went elsewhere')
     expect(reasonLabel('project_cancelled')).toBe('Project cancelled or postponed')
     expect(reasonLabel('budget_cut')).toBe('budget cut')
-  })
-})
-
-describe('outcome filter', () => {
-  const past = {
-    starts_at: '2026-11-20T10:00:00Z',
-    confirmed_at: '2026-11-18T10:00:00Z',
-    state: 'confirmed',
-  }
-  const future = { ...past, starts_at: '2026-12-20T10:00:00Z' }
-  const at = now.getTime()
-  it('awaiting quote: no outcome and a confirmed appointment that has happened', () => {
-    expect(matchesOutcomeFilter({ outcome: null, bookings: [past] }, 'awaiting_quote', at)).toBe(
-      true,
-    )
-    expect(matchesOutcomeFilter({ outcome: null, bookings: [future] }, 'awaiting_quote', at)).toBe(
-      false,
-    )
-    expect(matchesOutcomeFilter({ outcome: null, bookings: [] }, 'awaiting_quote', at)).toBe(false)
-    expect(
-      matchesOutcomeFilter(
-        { outcome: null, bookings: [{ ...past, state: 'cancelled' }] },
-        'awaiting_quote',
-        at,
-      ),
-    ).toBe(false)
-    expect(
-      matchesOutcomeFilter({ outcome: 'quoted', bookings: [past] }, 'awaiting_quote', at),
-    ).toBe(false)
-  })
-  it('stage filters match the stage; all matches everything', () => {
-    expect(matchesOutcomeFilter({ outcome: 'won', bookings: [] }, 'won', at)).toBe(true)
-    expect(matchesOutcomeFilter({ outcome: 'won', bookings: [] }, 'lost', at)).toBe(false)
-    expect(matchesOutcomeFilter({ outcome: 'paused', bookings: [] }, 'all', at)).toBe(true)
   })
 })

@@ -38,13 +38,21 @@ const bookingSchema = z.object({
   cancel_reason: z.string().nullable(),
   calendar_mismatch: z.string().nullable(),
   appointment_types: z.object({ label: z.string(), mode: openEnum(['phone', 'on_site']) }),
-  enquiries: z.object({ reference: z.string(), answers }).nullable(),
+  enquiries: z
+    .object({
+      reference: z.string(),
+      answers,
+      // For "To wrap up" and Directions; absent from older reads.
+      outcome: z.string().nullable().default(null),
+      site_details: answers.nullable().default(null),
+    })
+    .nullable(),
 })
 export type StaffBooking = z.infer<typeof bookingSchema>
 
 const BOOKING_COLUMNS = `id, enquiry_id, state, starts_at, ends_at, failure_reason, calendar_event_id,
   calendar_event_link, created_at, attendance, cancelled_at, cancelled_by, cancel_reason,
-  calendar_mismatch, appointment_types (label, mode), enquiries (reference, answers)`
+  calendar_mismatch, appointment_types (label, mode), enquiries (reference, answers, outcome, site_details)`
 
 export function useAppointments() {
   return useQuery({
@@ -243,12 +251,16 @@ export function useUpdateAppointmentType() {
 
 export type StaffException = {
   id: string
-  kind: 'calendar' | 'booking' | 'contact' | 'email'
+  kind: 'calendar' | 'booking' | 'email'
   text: string
   link: string
 }
 
-/** Things that need a person: a disconnected calendar, failed bookings, contact requests, failed emails. */
+/**
+ * System problems that need a person: a disconnected calendar, failed bookings and emails,
+ * calendar differences and removals. Contact requests are enquiries, so they live in the list
+ * (Needs action), not here.
+ */
 export function useExceptions(staffUserId: string | undefined) {
   return useQuery({
     queryKey: ['exceptions', staffUserId],
@@ -256,44 +268,37 @@ export function useExceptions(staffUserId: string | undefined) {
     refetchInterval: 60_000,
     queryFn: async (): Promise<StaffException[]> => {
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      const [connection, failed, contacts, emails, mismatches, removals, orphans] =
-        await Promise.all([
-          supabase
-            .from('calendar_connections')
-            .select('status, last_error')
-            .eq('staff_user_id', staffUserId ?? '')
-            .maybeSingle(),
-          supabase
-            .from('bookings')
-            .select('id, enquiry_id, failure_reason, enquiries (reference)')
-            .eq('state', 'failed')
-            .gte('updated_at', since)
-            .order('updated_at', { ascending: false }),
-          supabase
-            .from('enquiries')
-            .select('id, reference, contact_request_reason')
-            .not('contact_requested_at', 'is', null)
-            .eq('status', 'new')
-            .order('contact_requested_at', { ascending: false }),
-          supabase
-            .from('communications')
-            .select('id, enquiry_id, last_error, enquiries (reference)')
-            .eq('state', 'failed')
-            .gte('updated_at', since),
-          supabase
-            .from('bookings')
-            .select('id, enquiry_id, calendar_mismatch, enquiries (reference)')
-            .not('calendar_mismatch', 'is', null)
-            .in('state', ['reserved', 'calendar_pending', 'confirmed']),
-          supabase
-            .from('integration_jobs')
-            .select('id, last_error, bookings (enquiry_id, enquiries (reference))')
-            .eq('kind', 'delete_calendar_event')
-            .eq('state', 'failed')
-            .gte('updated_at', since),
-          supabase.rpc('pending_event_deletion_count'),
-        ])
-      for (const r of [connection, failed, contacts, emails, mismatches, removals, orphans]) {
+      const [connection, failed, emails, mismatches, removals, orphans] = await Promise.all([
+        supabase
+          .from('calendar_connections')
+          .select('status, last_error')
+          .eq('staff_user_id', staffUserId ?? '')
+          .maybeSingle(),
+        supabase
+          .from('bookings')
+          .select('id, enquiry_id, failure_reason, enquiries (reference)')
+          .eq('state', 'failed')
+          .gte('updated_at', since)
+          .order('updated_at', { ascending: false }),
+        supabase
+          .from('communications')
+          .select('id, enquiry_id, last_error, enquiries (reference)')
+          .eq('state', 'failed')
+          .gte('updated_at', since),
+        supabase
+          .from('bookings')
+          .select('id, enquiry_id, calendar_mismatch, enquiries (reference)')
+          .not('calendar_mismatch', 'is', null)
+          .in('state', ['reserved', 'calendar_pending', 'confirmed']),
+        supabase
+          .from('integration_jobs')
+          .select('id, last_error, bookings (enquiry_id, enquiries (reference))')
+          .eq('kind', 'delete_calendar_event')
+          .eq('state', 'failed')
+          .gte('updated_at', since),
+        supabase.rpc('pending_event_deletion_count'),
+      ])
+      for (const r of [connection, failed, emails, mismatches, removals, orphans]) {
         if (r.error) throw toApiError(r.error)
       }
       const out: StaffException[] = []
@@ -328,22 +333,6 @@ export function useExceptions(staffUserId: string | undefined) {
           kind: 'booking',
           text: `Booking for ${b.enquiries?.reference ?? 'an enquiry'} failed: ${b.failure_reason ?? 'unknown reason'}`,
           link: `/enquiries/${b.enquiry_id}`,
-        })
-      }
-      for (const e of parseRows(
-        z.object({
-          id: z.string(),
-          reference: z.string(),
-          contact_request_reason: z.string().nullable(),
-        }),
-        contacts.data,
-        'needs attention',
-      )) {
-        out.push({
-          id: `contact-${e.id}`,
-          kind: 'contact',
-          text: `${e.reference} asked to be contacted${e.contact_request_reason ? ` (${e.contact_request_reason})` : ''}`,
-          link: `/enquiries/${e.id}`,
         })
       }
       for (const c of parseRows(

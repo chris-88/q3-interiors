@@ -205,3 +205,60 @@ test('the report shows quoted, won and won value beside saved and booked', async
   await page.setViewportSize({ width: 1280, height: 900 })
   await shot(page, 'report-desktop')
 })
+
+test('a campaign opens to one card per ad, with untagged and folded rows', async ({ page }) => {
+  const w = world()
+  const row = (dim: string, key: string, over: Record<string, unknown> = {}) => ({
+    dim,
+    key,
+    sessions: 60,
+    chose: 30,
+    saved: 9,
+    booked: 5,
+    attended: 4,
+    suitable_attended: 4,
+    chased: 0,
+    quoted: 3,
+    won: 1,
+    won_value: 14000,
+    median_to_saved_seconds: 300,
+    median_to_booked_seconds: 900,
+    ...over,
+  })
+  w.pilot = {
+    counted_from: '2026-11-25T12:00:00Z',
+    rows: [row('all', 'all'), row('campaign', 'type-test-1')],
+    headline: { instagram_sessions: 60, instagram_suitable_attended: 4 },
+  }
+  const none = { quoted: 0, won: 0, won_value: 0 }
+  w.pilotByContent['type-test-1'] = {
+    campaign: 'type-test-1',
+    cap: 25,
+    rows: [
+      row('content', 'kitchen-calls', { sessions: 30, saved: 6, booked: 3, quoted: 2, won: 1 }),
+      row('content', 'price-first', { sessions: 20, saved: 2, booked: 1, ...none, quoted: 1 }),
+      row('content', '(none)', { sessions: 6, saved: 1, booked: 1, ...none }),
+      row('content', '(other)', { sessions: 4, saved: 0, booked: 0, ...none }),
+    ],
+  }
+  await installFakeStaff(page, w)
+  await page.goto('/#/report')
+  await signIn(page, 'staff@example.com', 'another long password')
+  const campaign = page.getByRole('region', { name: 'type-test-1' })
+  const show = campaign.getByRole('button', { name: 'Show each ad' })
+  await expect(show).toHaveAttribute('aria-expanded', 'false')
+  await show.click()
+  const kitchen = campaign.getByRole('region', { name: 'kitchen-calls' })
+  await expect(kitchen.getByRole('row', { name: /^Landing sessions/ })).toContainText('30')
+  await expect(kitchen.getByRole('row', { name: /^Saved enquiries/ })).toContainText('20.0')
+  await expect(kitchen).toContainText('€14,000.00')
+  await expect(campaign.getByRole('region', { name: 'No ad tag (utm_content)' })).toBeVisible()
+  await expect(
+    campaign.getByRole('region', { name: 'Other ads (smaller ones, together)' }),
+  ).toBeVisible()
+  expect(w.rpcCalls.filter((c) => c.name === 'pilot_report_by_content').map((c) => c.body)).toEqual(
+    [expect.objectContaining({ p_campaign: 'type-test-1' })],
+  )
+  await campaign.scrollIntoViewIfNeeded()
+  await shot(page, 'report-by-ad-390')
+})

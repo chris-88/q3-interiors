@@ -52,6 +52,8 @@ export type StaffWorld = {
   photoFiles: Map<string, Buffer>
   /** What pilot_report returns. */
   pilot: unknown
+  /** What pilot_report_by_content returns, by campaign. */
+  pilotByContent: Record<string, unknown>
 }
 
 export function staffWorld(): StaffWorld {
@@ -87,6 +89,7 @@ export function staffWorld(): StaffWorld {
     testCalendar: { email: null },
     adFiles: new Map(),
     photoFiles: new Map(),
+    pilotByContent: {},
     pilot: {
       counted_from: new Date().toISOString(),
       rows: [],
@@ -245,6 +248,11 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         })
       }
       if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      if (table === 'rpc/pilot_report_by_content') {
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const campaign = (req.postDataJSON() as { p_campaign: string }).p_campaign
+        return json(route, 200, world.pilotByContent[campaign] ?? { campaign, cap: 25, rows: [] })
+      }
       if (table === 'rpc/pilot_report') {
         if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
         return json(route, 200, world.pilot)

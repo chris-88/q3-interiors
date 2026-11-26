@@ -1,4 +1,5 @@
 import {
+  contentReportSchema,
   formatDuration,
   formatPer100,
   per100,
@@ -73,5 +74,25 @@ describe('pilot report arithmetic', () => {
     expect(formatDuration(null)).toBe('–')
     expect(rowLabel(row({ dim: 'route', key: 'on_site' }))).toBe('Site visit')
     expect(rowLabel(row({ dim: 'campaign', key: 'kitchens' }))).toBe('kitchens')
+  })
+})
+
+describe('pilot measures by ad', () => {
+  it('reads a campaign split by utm_content, labels the untagged and folded rows', () => {
+    const parsed = contentReportSchema.parse({
+      campaign: 'type-test-1',
+      cap: 25,
+      rows: [
+        { ...row({ dim: 'content', key: 'kitchen-calls' }), extra: true },
+        row({ dim: 'content', key: '(none)' }),
+        row({ dim: 'content', key: '(other)' }),
+        { dim: 'content', key: 'broken' },
+      ],
+    })
+    expect(parsed.rows.map(rowLabel)).toEqual([
+      'kitchen-calls',
+      'No ad tag (utm_content)',
+      'Other ads (smaller ones, together)',
+    ])
   })
 })

@@ -176,6 +176,198 @@ body {
   animation-name: ad-rule-redraw-late;
 }
 
+/*
+ * Bold black (templates/bold-black, made with `npm run ad:new`): a black canvas, a small
+ * letter-spaced name line over a thin white rule, a very large tight bold headline set in given
+ * lines, a lighter supporting line, and one full-width white button. Type only.
+ */
+.bb {
+  background: var(--ad-black);
+  color: var(--ad-white);
+  --bb-headline: 160px; /* set per ad when a line runs long */
+  --bb-gap: 128px; /* rule to headline */
+}
+.bb.ad--vertical {
+  --bb-gap: 80px;
+}
+.bb.ad--vertical .bb-rule {
+  margin-top: 64px;
+}
+.bb.ad--vertical .bb-line {
+  margin-top: 56px;
+}
+/* The 9:16 safe area is shorter than the feed's, so the headline steps down a little. */
+.bb.ad--vertical .bb-headline {
+  font-size: calc(var(--bb-headline) * 0.9);
+}
+.bb-safe {
+  padding: 0 40px;
+}
+.bb-brand {
+  font-size: 64px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  margin: 24px 0 0;
+}
+.bb-rule {
+  height: 3px;
+  margin: 88px 0 0;
+  border: 0;
+  background: var(--ad-white);
+  transform-origin: left center;
+}
+.bb-headline {
+  margin: var(--bb-gap) 0 0;
+  font-size: var(--bb-headline);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+/* One span per line, so breaks are chosen (no widows) and overflow is measurable. */
+.bb-headline > span {
+  display: block;
+  width: fit-content;
+  white-space: nowrap;
+}
+.bb-line {
+  margin: 72px 0 80px; /* at least this much air above the button */
+  font-size: 64px;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  text-wrap: pretty;
+}
+.bb-button {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+  padding: 76px 64px;
+  border-radius: 32px;
+  background: var(--ad-white);
+  color: var(--ad-black);
+  font-size: 76px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.bb-button svg {
+  flex: none;
+  width: 72px;
+  height: 72px;
+}
+
+/*
+ * Bold black, animated (bb--animate on .ad): a build-in, then a hold. The name line is there from
+ * the first frame; the rule draws, the headline lines arrive one at a time, then the supporting
+ * line, then the button. Everything is in place by 36% of the loop and holds unchanged to the
+ * end, so the last frame is the still (with --loop 8s: settled at 2.9 s, held 5.1 s).
+ */
+@keyframes bb-draw {
+  0%,
+  2% {
+    transform: scaleX(0);
+  }
+  12%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+@keyframes bb-rise-1 {
+  0%,
+  6% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  16%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes bb-rise-2 {
+  0%,
+  11% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  21%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes bb-rise-3 {
+  0%,
+  16% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  26%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes bb-rise-4 {
+  0%,
+  21% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  31%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes bb-rise-line {
+  0%,
+  24% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  34%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes bb-fade-button {
+  0%,
+  28% {
+    opacity: 0;
+  }
+  36%,
+  100% {
+    opacity: 1;
+  }
+}
+.bb--animate .bb-rule {
+  animation: bb-draw var(--loop) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.bb--animate .bb-headline > span,
+.bb--animate .bb-line {
+  animation: bb-rise-1 var(--loop) cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.bb--animate .bb-headline > span:nth-child(2) {
+  animation-name: bb-rise-2;
+}
+.bb--animate .bb-headline > span:nth-child(3) {
+  animation-name: bb-rise-3;
+}
+.bb--animate .bb-headline > span:nth-child(4) {
+  animation-name: bb-rise-4;
+}
+.bb--animate .bb-line {
+  animation-name: bb-rise-line;
+}
+.bb--animate .bb-button {
+  animation: bb-fade-button var(--loop) ease-out infinite;
+}
+
 /* Local preview only (npm run ad:render -- <dir> --guides): never in a published file. */
 .guides .ad::before,
 .guides .ad::after {

@@ -92,7 +92,8 @@ select pg_temp.expect((select row(surface, form_version, tracking, utm_source, u
 select pg_temp.expect(not exists (select 1 from public.landing_sessions where id in
   ('00000000-0000-4000-8000-00000000c002', '00000000-0000-4000-8000-00000000c003', '00000000-0000-4000-8000-00000000c004')),
   'non-browsers are not counted');
-select pg_temp.expect((select count(*) from private.rate_limit_hits where bucket = 'visit') = 10,
+select pg_temp.expect((select count(*) from private.rate_limit_hits where bucket = 'visit'
+  and addr_hash = private.address_hash('203.0.113.77')) = 10,
   'the limit stores a keyed hash only, as the other limits do');
 
 -- The submission carries the session; an unknown session id is not linked.

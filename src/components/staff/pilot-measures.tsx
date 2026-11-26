@@ -3,6 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatRate } from '@/lib/funnel'
+import { formatEuro } from '@/lib/outcome'
 import {
   countedFromDate,
   formatDuration,
@@ -82,6 +83,8 @@ function RowCard({ row, report, to }: { row: PilotRow; report: PilotReport; to: 
           {line('Confirmed bookings', row.booked)}
           {line('Attended appointments', row.attended)}
           {line('Suitable and attended', row.suitable_attended)}
+          {line('Quoted', row.quoted)}
+          {line('Won', row.won)}
         </tbody>
       </table>
       <dl className="mt-2 grid grid-cols-2 gap-2 border-t pt-2 text-sm">
@@ -92,6 +95,10 @@ function RowCard({ row, report, to }: { row: PilotRow; report: PilotReport; to: 
         <div>
           <dt className="text-muted-foreground">Landing to booked (median)</dt>
           <dd className="tabular-nums">{formatDuration(row.median_to_booked_seconds)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Won value (incl. VAT)</dt>
+          <dd className="tabular-nums">{formatEuro(row.won_value)}</dd>
         </div>
         <div>
           <dt className="text-muted-foreground">Bookings that needed chasing</dt>

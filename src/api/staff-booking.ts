@@ -497,53 +497,6 @@ export function useSetAttendance() {
   })
 }
 
-export const LOST_REASONS = [
-  ['price', 'Price'],
-  ['timing', 'Timing'],
-  ['chose_another', 'Chose another company'],
-  ['project_cancelled', 'Project cancelled or postponed'],
-  ['no_response', 'No response'],
-  ['other', 'Other'],
-] as const
-export type LostReason = (typeof LOST_REASONS)[number][0]
-
-export const outcomeSchema = z.discriminatedUnion('outcome', [
-  z.object({
-    outcome: z.literal('won'),
-    value: z.number().nonnegative().max(9_999_999).nullable(),
-  }),
-  z
-    .object({
-      outcome: z.literal('lost'),
-      reason: z.enum(LOST_REASONS.map(([v]) => v) as [LostReason, ...LostReason[]]),
-      note: z.string().trim().max(500),
-    })
-    .refine((v) => v.reason !== 'other' || v.note.length > 0, {
-      path: ['note'],
-      message: 'Say why.',
-    }),
-  z.object({ outcome: z.literal('none') }),
-])
-export type OutcomeInput = z.infer<typeof outcomeSchema>
-
-export function useSetOutcome(enquiryId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: OutcomeInput) => {
-      const v = outcomeSchema.parse(input)
-      const { error } = await supabase.rpc('set_enquiry_outcome', {
-        p_enquiry_id: enquiryId,
-        p_outcome: v.outcome === 'none' ? null : v.outcome,
-        p_value: v.outcome === 'won' ? v.value : null,
-        p_reason: v.outcome === 'lost' ? v.reason : null,
-        p_note: v.outcome === 'lost' ? v.note || null : null,
-      })
-      if (error) throw toApiError(error)
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['enquiries'] }),
-  })
-}
-
 export const bookingSettingsSchema = z.object({
   change_cutoff_minutes: z.number().int().min(0).max(10080),
   reminder_lead_minutes: z.number().int().min(30).max(10080),

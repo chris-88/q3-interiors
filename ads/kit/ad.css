@@ -177,21 +177,22 @@ body {
 }
 
 /*
- * Bold black (templates/bold-black, made with `npm run ad:new`): a black canvas, a small
- * letter-spaced name line over a thin white rule, a very large tight bold headline set in given
- * lines, a lighter supporting line, and one full-width white button. Type only.
+ * Bold black (templates/bold-black, made with `npm run ad:new`): a black canvas, the white
+ * wordmark at the top (its own two rules are the only rules), a very large tight bold headline
+ * set in given lines, a lighter supporting line, and one full-width white button. No photos.
  */
 .bb {
   background: var(--ad-black);
   color: var(--ad-white);
   --bb-headline: 160px; /* set per ad when a line runs long */
-  --bb-gap: 128px; /* rule to headline */
+  --bb-gap: 128px; /* wordmark to headline */
 }
 .bb.ad--vertical {
-  --bb-gap: 80px;
+  --bb-gap: 64px;
 }
-.bb.ad--vertical .bb-rule {
-  margin-top: 64px;
+/* Stories and Reels fill the phone's screen, so a smaller wordmark reads the same. */
+.bb.ad--vertical .bb-logo {
+  width: 400px;
 }
 .bb.ad--vertical .bb-line {
   margin-top: 56px;
@@ -203,19 +204,12 @@ body {
 .bb-safe {
   padding: 0 40px;
 }
-.bb-brand {
-  font-size: 64px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  margin: 24px 0 0;
-}
-.bb-rule {
-  height: 3px;
-  margin: 88px 0 0;
-  border: 0;
-  background: var(--ad-white);
-  transform-origin: left center;
+/* The supplied wordmark in white, unchanged: 480px wide (120px in a 360px-wide feed). Its clear
+   space (12px at 160px wide, so 36px here) is kept by the safe area above and --bb-gap below. */
+.bb-logo {
+  display: block;
+  width: 480px;
+  height: auto;
 }
 .bb-headline {
   margin: var(--bb-gap) 0 0;
@@ -260,21 +254,11 @@ body {
 }
 
 /*
- * Bold black, animated (bb--animate on .ad): a build-in, then a hold. The name line is there from
- * the first frame; the rule draws, the headline lines arrive one at a time, then the supporting
+ * Bold black, animated (bb--animate on .ad): a build-in, then a hold. The wordmark is there from
+ * the first frame and never moves; the headline lines arrive one at a time, then the supporting
  * line, then the button. Everything is in place by 36% of the loop and holds unchanged to the
  * end, so the last frame is the still (with --loop 8s: settled at 2.9 s, held 5.1 s).
  */
-@keyframes bb-draw {
-  0%,
-  2% {
-    transform: scaleX(0);
-  }
-  12%,
-  100% {
-    transform: scaleX(1);
-  }
-}
 @keyframes bb-rise-1 {
   0%,
   6% {
@@ -344,9 +328,6 @@ body {
   100% {
     opacity: 1;
   }
-}
-.bb--animate .bb-rule {
-  animation: bb-draw var(--loop) cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 .bb--animate .bb-headline > span,
 .bb--animate .bb-line {

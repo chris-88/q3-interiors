@@ -52,7 +52,7 @@ Add `square.html` (`ad ad--square`, 1440 x 1440) and `"square"` in `sizes` only 
 
 ## Bold black (one command)
 
-When Chris asks for the bold black look (black canvas, letter-spaced name line, huge white headline, white button; RULES.md 10), make the whole ad directory with one command, then render, look and publish as usual:
+When Chris asks for the bold black look (black canvas, white wordmark at the top, huge white headline, white button; RULES.md 10), make the whole ad directory with one command, then render, look and publish as usual:
 
 ```bash
 npm run ad:new -- bold-black ads/work/<slug> \
@@ -66,7 +66,7 @@ npm run ad:new -- bold-black ads/work/<slug> \
 - `|` marks the line breaks in the headline (one span per line, so breaks are chosen and a line that runs too wide fails the render) and, optionally, in the supporting line. Choose breaks that read as phrases: no single word left alone on the last line.
 - Straight apostrophes become typographic ones. The words are kept exactly; if a headline line is too wide at 160px, add `--headline-size 140` (or less) for that ad and tell Chris. Do not rewrite supplied copy.
 - `ad.json` gets the caption (headline then supporting line, unless `--caption` is given), the headline field (only if 40 characters or fewer: Meta's limit; the command says when it leaves it out), Instagram's button (`--cta`: "Learn more", "Book now", "Contact us"; the artwork's button is separate) and the notes.
-- Animated: add `--loop 8000` (and put "(animated)" in the name). The build-in settles by 2.9 s and holds; the last frame is the still. An ad cannot hold a still and an animated version at once (one variant per size), so the animated one is its own ad.
+- Animated: add `--loop 8000` (and put "(animated)" in the name). The wordmark shows from the first frame; the build-in settles by 2.9 s and holds; the last frame is the still. An ad cannot hold a still and an animated version at once (one variant per size), so the animated one is its own ad.
 - Then `npm run ad:render -- ads/work/<slug> --guides` and look at every size: overflow, line breaks, nothing in the red bands on 9:16, and legibility at about 360px wide (scale the PNG down and Read it).
 
 ## Animated ads

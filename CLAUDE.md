@@ -284,7 +284,7 @@ Chris dictates an ad in a Claude session in this repo; the project skill `.claud
 
 ### Bold black template (2026-11-26)
 
-- `ads/kit/templates/bold-black/` is a fill-in template (`{{headline}}`, `{{line}}`, `{{button}}`, `{{vars}}`, `{{animate}}`) styled by the `.bb-*` classes in `ads/kit/ad.css`; `npm run ad:new -- bold-black <dir> --name .. --headline "a|b|c" --line .. --button .. [--cta ..] [--loop <ms>] [--headline-size <px>]` writes both sizes and `ad.json`. Rules in `ads/kit/RULES.md` 10, how-to in the skill. Roboto 700 headline, 500 name line, 400 supporting line; the typeset "Q THREE INTERIORS" line is allowed in this template only (Chris's direction).
+- `ads/kit/templates/bold-black/` is a fill-in template (`{{headline}}`, `{{line}}`, `{{button}}`, `{{vars}}`, `{{animate}}`) styled by the `.bb-*` classes in `ads/kit/ad.css`; `npm run ad:new -- bold-black <dir> --name .. --headline "a|b|c" --line .. --button .. [--cta ..] [--loop <ms>] [--headline-size <px>]` writes both sizes and `ad.json`. Rules in `ads/kit/RULES.md` 10, how-to in the skill. The white wordmark at the top (480px on the feed, 400px on 9:16; its own rules, no extra rule), Roboto 700 headline, 400 supporting line.
 - Animated variant (`--loop`): a build-in with keyframe percentages (no delays), settled by 36% of the loop and held; the poster is the video's last frame, which matches the still.
 
 ## Testing

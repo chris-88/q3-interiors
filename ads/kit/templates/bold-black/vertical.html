@@ -16,25 +16,12 @@
       RULES.md 10. The black fills the whole canvas; everything else sits in .safe, clear of the
       top 14% and bottom 35% that Instagram covers.
     -->
-    <main class="ad ad--vertical bb{{animate}}">
+    <main class="ad ad--vertical bb{{animate}}{{has_button}}">
       <div class="safe bb-safe">
         <img class="bb-logo" src="kit:wordmark-white.svg" alt="Q3 Interiors" />
         <h1 class="bb-headline">{{headline}}</h1>
         <p class="bb-line">{{line}}</p>
-        <div class="bb-button">
-          <span>{{button}}</span>
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M4 12h16M14 6l6 6-6 6" />
-          </svg>
-        </div>
+        {{button}}
       </div>
     </main>
   </body>

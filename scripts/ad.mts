@@ -1,6 +1,6 @@
 // The Q3 ad studio's local command (Node 24 runs this TypeScript directly).
 //
-//   npm run ad:new     -- bold-black ads/work/<ad> --name .. --headline "a|b|c" --line .. --button ..
+//   npm run ad:new     -- bold-black ads/work/<ad> --name .. --headline "a|b|c" --line ..
 //                                                  [--cta ..] [--loop <ms>] [--headline-size <px>]
 //                                                  a new ad from a fill-in template
 //   npm run ad:render  -- ads/work/<ad>            validate, inline, render into <ad>/out/: a PNG
@@ -829,7 +829,8 @@ function newAd(template: string, dir: string, opt: (name: string) => string | nu
     .filter(Boolean)
   if (lines.length > 4) fail('--headline: one to four lines, split with |')
   const line = need('line')
-  const button = need('button')
+  // The drawn button is off by default: Instagram's own button carries the click (RULES.md 10).
+  const button = opt('button')?.trim()
   const loop = opt('loop')
   const sizePx = opt('headline-size')
   if (sizePx && !/^\d{2,3}$/.test(sizePx)) fail('--headline-size: pixels, e.g. 132')
@@ -855,7 +856,13 @@ function newAd(template: string, dir: string, opt: (name: string) => string | nu
           .map((l) => typeset(l))
           .join('<br />'),
       )
-      .replaceAll('{{button}}', typeset(button))
+      .replaceAll(
+        '{{button}}',
+        button
+          ? `<div class="bb-button"><span>${typeset(button)}</span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M14 6l6 6-6 6" /></svg></div>`
+          : '',
+      )
+      .replaceAll('{{has_button}}', button ? ' bb--button' : '')
     fs.writeFileSync(path.join(dir, `${size}.html`), html)
   }
   if (words.length > HEADLINE_MAX)
@@ -887,7 +894,7 @@ if (command === 'new') {
   const into = rest[0]
   if (!target || !into || into.startsWith('--'))
     fail(
-      'usage: node scripts/ad.mts new <template> <directory> --name ... --headline "line|line|line" --line ... --button ... [--cta "Learn more"] [--loop <ms>] [--headline-size <px>] [--caption ...] [--notes ...]',
+      'usage: node scripts/ad.mts new <template> <directory> --name ... --headline "line|line|line" --line ... [--cta "Learn more"] [--button <drawn label, not used>] [--loop <ms>] [--headline-size <px>] [--caption ...] [--notes ...]',
     )
   newAd(target, path.resolve(into), (name) => flag(`--${name}`))
 } else if (command === 'requests') await requests()

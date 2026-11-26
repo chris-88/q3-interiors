@@ -179,13 +179,15 @@ body {
 /*
  * Bold black (templates/bold-black, made with `npm run ad:new`): a black canvas, the white
  * wordmark at the top (its own two rules are the only rules), a very large tight bold headline
- * set in given lines, a lighter supporting line, and one full-width white button. No photos.
+ * set in given lines and a lighter supporting line, centred together in the space below the
+ * wordmark. No photos. No drawn button by default (RULES.md 10): Instagram's own button carries
+ * the click. --bb-headline is set per ad only when a line runs long (default 176px; 160px with
+ * the optional drawn button).
  */
 .bb {
   background: var(--ad-black);
   color: var(--ad-white);
-  --bb-headline: 160px; /* set per ad when a line runs long */
-  --bb-gap: 128px; /* wordmark to headline */
+  --bb-gap: 128px; /* the least space between the wordmark and the headline */
 }
 .bb.ad--vertical {
   --bb-gap: 64px;
@@ -199,7 +201,10 @@ body {
 }
 /* The 9:16 safe area is shorter than the feed's, so the headline steps down a little. */
 .bb.ad--vertical .bb-headline {
-  font-size: calc(var(--bb-headline) * 0.9);
+  font-size: calc(var(--bb-headline, 176px) * 0.9);
+}
+.bb--button.ad--vertical .bb-headline {
+  font-size: calc(var(--bb-headline, 160px) * 0.9);
 }
 .bb-safe {
   padding: 0 40px;
@@ -210,10 +215,12 @@ body {
   display: block;
   width: 480px;
   height: auto;
+  margin-bottom: var(--bb-gap);
 }
+/* The text block is centred in the space left below the wordmark (the auto margins share it). */
 .bb-headline {
-  margin: var(--bb-gap) 0 0;
-  font-size: var(--bb-headline);
+  margin: auto 0 0;
+  font-size: var(--bb-headline, 176px);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.025em;
@@ -225,12 +232,22 @@ body {
   white-space: nowrap;
 }
 .bb-line {
-  margin: 72px 0 80px; /* at least this much air above the button */
-  font-size: 64px;
+  margin: 72px 0 auto;
+  font-size: 68px;
   font-weight: 400;
   line-height: 1.3;
   letter-spacing: 0.02em;
   text-wrap: pretty;
+}
+/* Optional drawn button (ad:new --button), not used: on Instagram an image of a button cannot be
+   tapped, and Meta's rules do not allow images of controls that do not work. Kept for other uses. */
+.bb--button .bb-headline {
+  margin-top: 0;
+  font-size: var(--bb-headline, 160px);
+}
+.bb--button .bb-line {
+  margin-bottom: 80px; /* at least this much air above the button */
+  font-size: 64px;
 }
 .bb-button {
   margin-top: auto;
@@ -256,8 +273,9 @@ body {
 /*
  * Bold black, animated (bb--animate on .ad): a build-in, then a hold. The wordmark is there from
  * the first frame and never moves; the headline lines arrive one at a time, then the supporting
- * line, then the button. Everything is in place by 36% of the loop and holds unchanged to the
- * end, so the last frame is the still (with --loop 8s: settled at 2.9 s, held 5.1 s).
+ * line (then the button, when there is one). Everything is in place by 34% of the loop (36% with
+ * the button) and holds unchanged to the end, so the last frame is the still (with --loop 8s:
+ * settled at 2.7 s, held 5.3 s).
  */
 @keyframes bb-rise-1 {
   0%,

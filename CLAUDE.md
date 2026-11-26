@@ -285,8 +285,9 @@ Chris dictates an ad in a Claude session in this repo; the project skill `.claud
 
 ### Bold black template (2026-11-26)
 
-- `ads/kit/templates/bold-black/` is a fill-in template (`{{headline}}`, `{{line}}`, `{{button}}`, `{{vars}}`, `{{animate}}`) styled by the `.bb-*` classes in `ads/kit/ad.css`; `npm run ad:new -- bold-black <dir> --name .. --headline "a|b|c" --line .. --button .. [--cta ..] [--loop <ms>] [--headline-size <px>]` writes both sizes and `ad.json`. Rules in `ads/kit/RULES.md` 10, how-to in the skill. The white wordmark at the top (480px on the feed, 400px on 9:16; its own rules, no extra rule), Roboto 700 headline, 400 supporting line.
-- Animated variant (`--loop`): a build-in with keyframe percentages (no delays), settled by 36% of the loop and held; the poster is the video's last frame, which matches the still.
+- `ads/kit/templates/bold-black/` is a fill-in template (`{{headline}}`, `{{line}}`, `{{button}}`, `{{vars}}`, `{{animate}}`, `{{has_button}}`) styled by the `.bb-*` classes in `ads/kit/ad.css`; `npm run ad:new -- bold-black <dir> --name .. --headline "a|b|c" --line .. [--cta ..] [--loop <ms>] [--headline-size <px>]` writes both sizes and `ad.json`. Rules in `ads/kit/RULES.md` 10, how-to in the skill. The white wordmark at the top (480px on the feed, 400px on 9:16; its own rules, no extra rule), then the Roboto 700 headline (176px) and Roboto 400 supporting line centred in the space below it.
+- No drawn button (2026-11-26): an image of a button is not clickable on Instagram and Meta's rules disallow images of controls that do not work, so Instagram's own button (`button_label`, "Learn more" / "Book now") carries the click. `ad:new --button` still draws one (off by default) for uses outside Instagram.
+- Animated variant (`--loop`): a build-in with keyframe percentages (no delays), settled by 34% of the loop and held; the poster is the video's last frame, which matches the still.
 
 ## Testing
 

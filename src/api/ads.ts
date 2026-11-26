@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { openEnum, parseOne, parseRows } from '@/lib/tolerant'
@@ -41,6 +41,8 @@ const versionSchema = z.object({
   created_at: z.string(),
   approved_at: z.string().nullable().default(null),
   approved_by_name: z.string().nullable().default(null),
+  /** Where the ad points, with its tags (null before links were stored). */
+  link_url: z.string().nullable().default(null),
   ad_variants: z.array(z.unknown()).transform((rows) => parseRows(variantSchema, rows, 'ad sizes')),
 })
 
@@ -68,6 +70,29 @@ const requestSchema = z.object({
 
 export type AdRequest = z.infer<typeof requestSchema>
 
+const eventSchema = z.object({
+  kind: z.string(),
+  version: z.number().nullable(),
+  detail: z.string().nullable(),
+  actor_name: z.string().nullable(),
+  created_at: z.string(),
+})
+
+export type AdEvent = z.infer<typeof eventSchema>
+
+const EVENT_LABELS: Record<string, string> = {
+  published: 'Published',
+  requested: 'Change asked for',
+  withdrawn: 'Request withdrawn',
+  approved: 'Approved',
+  archived: 'Archived',
+  unarchived: 'Brought back from the archive',
+  request_done: 'Request done',
+}
+
+/** Plain words for a history entry; a kind from a newer release reads "Update recorded". */
+export const adEventLabel = (kind: string) => EVENT_LABELS[kind] ?? 'Update recorded'
+
 const creativeSchema = z
   .object({
     label: z.string(),
@@ -92,6 +117,8 @@ const adSchema = z.object({
   status,
   created_at: z.string(),
   created_by_name: z.string().nullable(),
+  set_name: z.string().nullable().default(null),
+  set_position: z.number().nullable().default(null),
   campaign_creatives: creativeSchema,
   ad_versions: z
     .array(z.unknown())
@@ -100,23 +127,37 @@ const adSchema = z.object({
     .array(z.unknown())
     .default([])
     .transform((rows) => parseRows(requestSchema, rows, 'ad change requests')),
+  ad_events: z
+    .array(z.unknown())
+    .default([])
+    .transform((rows) => parseRows(eventSchema, rows, 'ad history')),
 })
 
 export type Ad = z.infer<typeof adSchema>
 export type AdVersion = z.infer<typeof versionSchema>
 export type AdVariant = z.infer<typeof variantSchema>
 
+const thumbVariantSchema = z.object({
+  size: z.string(),
+  export_type: z.string().default('image'),
+  export_path: z.string(),
+  poster_path: z.string().nullable().default(null),
+})
+
 const listItemSchema = z.object({
   id: z.string(),
   name: z.string(),
   status,
   created_at: z.string(),
+  set_name: z.string().nullable().default(null),
+  set_position: z.number().nullable().default(null),
   ad_versions: z.array(
     z.object({
       version: z.number(),
       ad_variants: z
-        .array(z.object({ duration_ms: z.number().nullable().default(null) }))
-        .default([]),
+        .array(z.unknown())
+        .default([])
+        .transform((rows) => parseRows(thumbVariantSchema, rows, 'ad sizes')),
     }),
   ),
   ad_requests: z.array(z.object({ state: z.string() })).default([]),
@@ -131,7 +172,7 @@ export function useAds() {
       const { data, error } = await supabase
         .from('ads')
         .select(
-          'id, name, status, created_at, ad_versions(version, ad_variants(duration_ms)), ad_requests(state)',
+          'id, name, status, created_at, set_name, set_position, ad_versions(version, ad_variants(size, export_type, export_path, poster_path)), ad_requests(state)',
         )
         .order('created_at', { ascending: false })
       if (error) throw toApiError(error)
@@ -147,7 +188,7 @@ export function useAd(id: string) {
       const { data, error } = await supabase
         .from('ads')
         .select(
-          'id, name, status, created_at, created_by_name, campaign_creatives(label, slug, campaigns(name, slug, utm_source, utm_medium, landing_route)), ad_versions(id, version, caption, headline, button_label, notes, created_at, approved_at, approved_by_name, ad_variants(id, size, width, height, html_path, export_path, export_bytes, export_type, duration_ms, poster_path)), ad_requests(id, version_id, size, body, state, done_in_version, created_by, created_by_name, created_at)',
+          'id, name, status, created_at, created_by_name, set_name, set_position, campaign_creatives(label, slug, campaigns(name, slug, utm_source, utm_medium, landing_route)), ad_versions(id, version, caption, headline, button_label, notes, link_url, created_at, approved_at, approved_by_name, ad_variants(id, size, width, height, html_path, export_path, export_bytes, export_type, duration_ms, poster_path)), ad_requests(id, version_id, size, body, state, done_in_version, created_by, created_by_name, created_at), ad_events(kind, version, detail, actor_name, created_at)',
         )
         .eq('id', id)
         .maybeSingle()
@@ -173,6 +214,40 @@ export function useAdHtml(path: string | undefined) {
       if (error) throw toApiError({ message: error.message })
       return data.text()
     },
+  })
+}
+
+/**
+ * A poster, still or video from the private bucket as an object URL for <img> or <video>, read
+ * with the staff session (no public or signed URL ever leaves the bucket). Revoked on unmount.
+ */
+export function useAdFileUrl(path: string | null | undefined) {
+  const client = useQueryClient()
+  revokeWhenDropped(client)
+  const file = useQuery({
+    queryKey: ['ad-blob', path],
+    enabled: Boolean(path),
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+    queryFn: async () => URL.createObjectURL(await downloadAdFile(path ?? '')),
+  })
+  return {
+    url: file.data ?? null,
+    isError: file.isError,
+    isPending: Boolean(path) && file.isPending,
+  }
+}
+
+// Each object URL lives as long as its cache entry: revoked when the cache drops it (5 minutes
+// after the last screen using it closed), so files are not held for the whole session.
+const watched = new WeakSet<QueryClient>()
+function revokeWhenDropped(client: QueryClient) {
+  if (watched.has(client)) return
+  watched.add(client)
+  client.getQueryCache().subscribe((event) => {
+    if (event.type !== 'removed' || event.query.queryKey[0] !== 'ad-blob') return
+    const url = event.query.state.data
+    if (typeof url === 'string') URL.revokeObjectURL(url)
   })
 }
 

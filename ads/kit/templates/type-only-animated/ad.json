@@ -1,5 +1,8 @@
 {
-  "name": "Short name staff will recognise",
+  "name": "The headline, exactly as in the artwork",
+  "set": "Set name",
+  "position": 1,
+  "link": "https://book.q3interiors.ie/?utm_source=instagram&utm_medium=paid&utm_campaign=set-slug&utm_content=ad-slug#/",
   "caption": "The post text. The first 125 characters carry it.",
   "headline": "Up to 40 characters",
   "button_label": "Learn more",

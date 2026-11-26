@@ -101,4 +101,43 @@ select pg_temp.expect((select count(*) from public.ads) = 0, 'deactivated read n
 select pg_temp.expect((select count(*) from storage.objects where bucket_id = 'ads') = 0, 'deactivated read no ad files');
 reset role;
 
+-- Sets, positions and links (redesign).
+select pg_temp.expect_error($$update public.ad_versions set link_url = 'http://example.com/' where ad_id = '00000000-0000-4000-8000-00000000a601'$$, '23514');
+select pg_temp.expect_error($$update public.ad_versions set link_url = 'https://exa mple.com/' where ad_id = '00000000-0000-4000-8000-00000000a601'$$, '23514');
+update public.ad_versions set link_url = 'https://book.q3interiors.ie/?utm_source=instagram&utm_content=x#/'
+  where ad_id = '00000000-0000-4000-8000-00000000a601';
+select pg_temp.expect_error($$update public.ads set set_position = 0 where id = '00000000-0000-4000-8000-00000000a601'$$, '23514');
+select pg_temp.expect_error($$update public.ads set set_name = ' ' where id = '00000000-0000-4000-8000-00000000a601'$$, '23514');
+update public.ads set set_name = 'Type test 2', set_position = 3 where id = '00000000-0000-4000-8000-00000000a601';
+-- staff read the new columns; anon still reads nothing.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-4000-8000-00000000a6b1');
+select pg_temp.expect((select set_name = 'Type test 2' and set_position = 3 from public.ads
+  where id = '00000000-0000-4000-8000-00000000a601'), 'staff read the set');
+select pg_temp.expect((select bool_and(link_url like 'https://book.q3interiors.ie/%') from public.ad_versions
+  where ad_id = '00000000-0000-4000-8000-00000000a601'), 'staff read the link');
+select pg_temp.expect_error($$update public.ads set set_name = 'x'$$, '42501');
+reset role;
+set local role anon;
+select pg_temp.expect_error($$select set_name from public.ads$$, '42501');
+select pg_temp.expect_error($$select link_url from public.ad_versions$$, '42501');
+reset role;
+
+-- The rules that reshaped the ads published before sets and links.
+select pg_temp.expect(private.legacy_ad_link('Type test 1 (bold black). Link for the ad: https://book.q3interiors.ie/?utm_source=instagram&utm_content=one-team#/ . Words as supplied.')
+  = 'https://book.q3interiors.ie/?utm_source=instagram&utm_content=one-team#/', 'link from notes');
+select pg_temp.expect(private.legacy_ad_link('No link here.') is null, 'no link in notes');
+select pg_temp.expect((select (title, set_name, set_position) = ('A new kitchen shouldn’t take ten phone calls.', 'Type test 1', 5)
+  from private.legacy_ad_shape('Type test 1 · 3. A new kitchen shouldn''t take ten phone calls (animated)', null)), 'animated, no headline');
+select pg_temp.expect((select (title, set_name, set_position) = ('Stop chasing trades.', 'Type test 1', 4)
+  from private.legacy_ad_shape('Type test 1 · 2. Stop chasing trades (still)', 'Stop chasing trades.')), 'still, with headline');
+select pg_temp.expect((select (title, set_name, set_position) = ('Planning a home renovation?', 'Samples', 2)
+  from private.legacy_ad_shape('Sample (animated): Planning a home renovation? (type only)', 'Tell us about your project')), 'sample');
+select pg_temp.expect((select title is null from private.legacy_ad_shape('Spring kitchens', null)), 'other names untouched');
+select pg_temp.expect((select count(*) = 0 from public.ads where name ~ '\((animated|still)\)$' or name ~ '^Type test 1 · '),
+  'no ad keeps the old title shape');
+set local role authenticated;
+select pg_temp.expect_error($$select private.legacy_ad_link('x')$$, '42501');
+reset role;
+
 rollback;

@@ -57,6 +57,9 @@ expect_code "anon cannot run the funnel report" 42501 \
   "$(curl -s -X POST "$rest/rpc/funnel_report" "${headers[@]}" -d '{"p_from":"2026-01-01","p_to":"2026-12-31"}')"
 expect_code "anon cannot run the pilot report" 42501 \
   "$(curl -s -X POST "$rest/rpc/pilot_report" "${headers[@]}" -d '{"p_from":"2026-01-01","p_to":"2026-12-31"}')"
+expect_code "anon cannot record an outcome" 42501 \
+  "$(curl -s -X POST "$rest/rpc/record_enquiry_outcome" "${headers[@]}" \
+    -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000","p_stage":"won","p_amount":1,"p_on":"2026-11-26"}')"
 expect_code "anon cannot flag an enquiry" 42501 \
   "$(curl -s -X POST "$rest/rpc/set_chase_details" "${headers[@]}" \
     -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000","p_flagged":true,"p_note":"test"}')"

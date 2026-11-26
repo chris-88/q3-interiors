@@ -249,6 +249,84 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
         return json(route, 200, world.pilot)
       }
+      if (table === 'rpc/record_enquiry_outcome') {
+        // The server's rules, in short (see 20261128100000_enquiry_outcomes.sql).
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as {
+          p_enquiry_id: string
+          p_stage: string
+          p_amount: number | null
+          p_on: string | null
+          p_reason: string | null
+          p_note: string | null
+        }
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === b.p_enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        const bad = () => json(route, 400, { code: '22023', message: 'invalid' })
+        const before = row.outcome as string | null
+        let detail = ''
+        if (b.p_stage === 'none') {
+          Object.assign(row, {
+            outcome: null,
+            outcome_value: null,
+            outcome_reason: null,
+            outcome_note: null,
+            quote_amount: null,
+            quote_date: null,
+            won_date: null,
+          })
+        } else if (b.p_stage === 'quoted' || b.p_stage === 'won') {
+          if (!b.p_amount || b.p_amount <= 0 || !b.p_on) return bad()
+          const money = `€${b.p_amount.toLocaleString('en-IE', { minimumFractionDigits: 2 })}`
+          if (b.p_stage === 'quoted')
+            Object.assign(row, {
+              outcome: 'quoted',
+              quote_amount: b.p_amount,
+              quote_date: b.p_on,
+              outcome_value: null,
+              won_date: null,
+              outcome_reason: null,
+              outcome_note: b.p_note,
+            })
+          else
+            Object.assign(row, {
+              outcome: 'won',
+              outcome_value: b.p_amount,
+              won_date: b.p_on,
+              outcome_reason: null,
+              outcome_note: b.p_note,
+            })
+          detail = `${b.p_stage === 'quoted' ? 'Quoted' : 'Won'} ${money} on ${b.p_on}`
+        } else if (b.p_stage === 'lost') {
+          if (!b.p_reason || (b.p_reason === 'other' && !b.p_note)) return bad()
+          Object.assign(row, {
+            outcome: 'lost',
+            outcome_reason: b.p_reason,
+            outcome_note: b.p_note,
+            outcome_value: null,
+            won_date: null,
+          })
+          detail = `Lost: ${b.p_reason.replace(/_/g, ' ')}`
+        } else return bad()
+        if (before && detail) detail += ` (was ${before})`
+        const events = (row.enquiry_events ?? []) as Record<string, unknown>[]
+        row.enquiry_events = [
+          {
+            id: events.length + 200,
+            kind: b.p_stage === 'none' ? 'outcome_cleared' : 'outcome_recorded',
+            detail: detail || null,
+            from_status: null,
+            to_status: null,
+            reason: null,
+            actor_name: caller.display_name,
+            created_at: new Date().toISOString(),
+          },
+          ...events,
+        ]
+        return json(route, 200, null)
+      }
       if (table === 'rpc/set_chase_details') {
         // The server's rules (see 20261127140000_pilot_measures.sql).
         if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })

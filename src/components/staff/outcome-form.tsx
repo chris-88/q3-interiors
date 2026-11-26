@@ -1,22 +1,86 @@
 import { useState } from 'react'
-import { LOST_REASONS, useSetOutcome, type LostReason } from '@/api/staff-booking'
+import { useRecordOutcome } from '@/api/outcomes'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  LOST_REASONS,
+  formatEuro,
+  irishToday,
+  outcomeInputSchema,
+  reasonLabel,
+  stageLabel,
+  type LostReason,
+  type OutcomeStage,
+} from '@/lib/outcome'
+import { isKnown } from '@/lib/tolerant'
 
 export type CurrentOutcome = {
-  outcome: 'won' | 'lost' | null
-  value: number | null
-  reason: LostReason | null
+  stage: OutcomeStage | null
+  quoteAmount: number | null
+  quoteDate: string | null
+  wonValue: number | null
+  wonDate: string | null
+  reason: string | null
   note: string | null
 }
 
-const euro = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' })
+type Mode = 'view' | 'quoted' | 'won' | 'lost' | 'clear'
 
-/** Won (optional quoted value) or lost (reason, free text for "other"); history records each change. */
+const day = new Intl.DateTimeFormat('en-IE', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+const formatDay = (iso: string) => day.format(new Date(`${iso}T00:00:00Z`))
+
+const big = 'h-12 w-full text-base sm:w-auto sm:px-6'
+
+function Summary({ current }: { current: CurrentOutcome }) {
+  const lines: string[] = []
+  if (current.stage === 'won')
+    lines.push(
+      current.wonValue !== null
+        ? `Won ${formatEuro(current.wonValue)}${current.wonDate ? ` on ${formatDay(current.wonDate)}` : ''}`
+        : `Won${current.wonDate ? ` on ${formatDay(current.wonDate)}` : ''} (no value recorded)`,
+    )
+  if (current.stage === 'lost' && current.reason) lines.push(`Lost: ${reasonLabel(current.reason)}`)
+  if (current.quoteAmount !== null && current.quoteDate)
+    lines.push(`Quoted ${formatEuro(current.quoteAmount)} on ${formatDay(current.quoteDate)}`)
+  return (
+    <div className="flex flex-col gap-1">
+      <div>
+        <Badge variant={current.stage === 'won' ? 'default' : 'outline'}>
+          {stageLabel(current.stage)}
+        </Badge>
+      </div>
+      {lines.map((line) => (
+        <p key={line} className="tabular-nums">
+          {line}
+        </p>
+      ))}
+      {current.note && <p className="text-muted-foreground text-sm break-words">{current.note}</p>}
+    </div>
+  )
+}
+
+function FieldError({ id, message }: { id: string; message: string | undefined }) {
+  if (!message) return null
+  return (
+    <p id={id} role="alert" className="text-destructive text-sm">
+      {message}
+    </p>
+  )
+}
+
+/**
+ * The outcome after the appointment: record a quote, mark won, mark lost, correct any of them or
+ * clear it. One small form at a time, full-width 48px buttons on a phone; the server re-checks
+ * everything and records each change in the history.
+ */
 export function OutcomeForm({
   enquiryId,
   current,
@@ -24,129 +88,244 @@ export function OutcomeForm({
   enquiryId: string
   current: CurrentOutcome
 }) {
-  const save = useSetOutcome(enquiryId)
-  const [choice, setChoice] = useState<'won' | 'lost' | null>(current.outcome)
-  const [value, setValue] = useState(current.value === null ? '' : String(current.value))
-  const [reason, setReason] = useState<LostReason>(current.reason ?? 'price')
-  const [note, setNote] = useState(current.note ?? '')
-  const [error, setError] = useState<string | null>(null)
+  const save = useRecordOutcome(enquiryId)
+  const [mode, setMode] = useState<Mode>('view')
+  const [amount, setAmount] = useState('')
+  const [on, setOn] = useState(irishToday())
+  const [reason, setReason] = useState<LostReason | ''>('')
+  const [note, setNote] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const id = (name: string) => `outcome-${enquiryId}-${name}`
 
-  const submit = () => {
-    setError(null)
-    if (choice === 'won') {
-      const n = value.trim() === '' ? null : Number(value.replace(/[,€\s]/g, ''))
-      if (n !== null && (!Number.isFinite(n) || n < 0)) {
-        setError('Enter an amount in euro, e.g. 12500.')
-        return
-      }
-      save.mutate({ outcome: 'won', value: n })
-    } else if (choice === 'lost') {
-      if (reason === 'other' && note.trim() === '') {
-        setError('Say why.')
-        return
-      }
-      save.mutate({ outcome: 'lost', reason, note })
+  const open = (next: Mode) => {
+    save.reset()
+    setErrors({})
+    if (next === 'quoted') {
+      setAmount(current.quoteAmount !== null ? String(current.quoteAmount) : '')
+      setOn(current.quoteDate ?? irishToday())
+      setNote(current.stage === 'quoted' ? (current.note ?? '') : '')
+    } else if (next === 'won') {
+      setAmount(
+        current.wonValue !== null
+          ? String(current.wonValue)
+          : current.quoteAmount !== null
+            ? String(current.quoteAmount)
+            : '',
+      )
+      setOn(current.wonDate ?? irishToday())
+      setNote(current.stage === 'won' ? (current.note ?? '') : '')
+    } else if (next === 'lost') {
+      setReason(
+        current.stage === 'lost' &&
+          isKnown(
+            LOST_REASONS.map(([v]) => v),
+            current.reason,
+          )
+          ? (current.reason as LostReason)
+          : '',
+      )
+      setNote(current.stage === 'lost' ? (current.note ?? '') : '')
     }
+    setMode(next)
   }
 
-  return (
-    <div className="flex flex-col gap-3">
-      {current.outcome && (
-        <p className="text-sm">
-          Recorded:{' '}
-          <strong>
-            {current.outcome === 'won'
-              ? `Won${current.value !== null ? `, quoted ${euro.format(current.value)}` : ''}`
-              : `Lost (${LOST_REASONS.find(([v]) => v === current.reason)?.[1] ?? current.reason})`}
-          </strong>
-          {current.note ? ` · ${current.note}` : ''}
-        </p>
-      )}
-      <fieldset>
-        <legend className="text-muted-foreground text-sm">Outcome</legend>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {(['won', 'lost'] as const).map((v) => (
+  const submit = () => {
+    const input =
+      mode === 'lost'
+        ? { stage: 'lost', reason: reason || undefined, note }
+        : mode === 'clear'
+          ? { stage: 'none' }
+          : { stage: mode, amount, on, note }
+    const parsed = outcomeInputSchema().safeParse(input)
+    if (!parsed.success) {
+      const next: Record<string, string> = {}
+      for (const issue of parsed.error.issues) {
+        const key = String(issue.path[0] ?? 'form')
+        next[key] ??= issue.message
+      }
+      setErrors(next)
+      const first = Object.keys(next)[0]
+      if (first) document.getElementById(id(first))?.focus()
+      return
+    }
+    setErrors({})
+    save.mutate(parsed.data, { onSuccess: () => setMode('view') })
+  }
+
+  if (mode === 'view') {
+    const has = current.stage !== null
+    return (
+      <div className="flex flex-col gap-4">
+        <Summary current={current} />
+        {save.isSuccess && (
+          <p aria-live="polite" className="text-muted-foreground text-sm">
+            Saved.
+          </p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button type="button" variant="outline" className={big} onClick={() => open('quoted')}>
+            {current.quoteAmount !== null ? 'Edit quote' : 'Record quote'}
+          </Button>
+          <Button
+            type="button"
+            variant={current.stage === 'won' ? 'outline' : 'default'}
+            className={big}
+            onClick={() => open('won')}
+          >
+            {current.stage === 'won' ? 'Edit win' : 'Mark won'}
+          </Button>
+          <Button type="button" variant="outline" className={big} onClick={() => open('lost')}>
+            {current.stage === 'lost' ? 'Edit loss' : 'Mark lost'}
+          </Button>
+          {has && (
             <Button
-              key={v}
-              size="sm"
-              className="h-9"
-              variant={choice === v ? 'default' : 'outline'}
-              aria-pressed={choice === v}
-              onClick={() => setChoice(v)}
+              type="button"
+              variant="ghost"
+              className={`${big} underline underline-offset-4`}
+              onClick={() => open('clear')}
             >
-              {v === 'won' ? 'Won' : 'Lost'}
+              Clear outcome
             </Button>
-          ))}
+          )}
         </div>
-      </fieldset>
-      {choice === 'won' && (
-        <Field>
-          <FieldLabel htmlFor="outcome-value">Quoted value in euro (optional)</FieldLabel>
-          <Input
-            id="outcome-value"
-            inputMode="decimal"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            className="h-10 text-base"
-          />
-        </Field>
-      )}
-      {choice === 'lost' && (
+      </div>
+    )
+  }
+
+  const title =
+    mode === 'quoted'
+      ? 'Quote'
+      : mode === 'won'
+        ? 'Won'
+        : mode === 'lost'
+          ? 'Lost'
+          : 'Clear the outcome?'
+
+  return (
+    <form
+      noValidate
+      className="flex flex-col gap-4"
+      aria-label={title}
+      onSubmit={(e) => {
+        e.preventDefault()
+        submit()
+      }}
+    >
+      <h3 className="font-medium">{title}</h3>
+      {(mode === 'quoted' || mode === 'won') && (
         <>
-          <Field>
-            <FieldLabel htmlFor="outcome-reason">Reason</FieldLabel>
-            <NativeSelect
-              id="outcome-reason"
-              className="w-full [&_select]:h-11 [&_select]:text-base"
-              value={reason}
-              onChange={(e) => setReason(e.target.value as LostReason)}
-            >
-              {LOST_REASONS.map(([v, label]) => (
-                <NativeSelectOption key={v} value={v}>
-                  {label}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="outcome-note">
-              {reason === 'other' ? 'What happened' : 'Note (optional)'}
-            </FieldLabel>
-            <Textarea
-              id="outcome-note"
-              rows={2}
-              maxLength={500}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="text-base"
+          <div className="flex flex-col gap-2">
+            <label htmlFor={id('amount')} className="font-medium">
+              {mode === 'quoted' ? 'Quote amount (€, incl. VAT)' : 'Agreed value (€, incl. VAT)'}
+            </label>
+            <Input
+              id={id('amount')}
+              inputMode="decimal"
+              autoComplete="off"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              aria-invalid={errors.amount ? true : undefined}
+              aria-describedby={errors.amount ? id('amount-error') : undefined}
+              className="h-12 text-base md:text-base"
             />
-          </Field>
+            <FieldError id={id('amount-error')} message={errors.amount} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor={id('on')} className="font-medium">
+              {mode === 'quoted' ? 'Date quoted' : 'Date won'}
+            </label>
+            <Input
+              id={id('on')}
+              type="date"
+              max={irishToday()}
+              value={on}
+              onChange={(e) => setOn(e.target.value)}
+              aria-invalid={errors.on ? true : undefined}
+              aria-describedby={errors.on ? id('on-error') : undefined}
+              className="h-12 text-base md:text-base"
+            />
+            <FieldError id={id('on-error')} message={errors.on} />
+          </div>
         </>
       )}
-      {error && <FieldError>{error}</FieldError>}
+      {mode === 'lost' && (
+        <fieldset
+          className="flex flex-col gap-2"
+          aria-describedby={errors.reason ? id('reason-error') : undefined}
+        >
+          <legend className="mb-1 font-medium">Why was it lost?</legend>
+          {LOST_REASONS.map(([value, label]) => (
+            <label
+              key={value}
+              className="border-edge has-[:checked]:border-action has-[:checked]:bg-soft flex min-h-12 items-center gap-3 rounded-md border px-3"
+            >
+              <input
+                type="radio"
+                name={id('reason')}
+                id={value === LOST_REASONS[0][0] ? id('reason') : undefined}
+                className="size-5"
+                checked={reason === value}
+                onChange={() => setReason(value)}
+              />
+              {label}
+            </label>
+          ))}
+          <FieldError id={id('reason-error')} message={errors.reason} />
+        </fieldset>
+      )}
+      {mode !== 'clear' && (
+        <div className="flex flex-col gap-2">
+          <label htmlFor={id('note')} className="font-medium">
+            Note{' '}
+            <span className="text-muted-foreground font-normal">
+              {mode === 'lost' && reason === 'other' ? '(say why)' : '(optional)'}
+            </span>
+          </label>
+          <Textarea
+            id={id('note')}
+            rows={2}
+            maxLength={500}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            aria-invalid={errors.note ? true : undefined}
+            aria-describedby={errors.note ? id('note-error') : undefined}
+            className="text-base md:text-base"
+          />
+          <FieldError id={id('note-error')} message={errors.note} />
+        </div>
+      )}
+      {mode === 'clear' && (
+        <p className="text-sm">
+          This removes the quote, win or loss recorded here. The history keeps what was recorded.
+        </p>
+      )}
       {save.isError && (
-        <Alert variant="destructive">
-          <AlertDescription>Not saved: {save.error.message}</AlertDescription>
+        <Alert variant="destructive" role="alert">
+          <AlertDescription>That was not saved. Check the details and try again.</AlertDescription>
         </Alert>
       )}
-      <div className="flex flex-wrap gap-2">
-        <Button className="h-10 px-4" disabled={!choice || save.isPending} onClick={submit}>
-          {save.isPending ? 'Saving…' : 'Save outcome'}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button type="submit" className={big} disabled={save.isPending}>
+          {save.isPending
+            ? 'Saving…'
+            : mode === 'quoted'
+              ? 'Save quote'
+              : mode === 'won'
+                ? 'Save as won'
+                : mode === 'lost'
+                  ? 'Save as lost'
+                  : 'Clear outcome'}
         </Button>
-        {current.outcome && (
-          <Button
-            variant="ghost"
-            className="h-10"
-            disabled={save.isPending}
-            onClick={() => {
-              setChoice(null)
-              save.mutate({ outcome: 'none' })
-            }}
-          >
-            Clear
-          </Button>
-        )}
+        <Button
+          type="button"
+          variant="ghost"
+          className={big}
+          disabled={save.isPending}
+          onClick={() => setMode('view')}
+        >
+          Cancel
+        </Button>
       </div>
-    </div>
+    </form>
   )
 }

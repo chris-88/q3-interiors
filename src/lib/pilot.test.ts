@@ -19,9 +19,21 @@ const row = (over: Partial<PilotRow>): PilotRow => ({
   attended: 15,
   suitable_attended: 12,
   chased: 3,
+  quoted: 10,
+  won: 6,
+  won_value: 98000,
   median_to_saved_seconds: 300,
   median_to_booked_seconds: 600,
   ...over,
+})
+
+it('reads a report from before outcomes as zero quoted and won', () => {
+  const old = pilotReportSchema.parse({
+    counted_from: '2026-11-27T12:00:00Z',
+    rows: [{ ...row({}), quoted: undefined, won: undefined, won_value: undefined }],
+    headline: { instagram_sessions: 0, instagram_suitable_attended: 0 },
+  })
+  expect(old.rows[0]).toMatchObject({ quoted: 0, won: 0, won_value: 0 })
 })
 
 const report = pilotReportSchema.parse({

@@ -15,6 +15,10 @@ export const pilotRowSchema = z.object({
   attended: count,
   suitable_attended: count,
   chased: count,
+  // Slice 7; defaults keep this page reading a report from before it.
+  quoted: count.default(0),
+  won: count.default(0),
+  won_value: z.coerce.number().default(0),
   median_to_saved_seconds: z.number().nullable(),
   median_to_booked_seconds: z.number().nullable(),
 })

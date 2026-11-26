@@ -26,13 +26,10 @@ import { BookingActions } from '@/components/staff/booking-actions'
 import { OutcomeForm } from '@/components/staff/outcome-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import { eventLine } from '@/components/staff/event-text'
-import { LOST_REASONS } from '@/api/staff-booking'
+import { OUTCOME_STAGES } from '@/lib/outcome'
 import { isKnown } from '@/lib/tolerant'
 import { EnquiryFlags } from '@/components/staff/enquiry-flags'
 import { ChaseForm } from '@/components/staff/chase-form'
-
-const OUTCOMES = ['won', 'lost'] as const
-const LOST_REASON_VALUES = LOST_REASONS.map(([value]) => value)
 
 /** A value a newer release wrote: shown plainly, changeable after a reload. */
 function NewerValue({ what }: { what: string }) {
@@ -520,20 +517,22 @@ export function EnquiryDetailPage() {
       </Section>
 
       <Section title="Outcome">
-        {(data.outcome === null || isKnown(OUTCOMES, data.outcome)) &&
-        (data.outcome_reason === null || isKnown(LOST_REASON_VALUES, data.outcome_reason)) ? (
+        {data.outcome === null || isKnown(OUTCOME_STAGES, data.outcome) ? (
           <OutcomeForm
-            key={`${data.outcome}-${data.outcome_value}-${data.outcome_reason}`}
+            key={`${data.outcome}-${data.outcome_value}-${data.quote_amount}-${data.outcome_reason}-${data.won_date}-${data.quote_date}`}
             enquiryId={data.id}
             current={{
-              outcome: data.outcome,
-              value: data.outcome_value,
+              stage: data.outcome,
+              quoteAmount: data.quote_amount,
+              quoteDate: data.quote_date,
+              wonValue: data.outcome_value,
+              wonDate: data.won_date,
               reason: data.outcome_reason,
               note: data.outcome_note,
             }}
           />
         ) : (
-          <NewerValue what={`Outcome: ${data.outcome ?? ''} ${data.outcome_reason ?? ''}`} />
+          <NewerValue what={`Outcome: ${data.outcome} ${data.outcome_reason ?? ''}`} />
         )}
       </Section>
 

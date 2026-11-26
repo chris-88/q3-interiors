@@ -181,7 +181,7 @@ select pg_temp.expect((select attendance = 'attended' from public.bookings where
 select pg_temp.expect_error(format('select public.set_enquiry_outcome(%L, ''lost'')', pg_temp.id('a')), '22023');
 select pg_temp.expect_error(format('select public.set_enquiry_outcome(%L, ''lost'', null, ''other'', '' '')', pg_temp.id('a')), '22023');
 select pg_temp.expect_error(format('select public.set_enquiry_outcome(%L, ''lost'', 100, ''price'')', pg_temp.id('a')), '22023');
-select pg_temp.expect_error(format('select public.set_enquiry_outcome(%L, ''lost'', null, ''nope'')', pg_temp.id('a')), '23514');
+select pg_temp.expect_error(format('select public.set_enquiry_outcome(%L, ''lost'', null, ''nope'')', pg_temp.id('a')), '22023');
 select public.set_enquiry_outcome(pg_temp.id('a'), 'lost', null, 'price', 'Too dear');
 select public.set_enquiry_outcome(pg_temp.id('b'), 'won', 12500, null, null);
 select pg_temp.expect((select outcome = 'won' and outcome_value = 12500 from public.enquiries where id = pg_temp.id('b')), 'won with value');

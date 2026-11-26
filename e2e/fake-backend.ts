@@ -16,6 +16,7 @@ export type SubmitBody = {
   p_attribution: Record<string, unknown> | null
   p_trap?: string | null
   p_session_id?: string | null
+  p_inspiration?: string | null
 }
 
 /**

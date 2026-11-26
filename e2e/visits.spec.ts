@@ -44,7 +44,7 @@ test('one session per visit, with the tapped route, joined to the enquiry; nothi
   expect(arrival).toEqual({
     p_session_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     p_surface: 'landing',
-    p_form_version: 2,
+    p_form_version: 3,
     p_attribution: { utm_source: 'instagram', utm_campaign: 'kitchens', click_id_present: true },
     p_route: null,
   })

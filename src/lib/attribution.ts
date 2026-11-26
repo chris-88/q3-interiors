@@ -113,10 +113,20 @@ export function captureAttribution(
 }
 
 let bootArrival: Attribution | null = null
+let bootUrl: UrlParts | null = null
 
 /** Capture attribution for this page load. Call once, before the router renders. */
 export function initAttribution(storage: SafeStorage): void {
+  bootUrl = { search: window.location.search, hash: window.location.hash }
   bootArrival = captureAttribution(window.location, storage, new Date())
+}
+
+/**
+ * The address this page was loaded with, before anything tidied it (website entry parameters
+ * are removed from the address bar at boot). Null before `initAttribution`.
+ */
+export function arrivalUrl(): UrlParts | null {
+  return bootUrl
 }
 
 /** Attribution to send with an enquiry, or null for unknown. Survives blocked storage in memory. */

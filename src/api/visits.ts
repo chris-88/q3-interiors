@@ -1,5 +1,5 @@
-import { currentEnquiryForm } from '@/forms/enquiry/v2'
-import { parseAttribution } from '@/lib/attribution'
+import { currentEnquiryForm } from '@/forms/enquiry/v3'
+import { arrivalUrl, parseAttribution } from '@/lib/attribution'
 import { safeStorage, type SafeStorage } from '@/lib/storage'
 import { ensureVisit, saveVisit, surfaceFor, visitPayload, type Surface } from '@/lib/visit'
 import { supabase } from '@/lib/supabase'
@@ -22,8 +22,9 @@ function send(payload: ReturnType<typeof visitPayload>) {
 
 function arrivalTags() {
   try {
+    // The tags this tab arrived with, even after the address bar was tidied.
     return parseAttribution(
-      { search: window.location.search, hash: window.location.hash },
+      arrivalUrl() ?? { search: window.location.search, hash: window.location.hash },
       new Date(),
     )
   } catch {

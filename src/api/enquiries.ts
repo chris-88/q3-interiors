@@ -110,6 +110,8 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
   quote_date: z.string().nullable().default(null),
   won_date: z.string().nullable().default(null),
   outcome_note: z.string().nullable(),
+  // The website project the enquiry started from (a slug), if any; absent before 2026-11-28.
+  inspiration: z.string().nullable().default(null),
   // One-to-one embed: PostgREST returns an object (or null) because enquiry_id is the key.
   enquiry_attribution: attributionSchema.nullable(),
   enquiry_events: eventsSchema,
@@ -145,7 +147,7 @@ export function useEnquiry(id: string) {
           `${SUMMARY_COLUMNS}, status_reason, marketing_opt_in, marketing_opt_in_at, updated_at,
            site_details, site_details_form_version, contact_request_reason,
            prepare_details, prepare_form_version, chase_flagged_at, chase_note, chase_flagged_by_name,
-           outcome_note, quote_date, won_date,
+           outcome_note, quote_date, won_date, inspiration,
            enquiry_attribution (tracking, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
              click_id_present, landing_path, first_seen_at),
            enquiry_events (id, kind, from_status, to_status, reason, detail, actor_name, created_at)`,

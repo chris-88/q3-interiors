@@ -56,6 +56,7 @@ import { formatDateTime, formatShortWhen } from '@/lib/format'
 import { OUTCOME_STAGES } from '@/lib/outcome'
 import { isKnown } from '@/lib/tolerant'
 import { neighbours } from '@/lib/walk'
+import { findProject } from '@/lib/website'
 
 // ---------------------------------------------------------------------------------------------
 // Small parts
@@ -737,6 +738,12 @@ function Notes({ enquiry }: { enquiry: EnquiryDetail }) {
   )
 }
 
+/** "Kitchen fit-out, Fairview, Dublin 3" for a known website project, else the slug as stored. */
+function websiteProjectLine(slug: string): string {
+  const project = findProject(slug)
+  return project ? `${project.title}, ${project.location}` : slug
+}
+
 function Attribution({ attribution }: { attribution: EnquiryAttribution | null }) {
   if (!attribution || attribution.tracking === 'unknown') {
     return (
@@ -851,6 +858,11 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
             {enquiryName(enquiry)}
           </h1>
           <p className="text-muted-foreground">{projectLine(enquiry, form)}</p>
+          {enquiry.inspiration && (
+            <p className="text-sm">
+              Came from the website: {websiteProjectLine(enquiry.inspiration)}
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <StageBadge stage={stage} />
             <span className="text-muted-foreground font-mono text-xs">{enquiry.reference}</span>

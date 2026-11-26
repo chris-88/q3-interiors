@@ -2,7 +2,10 @@ import { useId, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { buttonVariants } from '@/components/ui/button'
 import { usePublicBusiness } from '@/api/business'
+import { readEntry } from '@/lib/entry'
+import { safeStorage } from '@/lib/storage'
 import { cn } from '@/lib/utils'
+import { WEBSITE_URL } from '@/lib/website'
 
 /**
  * Home link per the brand guide (v2.0): the full wordmark only, about 144px wide on phones (the
@@ -137,11 +140,21 @@ export function PublicLayout({
   width?: 'form' | 'page' | 'prose'
 }) {
   const { pathname } = useLocation()
+  // Visitors who came from the website get a quiet way back; everyone else sees no change.
+  const [fromWebsite] = useState(() => readEntry(safeStorage('session')).fromWebsite)
   return (
     <div className="bg-background text-body text-foreground flex min-h-svh flex-col">
       <header className="border-rule border-b">
         <div className="max-w-page mx-auto flex w-full items-center justify-between gap-4 px-3 md:px-6">
           <HomeLink />
+          {fromWebsite && (
+            <a
+              href={WEBSITE_URL}
+              className="text-muted-foreground ms-auto inline-flex min-h-12 items-center text-sm underline underline-offset-4 md:order-last"
+            >
+              Back to q3interiors.ie
+            </a>
+          )}
           {pathname === '/' && (
             <nav aria-label="Main" className="hidden items-center gap-6 md:flex">
               <Link

@@ -39,3 +39,7 @@ supabase/functions/deno.lock
 
 # Ad studio working files and handed-in assets (ads are not committed to this public repo)
 ads/work/
+
+# Business documents kept out of this public repo (the vault holds the filed copies)
+strategy.md
+Q3_Interiors_Enquiry_Form_V2_Brief.md

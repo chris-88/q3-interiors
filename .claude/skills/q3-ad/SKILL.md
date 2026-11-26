@@ -50,6 +50,25 @@ Add `square.html` (`ad ad--square`, 1440 x 1440) and `"square"` in `sizes` only 
 8. **Publish** once Chris is happy: `npm run ad:publish -- ads/work/<slug>`. The first publish writes the new `ad_id` into `ad.json`; keep it, so later changes become new versions. It re-renders, reads the service key from `pass` for that run only (never print it, never write it anywhere), uploads the HTML and PNGs to the private `ads` bucket, and creates the ad, version 1 and its variants (status "New"). If anything fails it undoes what it did.
 9. **Tell Chris**: the ad's name, that it is on the staff site under Ads (https://staff.q3interiors.ie/#/ads) as "New", that staff can preview each size there, download the images and copy the caption, headline, button label and tagged link, and whether it has a tagged link (only if it was linked to a campaign creative).
 
+## Bold black (one command)
+
+When Chris asks for the bold black look (black canvas, white wordmark at the top, huge white headline, white button; RULES.md 10), make the whole ad directory with one command, then render, look and publish as usual:
+
+```bash
+npm run ad:new -- bold-black ads/work/<slug> \
+  --name "Type test 1 · 1. Good builders shouldn't be hard to find (still)" \
+  --headline "Good builders|shouldn't be|hard to find." \
+  --line "Reliable trades. Clear pricing.|One team managing your renovation." \
+  --button "Discuss your project" --cta "Learn more" \
+  --notes "Link for the ad: https://book.q3interiors.ie/?utm_source=instagram&utm_medium=paid&utm_campaign=<campaign>&utm_content=<slug>#/"
+```
+
+- `|` marks the line breaks in the headline (one span per line, so breaks are chosen and a line that runs too wide fails the render) and, optionally, in the supporting line. Choose breaks that read as phrases: no single word left alone on the last line.
+- Straight apostrophes become typographic ones. The words are kept exactly; if a headline line is too wide at 160px, add `--headline-size 140` (or less) for that ad and tell Chris. Do not rewrite supplied copy.
+- `ad.json` gets the caption (headline then supporting line, unless `--caption` is given), the headline field (only if 40 characters or fewer: Meta's limit; the command says when it leaves it out), Instagram's button (`--cta`: "Learn more", "Book now", "Contact us"; the artwork's button is separate) and the notes.
+- Animated: add `--loop 8000` (and put "(animated)" in the name). The wordmark shows from the first frame; the build-in settles by 2.9 s and holds; the last frame is the still. An ad cannot hold a still and an animated version at once (one variant per size), so the animated one is its own ad.
+- Then `npm run ad:render -- ads/work/<slug> --guides` and look at every size: overflow, line breaks, nothing in the red bands on 9:16, and legibility at about 360px wide (scale the PNG down and Read it).
+
 ## Animated ads
 
 Only when Chris asks for movement. An animated ad is the same HTML plus CSS animation, and becomes an MP4 per size.
@@ -57,7 +76,7 @@ Only when Chris asks for movement. An animated ad is the same HTML plus CSS anim
 - **Start** from `ads/kit/templates/type-only-animated/` (`cp ads/kit/templates/type-only-animated/* ads/work/<slug>/`). Add `"duration_ms": 6000` (1,000 to 15,000, a multiple of 100) to `ad.json`, and set `--loop` on `.ad` to the same length (`--loop: 6s`). No `duration_ms` means a still ad, and a still ad must not move.
 - **CSS animations only.** No scripts, video, GIFs or SVG `<animate>`: the render refuses them. A repeating animation (`infinite`) must last exactly the loop (or fit it a whole number of times) with no `animation-delay`; stagger with keyframe percentages (see `.ad-anim-rule--late` in `ad.css`). A one-off animation must end within the loop. Transitions do not run in an ad (nothing triggers them).
 - **The rules** (RULES.md 9): subtle; the message is complete and readable on the first frame and on the last; nothing essential appears only mid-loop; nothing flashes, blinks or races; everything stays in `.safe` at every frame. Prefer moving the rules or a gentle reveal of decoration over moving the words.
-- **Preview locally**: `npm run ad:render -- ads/work/<slug> --guides`. It pauses the animations and seeks them to every frame's time (30 a second), checks the safe area on each frame, and writes `out/<size>.mp4`, `out/<size>.poster.png` (the end of the loop, the still fallback) and `out/<size>.guides.png` (the poster with the covered areas). It refuses a loop whose frames never change. To look at it: open `out/<size>.mp4` in a video player, or extract frames: `ffmpeg -i out/vertical.mp4 -vf "select=eq(n\,0)" -frames:v 1 first.png` (also a middle and the last frame) and Read them. To watch it live, open `ads/work/<slug>/out/<size>.html` in a browser.
+- **Preview locally**: `npm run ad:render -- ads/work/<slug> --guides`. It pauses the animations and seeks them to every frame's time (30 a second), checks the safe area on each frame, and writes `out/<size>.mp4`, `out/<size>.poster.png` (the last frame, the still fallback) and `out/<size>.guides.png` (the poster with the covered areas). It refuses a loop whose frames never change. To look at it: open `out/<size>.mp4` in a video player, or extract frames: `ffmpeg -i out/vertical.mp4 -vf "select=eq(n\,0)" -frames:v 1 first.png` (also a middle and the last frame) and Read them. To watch it live, open `ads/work/<slug>/out/<size>.html` in a browser.
 - **Show Chris** the MP4s (and the first, middle and last frames), then publish as usual. `ad:publish` uploads the HTML, the MP4 and the poster; staff see it play in the console with Replay and Pause, its length, and "Download the video".
 
 ## Pick up the ad changes

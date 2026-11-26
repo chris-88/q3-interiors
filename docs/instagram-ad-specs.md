@@ -32,4 +32,4 @@ What the studio makes of it (`ad:render` checks every file with ffprobe before i
 - **Sizes:** the same two as the stills, feed 4:5 at 1440 x 1800 and Stories/Reels 9:16 at 1440 x 2560. Note: the feed video page now recommends 9:16 (1080 x 1920) for the feed as well; the 4:5 file is kept because it is the feed's tallest image shape and stays inside Meta's accepted range. The 9:16 file can be used in the feed if Meta's tools ask for it.
 - **Length:** a loop of 1 to 15 seconds, a whole number of frames (inside every placement's range: feed and Stories need at least 1 second).
 - **File size:** refused over 30 MB, the private bucket's limit (Meta allows 4 GB; a short type-only loop is well under 1 MB).
-- **Poster:** a PNG of the end of the loop (the settled message), used as the still fallback.
+- **Poster:** a PNG of the last frame (the settled message), used as the still fallback.

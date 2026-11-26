@@ -1,5 +1,8 @@
 // The Q3 ad studio's local command (Node 24 runs this TypeScript directly).
 //
+//   npm run ad:new     -- bold-black ads/work/<ad> --name .. --headline "a|b|c" --line .. --button ..
+//                                                  [--cta ..] [--loop <ms>] [--headline-size <px>]
+//                                                  a new ad from a fill-in template
 //   npm run ad:render  -- ads/work/<ad>            validate, inline, render into <ad>/out/: a PNG
 //                                                  per size, or for an animated ad (duration_ms in
 //                                                  ad.json) an MP4 and a poster PNG per size
@@ -173,12 +176,15 @@ type Rendered = {
   exportFile: string
   exportType: 'image' | 'video'
   bytes: number
-  /** Animated only: the end of the loop as PNG. */
+  /** Animated only: the last frame as PNG. */
   posterFile: string | null
   durationMs: number | null
 }
 
 type Motion = { name: string; delay: number; duration: number; iterations: number; end: number }
+
+/** The time of a loop's last video frame. */
+const lastFrameMs = (loop: number) => (((loop * VIDEO_FPS) / 1000 - 1) * 1000) / VIDEO_FPS
 
 /** Every CSS animation in the page, with its timing. */
 const readMotion = (page: Page) =>
@@ -469,11 +475,13 @@ async function render(
         }
         if (!moves)
           fail(`${size}: ad.json declares duration_ms ${loop} but no frame differs from the first`)
-        // The poster is the end of the loop: the settled message, and the still fallback.
-        await seek(page, loop)
-        await checkSafe(page, ' at the end')
+        // The poster is the video's last frame: the settled message, and the still fallback.
+        // (Seeking to the loop length itself would wrap a repeating animation back to its start.)
         const posterFile = path.join(outDir, `${size}.poster.png`)
-        await page.screenshot({ path: posterFile, clip })
+        fs.copyFileSync(
+          path.join(framesDir, `${String(count - 1).padStart(5, '0')}.png`),
+          posterFile,
+        )
         const mp4File = path.join(outDir, `${size}.mp4`)
         encode(framesDir, mp4File)
         fs.rmSync(framesDir, { recursive: true })
@@ -495,7 +503,7 @@ async function render(
       await page.close()
       if (guides) {
         const g = await open(html.replace(/<html\b/i, '<html class="guides"'))
-        if (animated) await seek(g, ad.duration_ms as number)
+        if (animated) await seek(g, lastFrameMs(ad.duration_ms as number))
         await g.screenshot({ path: path.join(outDir, `${size}.guides.png`), clip })
         await g.close()
       }
@@ -784,12 +792,105 @@ async function pull(adId: string, dir: string) {
   )
 }
 
+/** Plain text for HTML, with typographic apostrophes. */
+function typeset(text: string): string {
+  return curly(text.trim())
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/** Straight apostrophes as typographic ones (shouldn't -> shouldn’t). */
+const curly = (text: string) => text.replace(/'/g, '’')
+
+/**
+ * A new ad directory from a fill-in template (ads/kit/templates/<template>/ with {{...}} slots):
+ * the HTML for both sizes and ad.json. The headline is given in lines ("one|two|three") so the
+ * breaks are chosen, never left to chance.
+ */
+function newAd(template: string, dir: string, opt: (name: string) => string | null) {
+  const from = path.join(ROOT, 'ads/kit/templates', template)
+  const sizes = ['portrait', 'vertical'] as const
+  if (!sizes.every((size) => fs.existsSync(path.join(from, `${size}.html`))))
+    fail(`no template ads/kit/templates/${template}/ with portrait.html and vertical.html`)
+  if (!fs.readFileSync(path.join(from, 'portrait.html'), 'utf8').includes('{{headline}}'))
+    fail(`${template} is not a fill-in template; copy it by hand (see the skill)`)
+  if (fs.existsSync(dir) && fs.readdirSync(dir).length) fail(`${dir} is not empty`)
+  const need = (name: string) => {
+    const value = opt(name)?.trim()
+    if (!value) fail(`--${name} is required`)
+    return value
+  }
+  const name = need('name')
+  const lines = need('headline')
+    .split('|')
+    .map((x) => x.trim())
+    .filter(Boolean)
+  if (lines.length > 4) fail('--headline: one to four lines, split with |')
+  const line = need('line')
+  const button = need('button')
+  const loop = opt('loop')
+  const sizePx = opt('headline-size')
+  if (sizePx && !/^\d{2,3}$/.test(sizePx)) fail('--headline-size: pixels, e.g. 132')
+  const words = curly(lines.join(' '))
+  const vars = [
+    sizePx ? `--bb-headline: ${sizePx}px;` : '',
+    loop ? `--loop: ${Number(loop) / 1000}s;` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  fs.mkdirSync(dir, { recursive: true })
+  for (const size of sizes) {
+    const html = fs
+      .readFileSync(path.join(from, `${size}.html`), 'utf8')
+      .replaceAll('{{title}}', typeset(name))
+      .replaceAll('{{vars}}', vars)
+      .replaceAll('{{animate}}', loop ? ' bb--animate' : '')
+      .replaceAll('{{headline}}', lines.map((l) => `<span>${typeset(l)}</span>`).join(''))
+      .replaceAll(
+        '{{line}}',
+        line
+          .split('|')
+          .map((l) => typeset(l))
+          .join('<br />'),
+      )
+      .replaceAll('{{button}}', typeset(button))
+    fs.writeFileSync(path.join(dir, `${size}.html`), html)
+  }
+  if (words.length > HEADLINE_MAX)
+    console.warn(
+      `ad: note: the headline is ${words.length} characters, over Meta's ${HEADLINE_MAX} for the headline field; ad.json leaves that field empty (the artwork keeps it)`,
+    )
+  const json = {
+    name,
+    caption: curly(opt('caption')?.trim() || `${words} ${line.replace(/\s*\|\s*/g, ' ')}`),
+    headline: words.length <= HEADLINE_MAX ? words : undefined,
+    button_label: opt('cta')?.trim() || 'Learn more',
+    notes: opt('notes')?.trim() || undefined,
+    duration_ms: loop ? Number(loop) : undefined,
+    sizes: [...sizes],
+  }
+  fs.writeFileSync(path.join(dir, 'ad.json'), JSON.stringify(json, null, 2) + '\n')
+  readAd(dir)
+  console.log(
+    `ad: ${path.relative(ROOT, dir)} made from ${template}${loop ? ` (animated, ${formatDuration(Number(loop))})` : ''}. Next: npm run ad:render -- ${path.relative(ROOT, dir)} --guides`,
+  )
+}
+
 const [command, target, ...rest] = process.argv.slice(2)
 const flag = (name: string) => {
   const i = rest.indexOf(name)
   return i >= 0 ? (rest[i + 1] ?? '') : null
 }
-if (command === 'requests') await requests()
+if (command === 'new') {
+  const into = rest[0]
+  if (!target || !into || into.startsWith('--'))
+    fail(
+      'usage: node scripts/ad.mts new <template> <directory> --name ... --headline "line|line|line" --line ... --button ... [--cta "Learn more"] [--loop <ms>] [--headline-size <px>] [--caption ...] [--notes ...]',
+    )
+  newAd(target, path.resolve(into), (name) => flag(`--${name}`))
+} else if (command === 'requests') await requests()
 else if (command === 'pull') {
   const into = rest[0]
   if (!target || !into) fail('usage: node scripts/ad.mts pull <ad id> <directory>')
@@ -804,5 +905,5 @@ else if (command === 'publish' && target) {
   await publish(path.resolve(target), done)
 } else
   fail(
-    'usage: node scripts/ad.mts render <dir> [--guides] | publish <dir> [--done <request ids>] | requests | pull <ad id> <dir>',
+    'usage: node scripts/ad.mts new <template> <dir> ... | render <dir> [--guides] | publish <dir> [--done <request ids>] | requests | pull <ad id> <dir>',
   )

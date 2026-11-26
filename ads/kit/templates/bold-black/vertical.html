@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{title}} (Stories and Reels 9:16)</title>
+    <link rel="stylesheet" href="kit:ad.css" />
+    <style>
+      .ad {
+        {{vars}}
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Bold black, Stories and Reels 9:16. Filled by `npm run ad:new -- bold-black <dir> ...`; see
+      RULES.md 10. The black fills the whole canvas; everything else sits in .safe, clear of the
+      top 14% and bottom 35% that Instagram covers.
+    -->
+    <main class="ad ad--vertical bb{{animate}}">
+      <div class="safe bb-safe">
+        <img class="bb-logo" src="kit:wordmark-white.svg" alt="Q3 Interiors" />
+        <h1 class="bb-headline">{{headline}}</h1>
+        <p class="bb-line">{{line}}</p>
+        <div class="bb-button">
+          <span>{{button}}</span>
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 12h16M14 6l6 6-6 6" />
+          </svg>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

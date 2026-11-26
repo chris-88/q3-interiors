@@ -24,6 +24,7 @@
     "build:staff": "VITE_SURFACE=staff vite build --outDir dist-staff && node scripts/staff-site-files.cjs",
     "preview:staff": "vite preview --outDir dist-staff",
     "check:surfaces": "scripts/check-surfaces.sh",
+    "ad:new": "node scripts/ad.mts new",
     "ad:render": "node scripts/ad.mts render",
     "ad:publish": "node scripts/ad.mts publish",
     "ad:requests": "node scripts/ad.mts requests",

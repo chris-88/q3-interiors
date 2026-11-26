@@ -1,4 +1,5 @@
-import { usePilotReport } from '@/api/pilot'
+import { useId, useState } from 'react'
+import { usePilotReport, usePilotReportByContent } from '@/api/pilot'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -40,7 +41,17 @@ function Measure({ label, value, note }: { label: string; value: string; note: s
   )
 }
 
-function RowCard({ row, report, to }: { row: PilotRow; report: PilotReport; to: string }) {
+function RowCard({
+  row,
+  report,
+  to,
+  children,
+}: {
+  row: PilotRow
+  report: PilotReport
+  to: string
+  children?: React.ReactNode
+}) {
   const sessions = sessionsFor(row, report, to)
   const line = (label: string, value: number) => (
     <tr className="border-t">
@@ -64,7 +75,7 @@ function RowCard({ row, report, to }: { row: PilotRow; report: PilotReport; to: 
             <th scope="col" className="py-1 text-right font-normal">
               Count
             </th>
-            <th scope="col" className="py-1 text-right font-normal">
+            <th scope="col" className="py-1 pl-3 text-right font-normal">
               Per 100 sessions
             </th>
           </tr>
@@ -107,7 +118,74 @@ function RowCard({ row, report, to }: { row: PilotRow; report: PilotReport; to: 
           </dd>
         </div>
       </dl>
+      {children}
     </section>
+  )
+}
+
+/** A campaign's ads: opened on demand, one card per utm_content (capped on the server). */
+function ByAd({
+  campaign,
+  report,
+  from,
+  to,
+}: {
+  campaign: string
+  report: PilotReport
+  from: string
+  to: string
+}) {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  const ads = usePilotReportByContent(from, to, campaign, open)
+  return (
+    <div className="mt-3 border-t pt-3">
+      <Button
+        type="button"
+        variant="outline"
+        className="h-12 w-full text-base"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Hide each ad' : 'Show each ad'}
+      </Button>
+      {open && (
+        <div id={id} className="mt-3 flex flex-col gap-3">
+          {ads.isPending ? (
+            <Skeleton className="h-32 w-full" aria-label="Loading the ads" />
+          ) : ads.isError ? (
+            <Alert variant="destructive">
+              <AlertDescription>
+                Could not load the ads.{' '}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => void ads.refetch()}
+                >
+                  Try again
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : ads.data.rows.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No sessions or enquiries for this campaign.
+            </p>
+          ) : (
+            <>
+              <p className="text-muted-foreground text-sm">
+                One card per ad (the link&apos;s utm_content). The {ads.data.cap} biggest have their
+                own card; any others are added together.
+              </p>
+              {ads.data.rows.map((row) => (
+                <RowCard key={`content:${row.key}`} row={row} report={report} to={to} />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -186,7 +264,11 @@ export function PilotMeasures({ from, to }: { from: string; to: string }) {
                       : 'By campaign'}
                 </h3>
                 {rows.map((row) => (
-                  <RowCard key={`${row.dim}:${row.key}`} row={row} report={data} to={to} />
+                  <RowCard key={`${row.dim}:${row.key}`} row={row} report={data} to={to}>
+                    {dim === 'campaign' && (
+                      <ByAd campaign={row.key} report={data} from={from} to={to} />
+                    )}
+                  </RowCard>
                 ))}
               </div>
             )

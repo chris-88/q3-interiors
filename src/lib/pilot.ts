@@ -6,7 +6,7 @@ import { parseRows } from './tolerant'
 const count = z.number().int().nonnegative()
 
 export const pilotRowSchema = z.object({
-  dim: z.enum(['all', 'version', 'route', 'campaign']),
+  dim: z.enum(['all', 'version', 'route', 'campaign', 'content']),
   key: z.string(),
   sessions: count.nullable(),
   chose: count.nullable(),
@@ -84,6 +84,8 @@ const LABELS: Record<string, string> = {
   'route:none': 'No route chosen',
   'route:unknown': 'Route not known',
   'campaign:(unknown)': 'No campaign tag',
+  'content:(none)': 'No ad tag (utm_content)',
+  'content:(other)': 'Other ads (smaller ones, together)',
 }
 
 export function rowLabel(row: PilotRow): string {
@@ -93,3 +95,13 @@ export function rowLabel(row: PilotRow): string {
 export function rowsFor(report: PilotReport, dim: PilotRow['dim']): PilotRow[] {
   return report.rows.filter((r) => r.dim === dim)
 }
+
+/** One campaign split by ad (`pilot_report_by_content`): one row per utm_content, capped. */
+export const contentReportSchema = z.object({
+  campaign: z.string(),
+  cap: z.number().int().default(25),
+  rows: z
+    .array(z.unknown())
+    .transform((rows) => parseRows(pilotRowSchema, rows, 'pilot measures by ad')),
+})
+export type ContentReport = z.infer<typeof contentReportSchema>

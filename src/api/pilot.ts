@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { pilotReportSchema, type PilotReport } from '@/lib/pilot'
+import {
+  contentReportSchema,
+  pilotReportSchema,
+  type ContentReport,
+  type PilotReport,
+} from '@/lib/pilot'
 import { supabase } from '@/lib/supabase'
 import { parseOne } from '@/lib/tolerant'
 import { toApiError } from './errors'
@@ -13,6 +18,28 @@ export function usePilotReport(from: string, to: string) {
       const { data, error } = await supabase.rpc('pilot_report', { p_from: from, p_to: to })
       if (error) throw toApiError(error)
       return parseOne(pilotReportSchema, data, 'the pilot measures')
+    },
+  })
+}
+
+/** One campaign split by ad (utm_content), fetched when a campaign is opened. Staff only. */
+export function usePilotReportByContent(
+  from: string,
+  to: string,
+  campaign: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['pilot-report-content', from, to, campaign],
+    enabled: enabled && from !== '' && to !== '' && from <= to,
+    queryFn: async (): Promise<ContentReport> => {
+      const { data, error } = await supabase.rpc('pilot_report_by_content', {
+        p_from: from,
+        p_to: to,
+        p_campaign: campaign,
+      })
+      if (error) throw toApiError(error)
+      return parseOne(contentReportSchema, data, 'the pilot measures by ad')
     },
   })
 }

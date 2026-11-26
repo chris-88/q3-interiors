@@ -1,6 +1,6 @@
 // The Q3 ad studio's local command (Node 24 runs this TypeScript directly).
 //
-//   npm run ad:new     -- bold-black ads/work/<ad> --name .. --headline "a|b|c" --line ..
+//   npm run ad:new     -- bold-black ads/work/<ad> --headline "a|b|c" --line .. --set .. --position <n> --link https://..
 //                                                  [--cta ..] [--loop <ms>] [--headline-size <px>]
 //                                                  a new ad from a fill-in template
 //   npm run ad:render  -- ads/work/<ad>            validate, inline, render into <ad>/out/: a PNG
@@ -63,7 +63,13 @@ const MIME: Record<string, string> = {
 }
 
 type AdJson = {
+  /** The title staff see: the ad's headline, nothing before or after it, no brackets. */
   name: string
+  /** The set the ad belongs to ("Type test 2") and its place in it (1 first). */
+  set?: string
+  position?: number
+  /** Where the ad points, with its tags (https). Stored on each version. */
+  link?: string
   caption: string
   headline?: string
   button_label?: string
@@ -78,6 +84,9 @@ type AdJson = {
   ad_id?: string
 }
 
+/** The same rule as the ad_versions.link_url check. */
+const LINK_RE = /^https:\/\/\S{1,1992}$/
+
 function fail(message: string): never {
   console.error(`ad: ${message}`)
   process.exit(1)
@@ -89,6 +98,19 @@ function readAd(dir: string): AdJson & { sizes: AdSize[] } {
   const ad = JSON.parse(fs.readFileSync(file, 'utf8')) as AdJson
   const problems: string[] = []
   if (!ad.name?.trim() || ad.name.length > 120) problems.push('name: 1 to 120 characters')
+  else if (/[()[\]]/.test(ad.name))
+    problems.push(
+      'name: the headline alone, no brackets (say still or animated nowhere in the title)',
+    )
+  if (ad.set !== undefined && (!ad.set.trim() || ad.set.length > 80))
+    problems.push('set: 1 to 80 characters')
+  if (
+    ad.position !== undefined &&
+    !(Number.isInteger(ad.position) && ad.position >= 1 && ad.position <= 999)
+  )
+    problems.push('position: a whole number from 1 to 999')
+  if (ad.link !== undefined && !LINK_RE.test(ad.link))
+    problems.push('link: an https address without spaces, up to 2,000 characters')
   if (!ad.caption?.trim() || ad.caption.length > CAPTION_MAX)
     problems.push(`caption: 1 to ${CAPTION_MAX} characters`)
   if (ad.headline && ad.headline.length > HEADLINE_MAX)
@@ -621,12 +643,18 @@ async function publish(dir: string, doneIds: string[]) {
       const missing = doneIds.filter((id) => !known.has(id))
       if (missing.length) fail(`not open requests on this ad: ${missing.join(', ')}`)
     }
-    if (creativeId) await s.rest('PATCH', `ads?id=eq.${adId}`, { campaign_creative_id: creativeId })
+    const patch: Record<string, unknown> = {}
+    if (creativeId) patch.campaign_creative_id = creativeId
+    if (ad.set) patch.set_name = ad.set.trim()
+    if (ad.position) patch.set_position = ad.position
+    if (Object.keys(patch).length) await s.rest('PATCH', `ads?id=eq.${adId}`, patch)
   } else {
     if (doneIds.length)
       fail('--done only applies to a new version of an existing ad (ad_id in ad.json)')
     const [created] = await s.rest('POST', 'ads', {
       name: ad.name.trim(),
+      set_name: ad.set?.trim() || null,
+      set_position: ad.position ?? null,
       campaign_creative_id: creativeId,
       created_by_name: by,
     })
@@ -644,6 +672,7 @@ async function publish(dir: string, doneIds: string[]) {
       headline: ad.headline?.trim() || null,
       button_label: ad.button_label?.trim() || null,
       notes: ad.notes?.trim() || null,
+      link_url: ad.link?.trim() || null,
       created_by_name: by,
     })
     versionId = row?.id as string
@@ -757,7 +786,7 @@ async function pull(adId: string, dir: string) {
   const s = await stack()
   const [row] = await s.rest(
     'GET',
-    `ads?id=eq.${adId}&select=id,name,ad_versions(version,caption,headline,button_label,notes,ad_variants(size,html_path,duration_ms))`,
+    `ads?id=eq.${adId}&select=id,name,set_name,set_position,ad_versions(version,caption,headline,button_label,notes,link_url,ad_variants(size,html_path,duration_ms))`,
   )
   if (!row) fail(`no ad with id ${adId}`)
   const versions = (row.ad_versions ?? []) as {
@@ -766,6 +795,7 @@ async function pull(adId: string, dir: string) {
     headline: string | null
     button_label: string | null
     notes: string | null
+    link_url: string | null
     ad_variants: { size: AdSize; html_path: string; duration_ms: number | null }[]
   }[]
   const current = versions.sort((a, b) => b.version - a.version)[0]
@@ -779,6 +809,9 @@ async function pull(adId: string, dir: string) {
   const json = {
     ad_id: adId,
     name: row.name,
+    set: (row.set_name as string | null) ?? undefined,
+    position: (row.set_position as number | null) ?? undefined,
+    link: current.link_url ?? undefined,
     caption: current.caption,
     headline: current.headline ?? undefined,
     button_label: current.button_label ?? undefined,
@@ -822,7 +855,6 @@ function newAd(template: string, dir: string, opt: (name: string) => string | nu
     if (!value) fail(`--${name} is required`)
     return value
   }
-  const name = need('name')
   const lines = need('headline')
     .split('|')
     .map((x) => x.trim())
@@ -835,6 +867,11 @@ function newAd(template: string, dir: string, opt: (name: string) => string | nu
   const sizePx = opt('headline-size')
   if (sizePx && !/^\d{2,3}$/.test(sizePx)) fail('--headline-size: pixels, e.g. 132')
   const words = curly(lines.join(' '))
+  // The title is the headline itself unless --name says otherwise (same rule: no brackets).
+  const name = curly(opt('name')?.trim() || words)
+  const set = opt('set')?.trim() || undefined
+  const position = opt('position') ? Number(opt('position')) : undefined
+  const link = opt('link')?.trim() || undefined
   const vars = [
     sizePx ? `--bb-headline: ${sizePx}px;` : '',
     loop ? `--loop: ${Number(loop) / 1000}s;` : '',
@@ -871,6 +908,9 @@ function newAd(template: string, dir: string, opt: (name: string) => string | nu
     )
   const json = {
     name,
+    set,
+    position,
+    link,
     caption: curly(opt('caption')?.trim() || `${words} ${line.replace(/\s*\|\s*/g, ' ')}`),
     headline: words.length <= HEADLINE_MAX ? words : undefined,
     button_label: opt('cta')?.trim() || 'Learn more',
@@ -894,7 +934,7 @@ if (command === 'new') {
   const into = rest[0]
   if (!target || !into || into.startsWith('--'))
     fail(
-      'usage: node scripts/ad.mts new <template> <directory> --name ... --headline "line|line|line" --line ... [--cta "Learn more"] [--button <drawn label, not used>] [--loop <ms>] [--headline-size <px>] [--caption ...] [--notes ...]',
+      'usage: node scripts/ad.mts new <template> <directory> --headline "line|line|line" --line ... [--set "Type test 2" --position <n>] [--link https://...] [--name <title, default the headline>] [--cta "Learn more"] [--button <drawn label, not used>] [--loop <ms>] [--headline-size <px>] [--caption ...] [--notes ...]',
     )
   newAd(target, path.resolve(into), (name) => flag(`--${name}`))
 } else if (command === 'requests') await requests()

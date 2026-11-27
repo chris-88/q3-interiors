@@ -22,15 +22,15 @@ const LANDING_PHOTO: { src: string; alt: string; width: number; height: number }
 const steps = [
   {
     title: 'Choose a call or a site visit',
-    body: 'A phone call to talk through your plans, or a visit so we can see the space and measure up. Both are free.',
+    body: 'A call to talk through your plans, or a site visit to see the space and measure up. A few quick questions, then pick a time.',
   },
   {
-    title: 'Tell us about the project and pick a time',
-    body: 'A few quick questions, then choose a time that suits you. There is no account to create.',
+    title: 'Get an estimate after the site visit',
+    body: 'After the visit we send you an estimate: a price range, with VAT included. If you start with a call, the next step for a price is a site visit.',
   },
   {
-    title: 'Discuss the estimate',
-    body: 'We give you an estimate: a price range for the work. When the scope is agreed and you want to go ahead, we send a written quote.',
+    title: 'Say yes and we send a quote',
+    body: 'Say yes to the estimate and we send a written quote: one price, what’s included and what isn’t. A 10% deposit books your start date.',
   },
 ]
 

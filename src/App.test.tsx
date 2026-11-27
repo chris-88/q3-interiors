@@ -39,7 +39,16 @@ describe('App', () => {
     expect(
       screen.getByText('Both are free. You can change or cancel the time online.'),
     ).toBeInTheDocument()
-    expect(screen.getByText(/we send a written quote\./)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'After the visit we send you an estimate: a price range, with VAT included. If you start with a call, the next step for a price is a site visit.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Say yes to the estimate and we send a written quote: one price, what’s included and what isn’t. A 10% deposit books your start date.',
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
     expect(screen.queryByText(/our work/i)).not.toBeInTheDocument()
     // No landing photo is configured yet, and no empty slot stands in for one.
@@ -52,7 +61,7 @@ describe('App', () => {
     expect(home.querySelector('img')).toHaveAttribute('alt', '')
     expect(
       screen.getByText(
-        'A site visit is for us to look at the work and price it. You get an estimate, which is a price range. You’re not committing to anything, and it isn’t a start date.',
+        'A site visit is for us to look at the work and price it. You get an estimate, which is a price range with VAT included. You’re not committing to anything, and it isn’t a start date.',
       ),
     ).toBeInTheDocument()
   })

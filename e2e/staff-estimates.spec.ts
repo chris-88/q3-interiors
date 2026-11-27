@@ -147,7 +147,32 @@ function seed(world: StaffWorld) {
     schema: f,
   }))
   world.business.contact_phone = '01 555 0100'
+  // A slice of the seeded tick-list: kitchen items, then "any job" items (one repeats a label).
+  const items: [string | null, string][] = [
+    ['kitchen', 'Strip out the old kitchen'],
+    ['kitchen', 'New units and worktop'],
+    ['kitchen', 'Tiled floor'],
+    ['kitchen', 'Painting'],
+    ['bathroom', 'Wall tiling'],
+    [null, 'Strip out'],
+    [null, 'Painting'],
+    [null, 'Waste removal'],
+  ]
+  world.tables.estimate_work_items = items.map(([type, label], i) => ({
+    id: `wi-seed-${i}`,
+    label,
+    project_type: type,
+    archived_at: null,
+    position: i + 1,
+  }))
 }
+
+const chipLabels = (page: Page) =>
+  page
+    .getByRole('region', { name: 'Estimate' })
+    .getByRole('group', { name: /Work we looked at/ })
+    .getByRole('checkbox')
+    .evaluateAll((boxes) => boxes.map((b) => b.closest('label')?.textContent?.trim() ?? ''))
 
 async function open(page: Page, path: string) {
   const world = staffWorld()
@@ -167,23 +192,49 @@ test('staff write an estimate on a site visit: live range, email preview, confir
   await expect(section).toContainText('No estimate sent yet.')
   await section.getByRole('button', { name: 'Write an estimate' }).click()
 
-  // Checked like the server: a price is needed, the work too.
+  // Checked like the server: a price is needed, and a ticked item or a note.
   await section.getByRole('button', { name: 'Send estimate' }).click()
   await expect(section.getByText('Enter the price in whole euro, at least €100.')).toBeVisible()
+  await expect(
+    section.getByText('Tick what you looked at, or write a note under Anything else.'),
+  ).toBeVisible()
   await expect(section.getByLabel('Price in euro')).toBeFocused()
+
+  // The kitchen's items, then the "any job" ones without the repeated label.
+  expect(await chipLabels(page)).toEqual([
+    'Strip out the old kitchen',
+    'New units and worktop',
+    'Tiled floor',
+    'Painting',
+    'Strip out',
+    'Waste removal',
+  ])
 
   await section.getByLabel('Price in euro').fill('10,000')
   await expect(section.getByLabel('Plus or minus')).toHaveValue('10')
   await expect(section.getByText('€9,000 to €11,000, VAT included')).toBeVisible()
   await section.getByLabel('Plus or minus').selectOption('5')
   await expect(section.getByText('€9,500 to €10,500, VAT included')).toBeVisible()
-  await section.getByLabel('Work we looked at').fill('Kitchen: strip out, new units, tiled floor.')
+  // Tick out of order; the email lists them in the order shown.
+  await section.getByText('Tiled floor', { exact: true }).click()
+  await section.getByText('Strip out the old kitchen', { exact: true }).click()
+  await expect(section.getByRole('checkbox', { name: 'Tiled floor' })).toBeChecked()
+  // Add another: ticked now, offered next time for kitchens.
+  await section.getByLabel('Add another').fill('  Move the   radiator ')
+  await section.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(section.getByRole('checkbox', { name: 'Move the radiator' })).toBeChecked()
+  await section.getByLabel('Anything else (optional)').fill('Keep the existing window.')
 
   // The email exactly as the customer gets it (same renderer as the worker).
   const email = section.frameLocator('iframe[title="Estimate email preview"]')
   await expect(email.getByText('Hello Brian,')).toBeVisible()
   await expect(email.getByText('€9,500 to €10,500, VAT included')).toBeVisible()
-  await expect(email.getByText('Kitchen: strip out, new units, tiled floor.')).toBeVisible()
+  await expect(email.getByRole('listitem')).toHaveText([
+    'Strip out the old kitchen',
+    'Tiled floor',
+    'Move the radiator',
+  ])
+  await expect(email.getByText('Keep the existing window.')).toBeVisible()
   await expect(email.getByRole('link', { name: 'Get my quote' })).toBeVisible()
   await expect(email.getByText('01 555 0100')).toBeVisible()
   await expect(section).toContainText('Subject: Your estimate from Q3 Interiors')
@@ -203,10 +254,56 @@ test('staff write an estimate on a site visit: live range, email preview, confir
     p_booking_id: 'b-visit',
     p_price: 10000,
     p_percent: 5,
-    p_work: 'Kitchen: strip out, new units, tiled floor.',
+    p_work: 'Keep the existing window.',
+    p_items: ['Strip out the old kitchen', 'Tiled floor', 'Move the radiator'],
   })
+  expect(world.rpcCalls.find((c) => c.name === 'add_estimate_work_item')?.body).toEqual({
+    p_project_type: 'kitchen',
+    p_label: 'Move the radiator',
+  })
+  await expect(section.getByRole('listitem')).toHaveText([
+    'Strip out the old kitchen',
+    'Tiled floor',
+    'Move the radiator',
+  ])
   await expect(section.getByRole('button', { name: 'Send an updated estimate' })).toBeVisible()
   await shot(page, 'staff-estimate-sent')
+
+  // Next time: the added item is offered (not ticked); Edit list removes one for good.
+  await section.getByRole('button', { name: 'Send an updated estimate' }).click()
+  expect(await chipLabels(page)).toContain('Move the radiator')
+  await expect(section.getByRole('checkbox', { name: 'Move the radiator' })).not.toBeChecked()
+  await section.getByRole('button', { name: 'Edit list' }).click()
+  await expect(section.getByRole('list', { name: 'Items offered' })).toBeVisible()
+  await shot(page, 'staff-estimate-edit-list')
+  await section.getByRole('button', { name: 'Remove Waste removal' }).click()
+  await expect(section.getByRole('button', { name: 'Remove Waste removal' })).toHaveCount(0)
+  await section.getByRole('button', { name: 'Done' }).click()
+  expect(await chipLabels(page)).not.toContain('Waste removal')
+  expect(world.rpcCalls.find((c) => c.name === 'archive_estimate_work_item')?.body).toEqual({
+    p_id: 'wi-seed-7',
+  })
+})
+
+test('an enquiry with no project type is offered the "any job" items, and a note alone will do', async ({
+  page,
+}) => {
+  const world = await open(page, '/#/enquiries/e-visit1')
+  const row = (world.tables.enquiries as { id: string; answers: Record<string, string> }[]).find(
+    (e) => e.id === 'e-visit1',
+  )
+  if (row) delete row.answers.project_type
+  await page.reload()
+  const section = page.getByRole('region', { name: 'Estimate' })
+  await section.getByRole('button', { name: 'Write an estimate' }).click()
+  expect(await chipLabels(page)).toEqual(['Strip out', 'Painting', 'Waste removal'])
+  await section.getByLabel('Price in euro').fill('2500')
+  await section.getByLabel('Anything else (optional)').fill('Hall floor relaid on new joists.')
+  await section.getByRole('button', { name: 'Send estimate' }).click()
+  await section.getByRole('alertdialog').getByRole('button', { name: 'Yes, send it' }).click()
+  await expect(section).toContainText('Estimate sent to brian@example.com.')
+  const call = world.rpcCalls.find((c) => c.name === 'send_estimate')
+  expect(call?.body).toMatchObject({ p_items: [], p_work: 'Hall floor relaid on new joists.' })
 })
 
 test('a call never offers an estimate', async ({ page }) => {

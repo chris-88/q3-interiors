@@ -108,7 +108,8 @@ function render(kind: PreviewKind, wording: Wording, prepare: Record<string, str
     case 'estimate':
       return renderEstimate({
         customerName: 'Ann Murphy',
-        workLookedAt: 'Kitchen: strip out, new units and worktop, tiled floor.',
+        workItems: ['Strip out the old kitchen', 'New units and worktop', 'Tiled floor'],
+        note: 'Keep the existing window.',
         low: 9500,
         high: 10500,
         caveats: wording.estimate_caveats?.trim() || WORDING.estimate_caveats.default,

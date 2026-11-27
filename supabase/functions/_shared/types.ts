@@ -164,7 +164,9 @@ export type EstimateRow = {
   enquiry_id: string
   low_eur: number
   high_eur: number
-  work_looked_at: string
+  /** The ticked work items as sent; the note is work_looked_at. */
+  work_items: string[]
+  work_looked_at: string | null
   caveats: string
   sent_at: string
   valid_until: string

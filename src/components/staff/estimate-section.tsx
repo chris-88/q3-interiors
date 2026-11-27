@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { useBusinessDetails } from '@/api/business'
 import type { EnquiryDetail } from '@/api/enquiries'
-import { estimateFormSchema, parsePrice, useSendEstimate, type Estimate } from '@/api/estimates'
+import {
+  estimateFormSchema,
+  offeredItems,
+  parsePrice,
+  useSendEstimate,
+  useWorkItems,
+  type Estimate,
+} from '@/api/estimates'
 import type { StaffBooking } from '@/api/staff-booking'
 import { useWordingOverrides } from '@/api/wording'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
+import { orderTicked, WorkItemsPicker } from '@/components/staff/work-items-picker'
 import { currentEstimate, estimateFollowUp, estimateLine, estimateState } from '@/lib/enquiry-stage'
 import { formatDayMonth, formatShortWhen } from '@/lib/format'
 import {
@@ -60,7 +68,16 @@ export function EstimateSummary({ estimate, now }: { estimate: Estimate; now: nu
         {formatEuro(estimate.price_eur)}, plus or minus {formatPercent(estimate.plus_minus_percent)}
         %{estimate.created_by_name ? ` · ${estimate.created_by_name}` : ''}
       </p>
-      <p className="text-sm break-words whitespace-pre-line">{estimate.work_looked_at}</p>
+      {estimate.work_items.length > 0 && (
+        <ul className="list-disc pl-5 text-sm">
+          {estimate.work_items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
+      {estimate.work_looked_at && (
+        <p className="text-sm break-words whitespace-pre-line">{estimate.work_looked_at}</p>
+      )}
     </div>
   )
 }
@@ -91,6 +108,14 @@ function EstimateForm({
   const [price, setPrice] = useState('')
   const [percent, setPercent] = useState(String(PERCENT_DEFAULT))
   const [work, setWork] = useState('')
+  const [ticked, setTicked] = useState<string[]>([])
+  const workItems = useWorkItems()
+  // The enquiry's project type value ("kitchen"); "any job" items are offered with it.
+  const projectType =
+    typeof enquiry.answers.project_type === 'string' && enquiry.answers.project_type
+      ? enquiry.answers.project_type
+      : null
+  const items = orderTicked(offeredItems(workItems.data ?? [], projectType), ticked)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [confirming, setConfirming] = useState(false)
   const email = textOf(enquiry.answers.email)
@@ -103,7 +128,8 @@ function EstimateForm({
   const caveats = wording.data?.estimate_caveats?.trim() || WORDING.estimate_caveats.default
   const preview = renderEstimate({
     customerName: name,
-    workLookedAt: work.trim() || 'The work you looked at goes here.',
+    workItems: items.length || work.trim() ? items : ['The work you tick appears here'],
+    note: work.trim() || null,
     low: range?.low ?? 0,
     high: range?.high ?? 0,
     caveats,
@@ -115,14 +141,18 @@ function EstimateForm({
 
   const check = () => {
     const parsed = estimateFormSchema.safeParse({ price, percent, work })
-    if (parsed.success) {
-      setErrors({})
-      return parsed.data
-    }
     const next: Record<string, string> = {}
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0] ?? 'form')
-      next[key] ??= issue.message
+    if (!parsed.success)
+      for (const issue of parsed.error.issues) {
+        const key = String(issue.path[0] ?? 'form')
+        next[key] ??= issue.message
+      }
+    // An estimate needs at least one ticked item or a note (send_estimate checks the same).
+    if (items.length === 0 && !work.trim())
+      next.items = 'Tick what you looked at, or write a note under Anything else.'
+    if (parsed.success && Object.keys(next).length === 0) {
+      setErrors({})
+      return { ...parsed.data, items }
     }
     setErrors(next)
     document.getElementById(`estimate-${Object.keys(next)[0] ?? 'price'}`)?.focus()
@@ -186,9 +216,26 @@ function EstimateForm({
           ))}
         </NativeSelect>
       </div>
+      <div id="estimate-items" tabIndex={-1} className="flex flex-col gap-1">
+        <WorkItemsPicker
+          projectType={projectType}
+          ticked={ticked}
+          invalid={Boolean(errors.items)}
+          onChange={(next) => {
+            setTicked(next)
+            setConfirming(false)
+            setErrors(({ items: _i, ...rest }) => rest)
+          }}
+        />
+        {errors.items && (
+          <p role="alert" className="text-destructive text-sm">
+            {errors.items}
+          </p>
+        )}
+      </div>
       <div className={field}>
         <label htmlFor="estimate-work" className="text-sm font-medium">
-          Work we looked at
+          Anything else (optional)
         </label>
         <Textarea
           id="estimate-work"
@@ -199,13 +246,13 @@ function EstimateForm({
           onChange={(e) => {
             setWork(e.target.value)
             setConfirming(false)
-            setErrors(({ work: _w, ...rest }) => rest)
+            setErrors(({ work: _w, items: _i, ...rest }) => rest)
           }}
           aria-invalid={errors.work ? true : undefined}
           aria-describedby={`estimate-work-hint${errors.work ? ' estimate-work-error' : ''}`}
         />
         <p id="estimate-work-hint" className="text-muted-foreground text-xs">
-          The customer reads this in the email. {[...work.trim()].length}/{WORK_MAX}
+          A line under the list in the email. {[...work.trim()].length}/{WORK_MAX}
         </p>
         {errors.work && (
           <p id="estimate-work-error" role="alert" className="text-destructive text-sm">
@@ -268,6 +315,7 @@ function EstimateForm({
                     price: values.price,
                     percent: values.percent,
                     work: values.work,
+                    items: values.items,
                   },
                   { onSuccess: () => onSent(email) },
                 )

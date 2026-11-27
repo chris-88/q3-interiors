@@ -371,7 +371,8 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
       return ok({
         low: estimate.low_eur,
         high: estimate.high_eur,
-        workLookedAt: estimate.work_looked_at,
+        workItems: estimate.work_items ?? [],
+        note: estimate.work_looked_at,
         sentAt: estimate.sent_at,
         validUntil: estimate.valid_until,
         quoteRequested: estimate.quote_requested_at !== null,

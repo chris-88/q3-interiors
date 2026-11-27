@@ -27,7 +27,8 @@ test('opening the link records nothing; the button asks for the quote once', asy
     enquiry_id: enquiryId,
     low_eur: 9500,
     high_eur: 10500,
-    work_looked_at: 'Kitchen: strip out, new units, tiled floor.',
+    work_items: ['Strip out the old kitchen', 'New units and worktop'],
+    work_looked_at: 'Keep the window.',
     caveats: 'This is an estimate, not a quote.',
     sent_at: new Date(sent).toISOString(),
     valid_until: new Date(sent + 10 * 86_400_000).toISOString(),
@@ -38,7 +39,12 @@ test('opening the link records nothing; the button asks for the quote once', asy
   await page.goto(`/#/estimate/${TOKEN}/${ESTIMATE}`)
   await expect(page.getByRole('heading', { name: 'Get your quote' })).toBeVisible()
   await expect(page.getByText('€9,500 to €10,500, VAT included')).toBeVisible()
-  await expect(page.getByText('The work we looked at: Kitchen: strip out')).toBeVisible()
+  await expect(page.getByText('The work we looked at:')).toBeVisible()
+  await expect(page.getByRole('listitem')).toHaveText([
+    'Strip out the old kitchen',
+    'New units and worktop',
+  ])
+  await expect(page.getByText('Keep the window.')).toBeVisible()
   // A mail scanner opening the link only reads.
   expect(estimate.quote_requested_at).toBeNull()
   expect(bookingBodies.map((b) => b.action)).toEqual(['estimate'])

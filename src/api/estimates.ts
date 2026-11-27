@@ -1,12 +1,12 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
+import { parseRows } from '@/lib/tolerant'
 import {
   isValidPercent,
   PRICE_MAX,
   PRICE_MIN,
   WORK_MAX,
-  WORK_MIN,
 } from '../../supabase/functions/_shared/estimate.ts'
 import { toApiError } from './errors'
 
@@ -18,7 +18,9 @@ export const estimateSchema = z.object({
   plus_minus_percent: z.coerce.number(),
   low_eur: z.coerce.number(),
   high_eur: z.coerce.number(),
-  work_looked_at: z.string(),
+  // The ticked items as sent (empty before 2026-11-29's tick-list); the note may be absent.
+  work_items: z.array(z.string()).default([]),
+  work_looked_at: z.string().nullable().default(null),
   caveats: z.string().default(''),
   sent_at: z.string(),
   valid_until: z.string(),
@@ -29,7 +31,7 @@ export const estimateSchema = z.object({
 export type Estimate = z.infer<typeof estimateSchema>
 
 export const ESTIMATE_COLUMNS =
-  'estimates (id, booking_id, price_eur, plus_minus_percent, low_eur, high_eur, work_looked_at, caveats, sent_at, valid_until, quote_requested_at, created_by_name)'
+  'estimates (id, booking_id, price_eur, plus_minus_percent, low_eur, high_eur, work_items, work_looked_at, caveats, sent_at, valid_until, quote_requested_at, created_by_name)'
 
 /** "9500", "9,500" and "€9,500" are all 9500; anything else is null. */
 export function parsePrice(text: string): number | null {
@@ -54,11 +56,8 @@ export const estimateFormSchema = z.object({
   percent: z.coerce
     .number()
     .refine(isValidPercent, 'Choose a plus-or-minus from 0 to 30 in half steps.'),
-  work: z
-    .string()
-    .trim()
-    .min(WORK_MIN, 'Say what work you looked at.')
-    .max(WORK_MAX, `Keep it under ${WORK_MAX} characters.`),
+  // The optional "Anything else" note; an estimate needs a ticked item or a note.
+  work: z.string().trim().max(WORK_MAX, `Keep it under ${WORK_MAX} characters.`),
 })
 
 export type EstimateForm = z.input<typeof estimateFormSchema>
@@ -72,12 +71,14 @@ export function useSendEstimate(enquiryId: string) {
       price: number
       percent: number
       work: string
+      items: string[]
     }) => {
       const { data, error } = await supabase.rpc('send_estimate', {
         p_booking_id: input.bookingId,
         p_price: input.price,
         p_percent: input.percent,
         p_work: input.work,
+        p_items: input.items,
       })
       if (error) throw toApiError(error)
       return z.string().parse(data)
@@ -87,5 +88,80 @@ export function useSendEstimate(enquiryId: string) {
         queryClient.invalidateQueries({ queryKey: ['enquiries', enquiryId] }),
         queryClient.invalidateQueries({ queryKey: ['enquiries'], exact: true }),
       ]),
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The tick-list of work items, by project type (null = any job)
+// ---------------------------------------------------------------------------------------------
+
+export const WORK_ITEM_MIN = 2
+export const WORK_ITEM_MAX = 60
+
+const workItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  project_type: z.string().nullable(),
+})
+
+export type WorkItem = z.infer<typeof workItemSchema>
+
+/** The items still offered (not removed), in the order they were added. Staff only (RLS). */
+export function useWorkItems() {
+  return useQuery({
+    queryKey: ['estimate-work-items'],
+    queryFn: async (): Promise<WorkItem[]> => {
+      const { data, error } = await supabase
+        .from('estimate_work_items')
+        .select('id, label, project_type')
+        .is('archived_at', null)
+        .order('position', { ascending: true })
+      if (error) throw toApiError(error)
+      return parseRows(workItemSchema, data, 'work items')
+    },
+  })
+}
+
+/**
+ * What the form offers for a project type: that type's items, then the "any job" ones whose
+ * label is not already there (case ignored).
+ */
+export function offeredItems(items: WorkItem[], projectType: string | null): WorkItem[] {
+  const own = projectType ? items.filter((i) => i.project_type === projectType) : []
+  const seen = new Set(own.map((i) => i.label.toLowerCase()))
+  const any = items.filter((i) => i.project_type === null && !seen.has(i.label.toLowerCase()))
+  return [...own, ...any]
+}
+
+/** A label as staff typed it, tidied the way the server stores it, or null if it cannot be one. */
+export function tidyWorkItem(text: string): string | null {
+  const label = text.trim().replace(/\s+/g, ' ')
+  return label.length >= WORK_ITEM_MIN && label.length <= WORK_ITEM_MAX ? label : null
+}
+
+function useWorkItemMutation<T>(fn: (input: T) => Promise<void>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['estimate-work-items'] }),
+  })
+}
+
+/** Offer a new item next time for this project type (null = any job). */
+export function useAddWorkItem() {
+  return useWorkItemMutation(async (input: { projectType: string | null; label: string }) => {
+    const { error } = await supabase.rpc('add_estimate_work_item', {
+      p_project_type: input.projectType,
+      p_label: input.label,
+    })
+    if (error) throw toApiError(error)
+  })
+}
+
+/** Stop offering an item; past estimates keep their own copy. */
+export function useRemoveWorkItem() {
+  return useWorkItemMutation(async (id: string) => {
+    const { error } = await supabase.rpc('archive_estimate_work_item', { p_id: id })
+    if (error) throw toApiError(error)
   })
 }

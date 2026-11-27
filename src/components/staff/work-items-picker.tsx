@@ -9,6 +9,7 @@ import {
   WORK_ITEM_MAX,
   WORK_ITEM_MIN,
   type WorkItem,
+  type WorkItemKind,
 } from '@/api/estimates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,9 @@ export function WorkItemsPicker({
   onChange,
   invalid,
   after = 'visit',
+  kind = 'included',
+  legend,
+  idPrefix = 'work-item',
 }: {
   /** The enquiry's project type value; null offers the "any job" items only. */
   projectType: string | null
@@ -44,6 +48,12 @@ export function WorkItemsPicker({
   invalid?: boolean
   /** After a call the work was talked about, not looked at. */
   after?: 'visit' | 'call'
+  /** Which list: the work, or the quote's "What's not included". */
+  kind?: WorkItemKind
+  /** The fieldset's legend, instead of "Work we looked at". */
+  legend?: string
+  /** Prefix for element ids (two pickers on one page). */
+  idPrefix?: string
 }) {
   const items = useWorkItems()
   const add = useAddWorkItem()
@@ -51,7 +61,7 @@ export function WorkItemsPicker({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
-  const offered = offeredItems(items.data ?? [], projectType)
+  const offered = offeredItems(items.data ?? [], projectType, kind)
   const isTicked = (label: string) => ticked.some((t) => t.toLowerCase() === label.toLowerCase())
   const toggle = (label: string) =>
     onChange(
@@ -68,19 +78,19 @@ export function WorkItemsPicker({
     const label = tidyWorkItem(draft)
     if (!label) {
       setProblem(`Write ${WORK_ITEM_MIN} to ${WORK_ITEM_MAX} characters.`)
-      document.getElementById('work-item-new')?.focus()
+      document.getElementById(`${idPrefix}-new`)?.focus()
       return
     }
     setProblem(null)
     if (!isTicked(label)) onChange([...ticked, label])
     setDraft('')
-    add.mutate({ projectType, label })
+    add.mutate({ projectType: kind === 'excluded' ? null : projectType, label, kind })
   }
 
   return (
-    <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby="work-items-hint">
+    <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby={`${idPrefix}-hint`}>
       <legend className="mb-1 flex w-full items-center justify-between gap-2 text-sm font-medium">
-        <span>{after === 'call' ? 'Work we talked about' : 'Work we looked at'}</span>
+        <span>{legend ?? (after === 'call' ? 'Work we talked about' : 'Work we looked at')}</span>
         {offered.length > 0 && (
           <Button
             type="button"
@@ -93,10 +103,12 @@ export function WorkItemsPicker({
           </Button>
         )}
       </legend>
-      <p id="work-items-hint" className="text-muted-foreground -mt-1 text-xs">
+      <p id={`${idPrefix}-hint`} className="text-muted-foreground -mt-1 text-xs">
         {editing
           ? 'Remove an item to stop offering it. Estimates already sent keep it.'
-          : `Tap what you ${after === 'call' ? 'talked about' : 'looked at'}. The customer sees them as a list.`}
+          : legend
+            ? 'Tap to tick. The customer sees them as a list.'
+            : `Tap what you ${after === 'call' ? 'talked about' : 'looked at'}. The customer sees them as a list.`}
       </p>
       {items.isPending ? (
         <Skeleton className="h-28 w-full" />
@@ -149,12 +161,12 @@ export function WorkItemsPicker({
       )}
       {!editing && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="work-item-new" className="text-sm">
+          <label htmlFor={`${idPrefix}-new`} className="text-sm">
             Add another
           </label>
           <div className="flex gap-2">
             <Input
-              id="work-item-new"
+              id={`${idPrefix}-new`}
               className="h-12 flex-1 text-base"
               value={draft}
               maxLength={WORK_ITEM_MAX + 10}
@@ -169,7 +181,7 @@ export function WorkItemsPicker({
                 }
               }}
               aria-invalid={problem ? true : undefined}
-              aria-describedby={problem ? 'work-item-new-error' : undefined}
+              aria-describedby={problem ? `${idPrefix}-new-error` : undefined}
             />
             <Button
               type="button"
@@ -182,7 +194,7 @@ export function WorkItemsPicker({
             </Button>
           </div>
           {problem && (
-            <p id="work-item-new-error" role="alert" className="text-destructive text-sm">
+            <p id={`${idPrefix}-new-error`} role="alert" className="text-destructive text-sm">
               {problem}
             </p>
           )}

@@ -33,3 +33,6 @@ export function isPastDate(date: string, now: number, tz: string = BUSINESS_TZ):
 
 /** A quote is sent within this many working days of "Get my quote". */
 export const QUOTE_DUE_WORKING_DAYS = 3
+
+/** A quote stays good for this many working days after it is sent. */
+export const QUOTE_VALID_WORKING_DAYS = 15

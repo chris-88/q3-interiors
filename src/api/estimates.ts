@@ -107,10 +107,17 @@ export function useSendEstimate(enquiryId: string) {
 export const WORK_ITEM_MIN = 2
 export const WORK_ITEM_MAX = 60
 
+export type WorkItemKind = 'included' | 'excluded'
+
 const workItemSchema = z.object({
   id: z.string(),
   label: z.string(),
   project_type: z.string().nullable(),
+  // included: the work (estimate and quote); excluded: the quote's "What's not included".
+  kind: z
+    .string()
+    .default('included')
+    .transform((v) => (v === 'excluded' ? ('excluded' as const) : ('included' as const))),
 })
 
 export type WorkItem = z.infer<typeof workItemSchema>
@@ -122,7 +129,7 @@ export function useWorkItems() {
     queryFn: async (): Promise<WorkItem[]> => {
       const { data, error } = await supabase
         .from('estimate_work_items')
-        .select('id, label, project_type')
+        .select('id, label, project_type, kind')
         .is('archived_at', null)
         .order('position', { ascending: true })
       if (error) throw toApiError(error)
@@ -135,7 +142,12 @@ export function useWorkItems() {
  * What the form offers for a project type: that type's items, then the "any job" ones whose
  * label is not already there (case ignored).
  */
-export function offeredItems(items: WorkItem[], projectType: string | null): WorkItem[] {
+export function offeredItems(
+  all: WorkItem[],
+  projectType: string | null,
+  kind: WorkItemKind = 'included',
+): WorkItem[] {
+  const items = all.filter((i) => (i.kind ?? 'included') === kind)
   const own = projectType ? items.filter((i) => i.project_type === projectType) : []
   const seen = new Set(own.map((i) => i.label.toLowerCase()))
   const any = items.filter((i) => i.project_type === null && !seen.has(i.label.toLowerCase()))
@@ -158,13 +170,16 @@ function useWorkItemMutation<T>(fn: (input: T) => Promise<void>) {
 
 /** Offer a new item next time for this project type (null = any job). */
 export function useAddWorkItem() {
-  return useWorkItemMutation(async (input: { projectType: string | null; label: string }) => {
-    const { error } = await supabase.rpc('add_estimate_work_item', {
-      p_project_type: input.projectType,
-      p_label: input.label,
-    })
-    if (error) throw toApiError(error)
-  })
+  return useWorkItemMutation(
+    async (input: { projectType: string | null; label: string; kind?: WorkItemKind }) => {
+      const { error } = await supabase.rpc('add_estimate_work_item', {
+        p_project_type: input.projectType,
+        p_label: input.label,
+        ...(input.kind === 'excluded' ? { p_kind: 'excluded' } : {}),
+      })
+      if (error) throw toApiError(error)
+    },
+  )
 }
 
 /** Stop offering an item; past estimates keep their own copy. */

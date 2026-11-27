@@ -43,6 +43,7 @@ const GROUPS: { title: string; keys: WordingKey[] }[] = [
   { title: 'New time', keys: ['booking_rescheduled.intro', 'booking_rescheduled.closing'] },
   { title: 'Cancellation', keys: ['booking_cancelled.intro', 'booking_cancelled.closing'] },
   { title: 'Estimate', keys: ['estimate_caveats', 'estimate_call_caveats'] },
+  { title: 'Quote', keys: ['quote_terms'] },
   {
     title: 'Estimate page ("Get my quote")',
     keys: [

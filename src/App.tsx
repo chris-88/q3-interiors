@@ -5,6 +5,7 @@ import { BookingPage } from '@/pages/booking-page'
 import { ConfirmationPage } from '@/pages/confirmation-page'
 import { EnquiryPage } from '@/pages/enquiry-page'
 import { EstimatePage } from '@/pages/estimate-page'
+import { QuoteChangePage, QuoteDepositPage, QuotePage } from '@/pages/quote-page'
 import { LandingPage } from '@/pages/landing-page'
 import { PrivacyPage } from '@/pages/privacy-page'
 import { countArrival } from '@/api/visits'
@@ -67,6 +68,9 @@ export default function App() {
         <Route path="/enquire/sent" element={<ConfirmationPage />} />
         <Route path="/book/:token" element={<BookingPage />} />
         <Route path="/estimate/:token/:estimateId" element={<EstimatePage />} />
+        <Route path="/quote/:token/:quoteId" element={<QuotePage />} />
+        <Route path="/quote/:token/:quoteId/change" element={<QuoteChangePage />} />
+        <Route path="/quote/:token/:quoteId/deposit" element={<QuoteDepositPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/staff/*" element={<ToStaffHost />} />
         <Route path="*" element={<NotFound />} />

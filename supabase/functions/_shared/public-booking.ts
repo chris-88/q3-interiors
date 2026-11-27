@@ -9,7 +9,8 @@ import { availabilityWindow, generateSlots, type Slot, type SlotType } from './s
 import { BUSINESS_TZ } from './time.ts'
 import { PHOTO_MAX_BYTES, THUMB_MAX_BYTES, decodeBase64, inspectJpeg } from './jpeg.ts'
 import { quotePageText } from './quote-page.ts'
-import type { PhotoStore } from './storage.ts'
+import type { PhotoStore, QuoteFiles } from './storage.ts'
+import { quoteDocumentFor, quotePdfName, toBase64 } from './email.ts'
 import type { AppointmentType, Db } from './types.ts'
 
 export type PublicDeps = {
@@ -24,6 +25,8 @@ export type PublicDeps = {
   limit?: Limiter
   /** The private photo bucket; null when the service key is not configured (photos refused). */
   photos?: PhotoStore | null
+  /** The private quotes bucket (the stored PDFs); null without the service key. */
+  quoteFiles?: QuoteFiles | null
 }
 
 export type PublicResult = { status: number; body: unknown }
@@ -91,6 +94,16 @@ const requestSchema = z.discriminatedUnion('action', [
   // (a mail scanner opening the link records nothing).
   z.object({ action: z.literal('estimate'), token, estimateId: z.uuid() }),
   z.object({ action: z.literal('request_quote'), token, estimateId: z.uuid() }),
+  // The quote email's pages: reading the quote and its PDF records nothing; "Ask for a change"
+  // is a button that posts the text.
+  z.object({ action: z.literal('quote'), token, quoteId: z.uuid() }),
+  z.object({ action: z.literal('quote_pdf'), token, quoteId: z.uuid() }),
+  z.object({
+    action: z.literal('quote_change'),
+    token,
+    quoteId: z.uuid(),
+    text: z.string().max(1000),
+  }),
 ])
 
 export type PublicRequest = z.infer<typeof requestSchema>
@@ -382,6 +395,49 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
         text: quotePageText(await db.getWording()),
         businessPhone: (await db.getSettings()).business_phone,
       })
+    }
+
+    case 'quote': {
+      const quote = await db.quoteById(req.quoteId)
+      if (!quote || quote.enquiry_id !== enquiryId)
+        return { status: 404, body: { error: 'not_found' } }
+      const document = await quoteDocumentFor(db, quote, `${deps.appUrl}/quote/`)
+      if (!document) return { status: 404, body: { error: 'not_found' } }
+      return ok({
+        number: quote.number,
+        version: quote.version,
+        current: quote.current,
+        price: quote.price_eur,
+        depositPercent: Number(quote.deposit_percent),
+        depositEur: quote.deposit_eur,
+        validUntil: quote.valid_until,
+        changeRequested: quote.change_requested_at !== null,
+        hasPdf: quote.pdf_path !== null,
+        businessPhone: (await db.getSettings()).business_phone,
+        document,
+      })
+    }
+
+    case 'quote_pdf': {
+      const quote = await db.quoteById(req.quoteId)
+      if (!quote || quote.enquiry_id !== enquiryId)
+        return { status: 404, body: { error: 'not_found' } }
+      const bytes =
+        quote.pdf_path && deps.quoteFiles ? await deps.quoteFiles.get(quote.pdf_path) : null
+      if (!bytes) return { status: 404, body: { error: 'no_pdf' } }
+      return ok({ filename: quotePdfName(quote.number, quote.version), pdf: toBase64(bytes) })
+    }
+
+    case 'quote_change': {
+      try {
+        const result = await db.requestQuoteChange(enquiryId, req.quoteId, req.text)
+        if (result === 'not_found') return { status: 404, body: { error: 'not_found' } }
+      } catch (error) {
+        if ((error as { code?: string }).code === '22023')
+          return { status: 400, body: { error: 'invalid_text' } }
+        throw error
+      }
+      return ok({ status: 'requested' })
     }
 
     case 'request_quote': {

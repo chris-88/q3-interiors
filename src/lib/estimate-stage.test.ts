@@ -41,7 +41,7 @@ describe('estimates in the stage', () => {
     const s1 = enquiryStage(asked, now)
     expect(s1.key).toBe('quote_requested')
     // News first, so the important part is not cut off on a phone.
-    expect(stageLine(asked, s1, now)).toBe('Quote requested 25 Nov · €9,500 to €10,500')
+    expect(stageLine(asked, s1, now)).toBe('Quote due Mon 30 Nov · €9,500 to €10,500')
     expect(matchesStage(s1.key, 'action')).toBe(true)
     const quiet = {
       ...base,

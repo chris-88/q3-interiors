@@ -37,6 +37,8 @@ export type StageQuote = {
   price_eur: number
   sent_at: string
   change_requested_at: string | null
+  /** YYYY-MM-DD; absent from older test data. */
+  valid_until?: string
 }
 
 export type StageInput = {
@@ -86,9 +88,10 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   // After a site visit the next thing is the estimate (the key is kept for stored chips).
   awaiting_quote: 'Estimate to write',
   estimate_sent: 'Estimate sent',
-  quote_requested: 'Quote requested',
+  // Asked for their quote: the next thing is to write it (due in 3 working days).
+  quote_requested: 'Quote to write',
   no_answer: 'No answer in 10 days',
-  quoted: 'Quoted',
+  quoted: 'Quote sent',
   change_requested: 'Change asked for',
   won: 'Won',
   lost: 'Lost',
@@ -190,7 +193,7 @@ export function estimateNews(e: StageEstimate, now: number): string {
   if (state === 'quote_requested' && e.quote_requested_at) {
     return due && isPastDate(due, now)
       ? `Quote overdue, was due ${formatShortDay(`${due}T12:00:00Z`)} · ${range}`
-      : `Quote requested ${formatDayMonth(e.quote_requested_at)} · ${range}`
+      : `Quote due ${due ? formatShortDay(`${due}T12:00:00Z`) : formatDayMonth(e.quote_requested_at)} · ${range}`
   }
   if (state === 'no_answer') return `No answer in 10 days · ${range}`
   return `Estimate sent ${formatDayMonth(e.sent_at)} · ${range}`
@@ -223,9 +226,25 @@ export function latestQuote<T extends StageQuote>(quotes: T[] | undefined): T | 
   return [...(quotes ?? [])].sort((a, b) => b.version - a.version)[0] ?? null
 }
 
-/** "Quote Q3-Q-0001 sent 28 Nov: €10,200" */
+/** "Quote Q3-Q-0001 sent 28 Nov: €10,200 · good until Fri 18 Dec" */
 export function quoteLine(q: StageQuote): string {
-  return `Quote ${q.number}${q.version > 1 ? ` (v${q.version})` : ''} sent ${formatDayMonth(q.sent_at)}: ${euroShort(q.price_eur)}`
+  const until = q.valid_until ? ` · good until ${formatShortDay(`${q.valid_until}T12:00:00Z`)}` : ''
+  return `Quote ${q.number}${q.version > 1 ? ` (v${q.version})` : ''} sent ${formatDayMonth(q.sent_at)}: ${euroShort(q.price_eur)}${until}`
+}
+
+/** The updated quote is due 3 working days after the change was asked for (YYYY-MM-DD). */
+export function updatedQuoteDue(q: StageQuote): string | null {
+  return q.change_requested_at
+    ? addWorkingDays(q.change_requested_at, QUOTE_DUE_WORKING_DAYS)
+    : null
+}
+
+/** "Updated quote due Wed 2 Dec", or "Updated quote overdue, was due Wed 2 Dec". */
+export function updatedQuoteDueLine(q: StageQuote, now: number): string | null {
+  const due = updatedQuoteDue(q)
+  if (!due) return null
+  const day = formatShortDay(`${due}T12:00:00Z`)
+  return isPastDate(due, now) ? `Updated quote overdue, was due ${day}` : `Updated quote due ${day}`
 }
 
 export type Stage = { key: StageKey; label: string }
@@ -336,7 +355,7 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
     case 'change_requested': {
       const q = latestQuote(e.quotes)
       return q?.change_requested_at
-        ? `Change asked for ${formatDayMonth(q.change_requested_at)} on ${q.number}`
+        ? `${updatedQuoteDueLine(q, now)} · Change asked for ${formatDayMonth(q.change_requested_at)} on ${q.number}`
         : stage.label
     }
     case 'won':

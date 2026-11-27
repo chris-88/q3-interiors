@@ -208,7 +208,9 @@ test('a change asked for: needs action, the words, View, PDF, and an updated ver
 }) => {
   const world = await open(page, '/#/')
   const row = page.getByRole('link', { name: /Eimear Example/ })
-  await expect(row).toContainText('Change asked for 27 Nov on Q3-Q-0007')
+  await expect(row).toContainText(
+    'Updated quote due Wed 2 Dec · Change asked for 27 Nov on Q3-Q-0007',
+  )
   await page.getByRole('radio', { name: /Needs action/ }).check({ force: true })
   await expect(page.getByRole('link', { name: /Eimear Example/ })).toBeVisible()
   await row.click()

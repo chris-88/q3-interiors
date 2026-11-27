@@ -46,7 +46,9 @@ describe('quotes in the stage', () => {
     const e = { ...base, quotes: [quote({ change_requested_at: '2026-11-29T09:00:00Z' })] }
     const stage = enquiryStage(e, now)
     expect(stage).toEqual({ key: 'change_requested', label: 'Change asked for' })
-    expect(stageLine(e, stage, now)).toBe('Change asked for 29 Nov on Q3-Q-0001')
+    expect(stageLine(e, stage, now)).toBe(
+      'Updated quote due Wed 2 Dec · Change asked for 29 Nov on Q3-Q-0001',
+    )
     expect(matchesStage(stage.key, 'action')).toBe(true)
     expect(nextStep(stage.key)).toBe('quote_change')
     const updated = {
@@ -64,5 +66,18 @@ describe('quotes in the stage', () => {
   it('a quote recorded by hand still reads as before', () => {
     const e = { ...base, quotes: [] }
     expect(stageLine(e, enquiryStage(e, now), now)).toBe('Quoted €10,200')
+  })
+
+  it('flags the updated quote once its 3 working days pass; shows the good-until date', () => {
+    const later = Date.parse('2026-12-03T09:00:00Z')
+    const e = { ...base, quotes: [quote({ change_requested_at: '2026-11-29T09:00:00Z' })] }
+    expect(stageLine(e, enquiryStage(e, later), later)).toBe(
+      'Updated quote overdue, was due Wed 2 Dec · Change asked for 29 Nov on Q3-Q-0001',
+    )
+    const sent = { ...base, quotes: [quote({ valid_until: '2026-12-18' })] }
+    expect(stageLine(sent, enquiryStage(sent, now), now)).toBe(
+      'Quote Q3-Q-0001 sent 28 Nov: €10,200 · good until Fri 18 Dec',
+    )
+    expect(enquiryStage(sent, now).label).toBe('Quote sent')
   })
 })

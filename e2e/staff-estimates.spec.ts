@@ -328,7 +328,7 @@ test('the list and the enquiry page show where each estimate stands', async ({ p
   await expect(quiet).toContainText('No answer in 10 days · €9,500 to €10,500')
   await expect(quiet).toContainText('No answer in 10 days')
   const asked = rows.getByRole('listitem').filter({ hasText: 'Declan Sample' })
-  await expect(asked).toContainText('Quote requested 25 Nov · €9,500 to €10,500')
+  await expect(asked).toContainText('Quote due Mon 30 Nov · €9,500 to €10,500')
   await page.getByRole('radio', { name: /Needs action/ }).check({ force: true })
   await expect(rows.getByRole('listitem').filter({ hasText: 'Ciara Test' })).toHaveCount(1)
   await shot(page, 'staff-estimate-list')

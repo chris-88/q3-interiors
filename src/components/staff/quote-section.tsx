@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { WorkItemsPicker } from '@/components/staff/work-items-picker'
-import { currentEstimate, siteAddress } from '@/lib/enquiry-stage'
+import { currentEstimate, siteAddress, updatedQuoteDueLine } from '@/lib/enquiry-stage'
 import { formatDayMonth } from '@/lib/format'
 import { formatEuro, PRICE_MAX, PRICE_MIN } from '../../../supabase/functions/_shared/estimate.ts'
 import { WORDING } from '../../../supabase/functions/_shared/messages.ts'
@@ -94,7 +94,15 @@ function sendError(error: unknown): string {
 }
 
 /** The current quote: its line, the change asked for, View and Download PDF. */
-export function QuoteSummary({ enquiry, quote }: { enquiry: EnquiryDetail; quote: Quote }) {
+export function QuoteSummary({
+  enquiry,
+  quote,
+  now,
+}: {
+  enquiry: EnquiryDetail
+  quote: Quote
+  now: number
+}) {
   const [view, setView] = useState(false)
   const pdf = useQuotePdf(quote.pdf_path, false)
   const business = useBusinessDetails()
@@ -122,7 +130,8 @@ export function QuoteSummary({ enquiry, quote }: { enquiry: EnquiryDetail; quote
       {quote.change_requested_at && (
         <div className="rounded-md border border-amber-400 bg-amber-50 p-3 text-amber-950">
           <p className="text-sm font-medium">
-            Change asked for {formatDayMonth(quote.change_requested_at)}
+            Change asked for {formatDayMonth(quote.change_requested_at)} ·{' '}
+            {updatedQuoteDueLine(quote, now)}
           </p>
           {quote.change_request_text && (
             <p className="mt-1 text-sm break-words whitespace-pre-line">
@@ -426,7 +435,7 @@ function QuoteForm({
 }
 
 /** The Quote section: the current quote and the form, once there is an estimate or a quote. */
-export function QuoteSection({ enquiry }: { enquiry: EnquiryDetail }) {
+export function QuoteSection({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) {
   const [open, setOpen] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
   const current = currentQuote(enquiry.quotes)
@@ -454,7 +463,7 @@ export function QuoteSection({ enquiry }: { enquiry: EnquiryDetail }) {
         Quote
       </h2>
       {current ? (
-        <QuoteSummary enquiry={enquiry} quote={current} />
+        <QuoteSummary enquiry={enquiry} quote={current} now={now} />
       ) : (
         <p className="text-muted-foreground text-sm">No quote sent from here yet.</p>
       )}

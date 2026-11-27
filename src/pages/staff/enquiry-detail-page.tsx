@@ -397,7 +397,7 @@ function NextStepCard({
     const quote = currentQuote(enquiry.quotes)
     body = (
       <>
-        {quote && <QuoteSummary enquiry={enquiry} quote={quote} />}
+        {quote && <QuoteSummary enquiry={enquiry} quote={quote} now={now} />}
         {step === 'quote_change' && (
           <Button
             className="h-12 w-full sm:w-auto sm:px-6"
@@ -998,7 +998,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
             offeredAbove={writeOfferedAbove(enquiry, bookings.data, now)}
           />
         )}
-        <QuoteSection enquiry={enquiry} />
+        <QuoteSection enquiry={enquiry} now={now} />
         <Appointments bookings={bookings} featured={featured} />
         <Notes enquiry={enquiry} />
         <More enquiry={enquiry} />

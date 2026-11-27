@@ -280,9 +280,7 @@ test('F3, F7: after a visit the next step is the estimate, with one filled butto
 
 test('F4: list lines lead with the news', async ({ page }) => {
   await open(page)
-  await expect(row(page, 'Declan Sample')).toContainText(
-    'Quote requested 25 Nov · €9,500 to €10,500',
-  )
+  await expect(row(page, 'Declan Sample')).toContainText('Quote due Mon 30 Nov · €9,500 to €10,500')
   await expect(row(page, 'Ciara Test')).toContainText('No answer in 10 days · €9,500 to €10,500')
   await expect(row(page, 'Brian Example')).toContainText('Estimate to write')
 })

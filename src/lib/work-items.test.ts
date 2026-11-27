@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { offeredItems, tidyWorkItem, type WorkItem } from '@/api/estimates'
-import { orderTicked } from '@/components/staff/work-items-picker'
+import { describe, expect, it, vi } from 'vitest'
+import type { WorkItem } from '@/api/estimates'
+
+// The api module creates the Supabase client on import; the deploy job has no Supabase env.
+vi.mock('@/lib/supabase', () => ({ supabase: {} }))
+
+const { offeredItems, tidyWorkItem } = await import('@/api/estimates')
+const { orderTicked } = await import('@/components/staff/work-items-picker')
 
 const item = (label: string, type: string | null, id = label): WorkItem => ({
   id,

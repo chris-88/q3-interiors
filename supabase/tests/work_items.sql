@@ -77,7 +77,7 @@ select pg_temp.booking('call', pg_temp.id('b'), 'phone_consultation', 'confirmed
 
 -- The seed: each job type's items and the "any job" ones, in order.
 select pg_temp.expect((select count(*) = 9 from public.estimate_work_items where project_type = 'kitchen'), 'kitchen seed');
-select pg_temp.expect((select count(*) = 12 from public.estimate_work_items where project_type is null), 'any-job seed');
+select pg_temp.expect((select count(*) = 12 from public.estimate_work_items where project_type is null and kind = 'included'), 'any-job seed');
 select pg_temp.expect((select array_agg(label order by position) from public.estimate_work_items where project_type = 'attic')
   = array['Structural work', 'Stairs', 'Roof windows', 'Insulation', 'Electrics', 'Plastering', 'Flooring', 'Painting'],
   'attic seed in order');

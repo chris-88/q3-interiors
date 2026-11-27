@@ -2,7 +2,15 @@
 // functions router's JWT check); every action is authorised by the enquiry access token in the
 // body. Logs never include request bodies or customer details.
 import { handlePublic } from '../_shared/public-booking.ts'
-import { config, json, limiterFor, photoStore, readJson, runtime } from '../_shared/runtime.ts'
+import {
+  config,
+  json,
+  limiterFor,
+  photoStore,
+  quoteFiles,
+  readJson,
+  runtime,
+} from '../_shared/runtime.ts'
 
 // A photo (2 MiB) and its thumbnail as base64 in JSON, with room to spare; nothing larger is read.
 const MAX_BODY_BYTES = 3_000_000
@@ -22,6 +30,7 @@ Deno.serve(async (req) => {
       now: Date.now,
       limit: await limiterFor(req, rt.db),
       photos: photoStore(),
+      quoteFiles: quoteFiles(),
     })
     return json(result.body, result.status)
   } catch (error) {

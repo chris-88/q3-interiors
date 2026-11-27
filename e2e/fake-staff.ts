@@ -50,6 +50,8 @@ export type StaffWorld = {
   testCalendar: { email: string | null }
   /** Objects in the private `ads` bucket: path -> body and type. */
   adFiles: Map<string, { body: Buffer | string; type: string }>
+  /** Objects in the private `quotes` bucket: path -> PDF bytes. */
+  quoteFiles?: Map<string, Buffer>
   /** Objects in the private `enquiry-photos` bucket: path -> JPEG bytes. */
   photoFiles: Map<string, Buffer>
   /** What pilot_report returns. */
@@ -454,6 +456,55 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         row.call_held_at = at
         pushEvent(row, { kind: 'call_held_early', actor_name: caller.display_name })
         return json(route, 200, { cancelled: ahead.length })
+      }
+      if (table === 'rpc/send_quote') {
+        // The server's rules (see 20261129160000_quotes.sql), simplified.
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as {
+          p_enquiry_id: string
+          p_price: number
+          p_included: string[]
+          p_excluded?: string[]
+          p_note?: string | null
+          p_estimate_id?: string | null
+        }
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === b.p_enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        if (b.p_price < 100 || b.p_included.length === 0)
+          return json(route, 400, { code: '22023', message: 'invalid' })
+        const quotes = (row.quotes as Record<string, unknown>[] | undefined) ?? []
+        const prev = [...quotes].sort((x, y) => Number(y.version) - Number(x.version))[0]
+        const sent = new Date().toISOString()
+        const id = `00000000-0000-4000-8000-${String(world.rpcCalls.length).padStart(12, 'b')}`
+        row.quotes = [
+          ...quotes,
+          {
+            id,
+            estimate_id: b.p_estimate_id ?? null,
+            number: prev?.number ?? 'Q3-Q-0001',
+            version: prev ? Number(prev.version) + 1 : 1,
+            price_eur: b.p_price,
+            included: b.p_included,
+            excluded: b.p_excluded ?? [],
+            note: b.p_note ?? null,
+            deposit_percent: 10,
+            deposit_eur: Math.round(b.p_price / 10),
+            valid_until: '2026-12-18',
+            terms: 'This quote is one price for the work listed. It’s good until Fri 18 Dec 2026.',
+            sent_at: sent,
+            created_by_name: caller.display_name,
+            pdf_path: null,
+            change_requested_at: null,
+            change_request_text: null,
+          },
+        ]
+        row.outcome = 'quoted'
+        row.quote_amount = b.p_price
+        row.quote_date = sent.slice(0, 10)
+        pushEvent(row, { kind: 'quote_sent', actor_name: caller.display_name })
+        return json(route, 200, id)
       }
       if (table === 'rpc/send_estimate') {
         // The server's rules (see 20261129100000_estimates.sql), with the shared range rule.
@@ -923,6 +974,29 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       contentType: file.type,
       headers: { 'access-control-allow-origin': '*' },
       body: file.body,
+    })
+  })
+
+  // Private quote PDFs: only an active staff session may read one.
+  await page.route('**/storage/v1/object/quotes/**', async (route) => {
+    const req = route.request()
+    if (req.method() === 'OPTIONS') return json(route, 204, undefined)
+    const caller = world.staff.get(subOf(req.headers().authorization) ?? '')
+    const objectPath = decodeURIComponent(
+      new URL(req.url()).pathname.split('/storage/v1/object/quotes/')[1] ?? '',
+    )
+    const file = world.quoteFiles?.get(objectPath)
+    if (!caller?.active || !file)
+      return json(route, 400, {
+        statusCode: '404',
+        error: 'not_found',
+        message: 'Object not found',
+      })
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/pdf',
+      headers: { 'access-control-allow-origin': '*' },
+      body: file,
     })
   })
 

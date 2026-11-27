@@ -26,6 +26,8 @@ import {
   WRITE_ESTIMATE_EVENT,
 } from '@/components/staff/after-call'
 import { BookingActions } from '@/components/staff/booking-actions'
+import { QuoteSection, QuoteSummary, WRITE_QUOTE_EVENT } from '@/components/staff/quote-section'
+import { currentQuote } from '@/api/quotes'
 import { ChaseForm } from '@/components/staff/chase-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import {
@@ -214,7 +216,13 @@ const outcomeKey = (e: EnquiryDetail) =>
   `${e.outcome}-${e.outcome_value}-${e.quote_amount}-${e.outcome_reason}-${e.won_date}-${e.quote_date}-${e.outcome_note}`
 
 /** For stages before an outcome: record a quote, win or loss without hunting for it. */
-function OutcomeLater({ enquiry }: { enquiry: EnquiryDetail }) {
+function OutcomeLater({
+  enquiry,
+  label = 'Record a quote or result',
+}: {
+  enquiry: EnquiryDetail
+  label?: string
+}) {
   const [open, setOpen] = useState(false)
   if (!open)
     return (
@@ -223,7 +231,7 @@ function OutcomeLater({ enquiry }: { enquiry: EnquiryDetail }) {
         className="h-12 self-start px-2 underline underline-offset-4"
         onClick={() => setOpen(true)}
       >
-        Record a quote or result
+        {label}
       </Button>
     )
   return (
@@ -380,14 +388,14 @@ function NextStepCard({
         {estimate && <EstimateSummary estimate={estimate} now={now} />}
         {stage.key === 'quote_requested' ? (
           <>
-            <p className="text-sm">They asked for their quote. Record it when it is sent.</p>
-            <OutcomeForm
-              key={outcomeKey(enquiry)}
-              enquiryId={enquiry.id}
-              current={outcomeOf(enquiry)}
-              badge={false}
-              primary="quote"
-            />
+            <p className="text-sm">They asked for their quote.</p>
+            <Button
+              className="h-12 w-full sm:w-auto sm:px-6"
+              onClick={() => window.dispatchEvent(new Event(WRITE_QUOTE_EVENT))}
+            >
+              Write the quote
+            </Button>
+            <OutcomeLater enquiry={enquiry} label="Record a quote sent another way" />
           </>
         ) : (
           <>
@@ -397,6 +405,28 @@ function NextStepCard({
             <OutcomeLater enquiry={enquiry} />
           </>
         )}
+      </>
+    )
+  } else if (step === 'quote_change' || (step === 'quoted' && currentQuote(enquiry.quotes))) {
+    const quote = currentQuote(enquiry.quotes)
+    body = (
+      <>
+        {quote && <QuoteSummary enquiry={enquiry} quote={quote} now={now} />}
+        {step === 'quote_change' && (
+          <Button
+            className="h-12 w-full sm:w-auto sm:px-6"
+            onClick={() => window.dispatchEvent(new Event(WRITE_QUOTE_EVENT))}
+          >
+            Send an updated quote
+          </Button>
+        )}
+        <OutcomeForm
+          key={outcomeKey(enquiry)}
+          enquiryId={enquiry.id}
+          current={outcomeOf(enquiry)}
+          badge={false}
+          primary="won"
+        />
       </>
     )
   } else if (step === 'quoted' || step === 'result')
@@ -982,6 +1012,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
             offeredAbove={writeOfferedAbove(enquiry, bookings.data, now)}
           />
         )}
+        <QuoteSection enquiry={enquiry} now={now} />
         <Appointments bookings={bookings} featured={featured} />
         <Notes enquiry={enquiry} />
         <More enquiry={enquiry} />

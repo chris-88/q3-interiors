@@ -12,6 +12,8 @@ import type { Interval, Reservation } from '../slots.ts'
 import { toLocal } from '../time.ts'
 import type {
   AppointmentType,
+  BusinessDetails,
+  QuoteRow,
   Answers,
   BookingRow,
   BookingSettings,
@@ -444,6 +446,39 @@ export class FakeDb implements Db {
   quoteAlerts: string[] = []
   async estimateById(estimateId: string) {
     return this.estimates.get(estimateId) ?? null
+  }
+  quotes = new Map<string, Omit<QuoteRow, 'current'>>()
+  /** Change requests recorded by requestQuoteChange: quote id and text. */
+  quoteChanges: { quoteId: string; text: string }[] = []
+  business: BusinessDetails | null = {
+    legal_name: 'Q3 Interiors Limited',
+    trading_name: 'Q3 Interiors',
+    contact_phone: '01 555 0100',
+    contact_email: 'hello@q3-test.ie',
+  }
+  async quoteById(quoteId: string) {
+    const q = this.quotes.get(quoteId)
+    if (!q) return null
+    const newer = [...this.quotes.values()].some(
+      (o) => o.enquiry_id === q.enquiry_id && o.version > q.version,
+    )
+    return { ...q, current: !newer }
+  }
+  async quotePdfStored(quoteId: string, path: string) {
+    const q = this.quotes.get(quoteId)
+    if (q) q.pdf_path = path
+  }
+  async requestQuoteChange(enquiryId: string, quoteId: string, text: string) {
+    const q = this.quotes.get(quoteId)
+    if (!q || q.enquiry_id !== enquiryId) return 'not_found' as const
+    const clean = text.trim()
+    if (!clean || clean.length > 1000) throw Object.assign(new Error('invalid'), { code: '22023' })
+    q.change_requested_at = new Date(this.now()).toISOString()
+    this.quoteChanges.push({ quoteId, text: clean })
+    return 'requested' as const
+  }
+  async businessDetails() {
+    return this.business
   }
   async visitBookedByStaff(bookingId: string, actorUserId: string, addressAdded: boolean) {
     const b = this.bookings.find((x) => x.id === bookingId)

@@ -36,7 +36,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions estimates estimate_work_items; do
+  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions estimates estimate_work_items quotes; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -83,6 +83,8 @@ expect_code "anon cannot record a call held" 42501 \
   "$(curl -s -X POST "$rest/rpc/record_call_held_early" "${headers[@]}" -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000"}')"
 expect_code "anon cannot send a site visit link" 42501 \
   "$(curl -s -X POST "$rest/rpc/send_visit_link" "${headers[@]}" -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000"}')"
+expect_code "anon cannot send a quote" 42501 \
+  "$(curl -s -X POST "$rest/rpc/send_quote" "${headers[@]}" -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000","p_price":1000,"p_included":["x y"]}')"
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
 

@@ -46,6 +46,7 @@ export function bucketFor(
     case 'request_quote':
       // A repeated tap on "Get my quote" is not counted twice.
       return { bucket: 'booking_write', idemKey: `quote:${String(body.estimateId ?? '')}` }
+    case 'quote_change':
     case 'site_details':
     case 'update_details':
     case 'save_prepare':

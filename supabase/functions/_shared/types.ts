@@ -80,6 +80,8 @@ export type Template =
   | 'estimate'
   | 'staff_quote_request'
   | 'visit_link'
+  | 'quote'
+  | 'staff_quote_change'
 
 export type StaffAccountTemplate = 'staff_invite' | 'staff_password_reset'
 
@@ -90,6 +92,8 @@ export type CustomerTemplate = Exclude<
   | 'staff_quote_request'
   | 'estimate'
   | 'visit_link'
+  | 'quote'
+  | 'staff_quote_change'
   | StaffAccountTemplate
 >
 
@@ -101,6 +105,8 @@ export type Communication = {
   booking_id: string | null
   /** Estimate emails and quote-request alerts: the estimate they are about. */
   estimate_id?: string | null
+  /** Quote emails and change alerts: the quote they are about. */
+  quote_id?: string | null
   template: Template
   /** For reminders and reschedule notices: the start time the message is about. */
   about_start?: string | null
@@ -177,6 +183,35 @@ export type EstimateRow = {
   quote_requested_at: string | null
   /** What it followed: a site visit or a call (absent before 2026-11-29: a visit). */
   after?: 'visit' | 'call'
+}
+
+/** A quote as the worker and the customer's pages need it. */
+export type QuoteRow = {
+  id: string
+  enquiry_id: string
+  number: string
+  version: number
+  price_eur: number
+  included: string[]
+  excluded: string[]
+  note: string | null
+  deposit_percent: number
+  deposit_eur: number
+  /** YYYY-MM-DD */
+  valid_until: string
+  terms: string
+  sent_at: string
+  pdf_path: string | null
+  change_requested_at: string | null
+  /** Is this the newest version for the enquiry? */
+  current: boolean
+}
+
+export type BusinessDetails = {
+  legal_name: string | null
+  trading_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
 }
 
 /** Everything the functions need from Postgres. Implemented with postgres.js in `db.ts`. */
@@ -260,6 +295,16 @@ export interface Db {
   getWording(): Promise<Record<string, string>>
   // Estimates after a site visit
   estimateById(estimateId: string): Promise<EstimateRow | null>
+  // Quotes
+  quoteById(quoteId: string): Promise<QuoteRow | null>
+  quotePdfStored(quoteId: string, path: string): Promise<void>
+  /** "Ask for a change": records the text and alerts staff; not_found for another enquiry's. */
+  requestQuoteChange(
+    enquiryId: string,
+    quoteId: string,
+    text: string,
+  ): Promise<'requested' | 'not_found'>
+  businessDetails(): Promise<BusinessDetails | null>
   /** After a call: the history line for a site visit staff booked for the customer. */
   visitBookedByStaff(bookingId: string, actorUserId: string, addressAdded: boolean): Promise<void>
   /** The call_booked_by_staff history line, after staff reserved a call for the customer. */

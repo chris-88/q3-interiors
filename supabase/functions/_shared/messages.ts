@@ -5,7 +5,7 @@
 // and may only use the tokens listed for them. Vocabulary follows the brand guide: an enquiry; a
 // call or a site visit; an estimate is a price range after a call or visit; a written quote is the
 // price for an agreed scope (never "full quote", "estimated range" or "quotation").
-import { estimateWords, formatRange } from './estimate.ts'
+import { estimateWords, formatEuro, formatRange } from './estimate.ts'
 import { QUOTE_PAGE_WORDING } from './quote-page.ts'
 import { formatLocal } from './time.ts'
 import type {
@@ -27,7 +27,7 @@ export type WordingBlock = {
   max: number
   /** May the block be left empty (the paragraph is then left out)? */
   optional?: boolean
-  tokens: readonly ('first_name' | 'event')[]
+  tokens: readonly ('first_name' | 'event' | 'date')[]
 }
 
 const CUSTOMER_TOKENS = ['first_name', 'event'] as const
@@ -122,6 +122,14 @@ export const WORDING = {
   quote_page_steps: { ...QUOTE_PAGE_WORDING.quote_page_steps, tokens: [] },
   quote_page_commit: { ...QUOTE_PAGE_WORDING.quote_page_commit, tokens: [] },
   quote_timing: { ...QUOTE_PAGE_WORDING.quote_timing, tokens: [] },
+  quote_terms: {
+    label: 'Quote: terms',
+    where: 'The quote document and PDF, under "Terms" (saved with each quote as sent)',
+    default:
+      'This quote is one price for the work listed. It’s good until {date}. Work not listed is not included. If you want anything changed or added, tell us and we’ll update the quote.',
+    max: 1000,
+    tokens: ['date'],
+  },
   estimate_call_caveats: {
     label: 'Estimate after a call',
     where:
@@ -238,6 +246,8 @@ type Draft = {
   /** Paragraphs between the large line and the button. */
   beforeAction?: string[][]
   action?: { label: string; url: string }
+  /** Further buttons after the first (the quote email's three). */
+  buttons?: { label: string; url: string }[]
   /** Further links written under the button (e.g. "Cancel appointment"). */
   links?: { label: string; url: string }[]
   after?: string[][]
@@ -263,6 +273,7 @@ function toText(d: Draft, footer: string[]): string {
     ...(d.big ? [d.big] : []),
     ...(d.beforeAction ?? []).map((p) => p.join('\n')),
     ...(d.action ? [`${d.action.label}: ${d.action.url}`] : []),
+    ...(d.buttons ?? []).map((b) => `${b.label}: ${b.url}`),
     ...(d.links ?? []).map((l) => `${l.label}: ${l.url}`),
     ...(d.after ?? []).map((p) => p.join('\n')),
     ...footer,
@@ -291,9 +302,13 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
   const big = d.big
     ? `<p style="margin:8px 0 24px;font:700 28px/1.25 Roboto,Arial,sans-serif;color:${BRAND.ink}">${escapeHtml(d.big)}</p>`
     : ''
-  const button = d.action
-    ? `<p style="margin:8px 0 24px"><a href="${escapeHtml(d.action.url)}" style="display:inline-block;background:${BRAND.action};color:#ffffff;font:500 16px/1.4 Roboto,Arial,sans-serif;text-decoration:none;padding:12px 24px;border-radius:4px">${escapeHtml(d.action.label)}</a></p>`
-    : ''
+  const buttonHtml = (b: { label: string; url: string }, margin: string) =>
+    `<p style="margin:${margin}"><a href="${escapeHtml(b.url)}" style="display:inline-block;background:${BRAND.action};color:#ffffff;font:500 16px/1.4 Roboto,Arial,sans-serif;text-decoration:none;padding:12px 24px;border-radius:4px">${escapeHtml(b.label)}</a></p>`
+  const button =
+    (d.action ? buttonHtml(d.action, d.buttons?.length ? '8px 0 12px' : '8px 0 24px') : '') +
+    (d.buttons ?? [])
+      .map((b, i, all) => buttonHtml(b, i === all.length - 1 ? '0 0 24px' : '0 0 12px'))
+      .join('')
   const links = (d.links ?? [])
     .map(
       (l) =>
@@ -552,6 +567,59 @@ export function renderVisitLink(input: VisitLinkInput): RenderedMessage {
   )
 }
 
+// ---------------------------------------------------------------------------------------------
+// The quote email
+// ---------------------------------------------------------------------------------------------
+
+export type QuoteEmailInput = {
+  customerName: string
+  /** The job's address, else the project type (e.g. "your kitchen"). */
+  workAt: string
+  price: number
+  /** "Fri 18 Dec 2026" */
+  goodUntil: string
+  version: number
+  viewUrl: string
+  depositUrl: string
+  changeUrl: string
+  businessPhone: string | null
+  privacyUrl?: string | null
+  siteUrl?: string | null
+}
+
+export const quoteSubject = (version: number) =>
+  version > 1 ? 'Your updated quote from Q3 Interiors' : 'Your quote from Q3 Interiors'
+
+/** "Your quote from Q3 Interiors", the PDF attached by the worker. */
+export function renderQuoteEmail(input: QuoteEmailInput): RenderedMessage {
+  const first = firstName(input.customerName)
+  return compose(
+    {
+      subject: quoteSubject(input.version),
+      paragraphs: [
+        [first ? `Hello ${first},` : 'Hello,'],
+        [
+          input.version > 1
+            ? `Here is your updated quote for the work at ${input.workAt}.`
+            : `Here is your quote for the work at ${input.workAt}.`,
+        ],
+      ],
+      big: `${formatEuro(input.price)}, VAT included`,
+      beforeAction: [
+        ['The full quote is attached as a PDF.'],
+        [`It’s good until ${input.goodUntil}.`],
+      ],
+      action: { label: 'View my quote', url: input.viewUrl },
+      buttons: [
+        { label: 'Pay my deposit', url: input.depositUrl },
+        { label: 'Ask for a change', url: input.changeUrl },
+      ],
+      after: [input.businessPhone ? [ESTIMATE_SIGN_OFF, input.businessPhone] : [ESTIMATE_SIGN_OFF]],
+    },
+    input,
+  )
+}
+
 export type StaffAlertInput = {
   summary: EnquirySummary
   /** Staff detail page for the enquiry. */
@@ -561,7 +629,7 @@ export type StaffAlertInput = {
 }
 
 /** Label of a choice answer from the stored form version, or the raw value. */
-function choiceLabel(summary: EnquirySummary, fieldId: string): string | null {
+export function choiceLabel(summary: EnquirySummary, fieldId: string): string | null {
   const value = summary.answers[fieldId]
   if (typeof value !== 'string' || value === '') return null
   for (const step of summary.schema?.steps ?? []) {
@@ -577,8 +645,12 @@ function choiceLabel(summary: EnquirySummary, fieldId: string): string | null {
  * name, email, phone or address.
  */
 export function renderStaffAlert(
-  template: 'staff_new_enquiry' | 'staff_callback_request' | 'staff_quote_request',
-  input: StaffAlertInput & { estimate?: { low: number; high: number; sentAt: string } | null },
+  template:
+    'staff_new_enquiry' | 'staff_callback_request' | 'staff_quote_request' | 'staff_quote_change',
+  input: StaffAlertInput & {
+    estimate?: { low: number; high: number; sentAt: string } | null
+    quote?: { number: string } | null
+  },
 ): RenderedMessage {
   const { summary } = input
   const other =
@@ -599,6 +671,20 @@ export function renderStaffAlert(
     ...(rooms ? [`Rooms: ${rooms}`] : []),
   ]
   const action = { label: 'Open the enquiry', url: input.staffUrl }
+  if (template === 'staff_quote_change') {
+    const number = input.quote?.number ?? 'a quote'
+    return compose(
+      {
+        subject: `Change asked for on ${number}: ${summary.reference}`,
+        paragraphs: [
+          [`The customer has asked for a change to ${number}. Their words are on the enquiry.`],
+          [`Reference: ${summary.reference}`, `Project: ${project}`, `Area: ${area}`],
+        ],
+        action,
+      },
+      { siteUrl: input.siteUrl },
+    )
+  }
   if (template === 'staff_quote_request') {
     const sent = input.estimate ? formatLocal(Date.parse(input.estimate.sentAt)) : null
     return compose(

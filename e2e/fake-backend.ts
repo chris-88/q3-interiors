@@ -33,6 +33,8 @@ export async function installFakeBackend(
   const db = new FakeDb(now)
   const calendar = new FakeCalendar()
   const photos = new FakePhotoStore()
+  /** The private quotes bucket: path -> PDF bytes. */
+  const quoteFiles = new Map<string, Uint8Array>()
   const deps: PublicDeps = {
     db,
     calendar,
@@ -41,6 +43,10 @@ export async function installFakeBackend(
     appUrl: 'https://q3.example',
     now,
     photos,
+    quoteFiles: {
+      put: async (path, bytes) => void quoteFiles.set(path, bytes),
+      get: async (path) => quoteFiles.get(path) ?? null,
+    },
   }
   /** Every public-booking request body, in order (to check what left the browser). */
   const bookingBodies: Record<string, unknown>[] = []
@@ -154,7 +160,7 @@ export async function installFakeBackend(
     })
   })
 
-  return { db, calendar, clock, submitBodies, photos, bookingBodies, visitBodies }
+  return { db, calendar, clock, submitBodies, photos, bookingBodies, visitBodies, quoteFiles }
 }
 
 export type Route = 'phone' | 'on_site'

@@ -30,6 +30,15 @@ export type StageEstimate = {
   quote_requested_at: string | null
 }
 
+/** A quote sent from here (the newest version is current). */
+export type StageQuote = {
+  number: string
+  version: number
+  price_eur: number
+  sent_at: string
+  change_requested_at: string | null
+}
+
 export type StageInput = {
   status: string
   outcome: string | null
@@ -37,6 +46,8 @@ export type StageInput = {
   bookings: StageBooking[]
   /** Absent from older reads and tests: no estimate. */
   estimates?: StageEstimate[]
+  /** Absent from older reads and tests: no quote. */
+  quotes?: StageQuote[]
   /** "We already spoke" (the call held early or without a booking). */
   call_held_at?: string | null
   /** The latest "Book your site visit" link emailed. */
@@ -56,6 +67,7 @@ export const STAGES = [
   'quote_requested',
   'no_answer',
   'quoted',
+  'change_requested',
   'won',
   'lost',
   'closed',
@@ -76,6 +88,7 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   quote_requested: 'Quote requested',
   no_answer: 'No answer in 10 days',
   quoted: 'Quoted',
+  change_requested: 'Change asked for',
   won: 'Won',
   lost: 'Lost',
   closed: 'Closed',
@@ -89,6 +102,7 @@ export const NEEDS_ACTION: ReadonlySet<StageKey> = new Set([
   'awaiting_quote',
   'quote_requested',
   'no_answer',
+  'change_requested',
 ])
 const FINISHED: ReadonlySet<StageKey> = new Set(['won', 'lost', 'closed'])
 
@@ -185,6 +199,16 @@ export function visitLinkSentAt(e: StageInput, now: number): string | null {
   return held && sent && Date.parse(sent) >= Date.parse(held) ? sent : null
 }
 
+/** The newest quote version, if any. */
+export function latestQuote<T extends StageQuote>(quotes: T[] | undefined): T | null {
+  return [...(quotes ?? [])].sort((a, b) => b.version - a.version)[0] ?? null
+}
+
+/** "Quote Q3-Q-0001 sent 28 Nov: €10,200" */
+export function quoteLine(q: StageQuote): string {
+  return `Quote ${q.number}${q.version > 1 ? ` (v${q.version})` : ''} sent ${formatDayMonth(q.sent_at)}: ${euroShort(q.price_eur)}`
+}
+
 export type Stage = { key: StageKey; label: string }
 
 /**
@@ -207,7 +231,8 @@ export function enquiryStage(e: StageInput, now: number): Stage {
   if (e.outcome === 'won') return known('won')
   if (e.outcome === 'lost') return known('lost')
   if (e.status === 'unsuitable') return known('closed')
-  if (e.outcome === 'quoted') return known('quoted')
+  if (e.outcome === 'quoted')
+    return known(latestQuote(e.quotes)?.change_requested_at ? 'change_requested' : 'quoted')
   if (e.outcome !== null) return { key: 'other', label: e.outcome }
   const estimate = currentEstimate(e.estimates)
   if (estimate) return known(estimateState(estimate, now))
@@ -276,8 +301,17 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
     }
     case 'contact':
       return 'Asked to be contacted'
-    case 'quoted':
+    case 'quoted': {
+      const q = latestQuote(e.quotes)
+      if (q) return quoteLine(q)
       return e.quote_amount ? `Quoted ${euroShort(e.quote_amount)}` : 'Quoted'
+    }
+    case 'change_requested': {
+      const q = latestQuote(e.quotes)
+      return q?.change_requested_at
+        ? `Change asked for ${formatDayMonth(q.change_requested_at)} on ${q.number}`
+        : stage.label
+    }
     case 'won':
       return e.outcome_value ? `Won ${euroShort(e.outcome_value)}` : 'Won'
     case 'lost':
@@ -421,6 +455,8 @@ export type NextStep =
   | 'estimate'
   /** Quoted: Mark won or lost, Edit quote. */
   | 'quoted'
+  /** The customer asked for a change to the quote: their words, and an updated quote. */
+  | 'quote_change'
   /** Won or lost: the result, with Edit. */
   | 'result'
   /** Marked unsuitable. */
@@ -450,6 +486,8 @@ export function nextStep(stage: StageKey): NextStep {
       return 'estimate'
     case 'quoted':
       return 'quoted'
+    case 'change_requested':
+      return 'quote_change'
     case 'won':
     case 'lost':
       return 'result'

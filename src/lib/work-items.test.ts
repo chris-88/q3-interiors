@@ -11,6 +11,7 @@ const item = (label: string, type: string | null, id = label): WorkItem => ({
   id,
   label,
   project_type: type,
+  kind: 'included',
 })
 const list = [
   item('Strip out the old kitchen', 'kitchen'),

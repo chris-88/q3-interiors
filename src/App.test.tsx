@@ -41,7 +41,7 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        'After the visit we send you an estimate: a price range, with VAT included. If you start with a call, the next step for a price is a site visit.',
+        'We send you an estimate: a price range, with VAT included. Most jobs need a site visit before we can price them.',
       ),
     ).toBeInTheDocument()
     expect(

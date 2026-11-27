@@ -314,9 +314,27 @@ describe('messages', () => {
     ctx.type = { ...ctx.type, mode: 'on_site' }
     const m = renderMessage('booking_confirmation', { ctx, manageUrl: null, businessPhone: null })
     expect(m.subject).toMatch(/^Booked: your site visit on /)
-    expect(m.text).toContain('You get an estimate, which is a price range.')
+    expect(m.text).toContain('You get an estimate, which is a price range with VAT included.')
     expect(m.text).toContain('You’re not committing to anything, and it isn’t a start date.')
     expect(m.html).not.toContain('Change time')
     expect(m.html).not.toContain('Cancel appointment')
+  })
+
+  it('a call says plainly that a price needs a site visit, and promises no estimate', async () => {
+    const s = setup()
+    await booked(s)
+    const ctx = (await s.db.bookingContext(s.db.bookings[0]!.id))!
+    ctx.type = { ...ctx.type, mode: 'phone' }
+    for (const template of ['booking_confirmation', 'booking_reminder'] as const) {
+      const m = renderMessage(template, { ctx, manageUrl: null, businessPhone: null })
+      expect(m.subject).toMatch(/your call on /)
+      expect(m.text).not.toMatch(/estimate|price range|quote/i)
+    }
+    const confirmation = renderMessage('booking_confirmation', {
+      ctx,
+      manageUrl: null,
+      businessPhone: null,
+    })
+    expect(confirmation.text).toContain('If you want a price, the next step is a site visit.')
   })
 })

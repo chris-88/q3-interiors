@@ -4,6 +4,7 @@ import type { CustomerBooking } from '@/api/booking'
 import { usePublicVisitDisclaimer } from '@/api/wording'
 import { formatClock, formatLongDate } from '@/lib/format'
 import { ROUTE_COPY } from '@/lib/journey'
+import { WORDING } from '../../../supabase/functions/_shared/messages.ts'
 
 /** "Anna will ring you on 087 …" / "Anna will meet you at 12 Example Road, Dublin 8." */
 export function whatHappens(booking: CustomerBooking): string {
@@ -80,9 +81,7 @@ export function BookingConfirmed({
       <h2 className="text-title text-ink mt-8 font-medium">To prepare</h2>
       <p className="text-muted-foreground mt-2">{booking.whatToPrepare}</p>
       <p className="bg-soft text-muted-foreground mt-6 rounded-md px-4 py-3 text-sm leading-relaxed">
-        {booking.type.mode === 'on_site'
-          ? visitDisclaimer
-          : 'This call is to talk your project through. It does not commit you to anything.'}
+        {booking.type.mode === 'on_site' ? visitDisclaimer : WORDING.call_disclaimer.default}
       </p>
     </section>
   )

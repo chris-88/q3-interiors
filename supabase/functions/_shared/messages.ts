@@ -95,14 +95,15 @@ export const WORDING = {
     label: 'Site visit: what it is and is not',
     where: 'Confirmation email for a site visit, and the booked page',
     default:
-      'A site visit is for us to look at the work and price it. You get an estimate, which is a price range. You’re not committing to anything, and it isn’t a start date.',
+      'A site visit is for us to look at the work and price it. You get an estimate, which is a price range with VAT included. You’re not committing to anything, and it isn’t a start date.',
     max: 400,
     tokens: [],
   },
   call_disclaimer: {
     label: 'Call: what it is',
     where: 'Confirmation email for a call',
-    default: 'This call is to talk your project through. It does not commit you to anything.',
+    default:
+      'This call is to talk your project through. It does not commit you to anything. If you want a price, the next step is a site visit.',
     max: 400,
     tokens: [],
   },

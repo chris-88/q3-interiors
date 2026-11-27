@@ -65,17 +65,35 @@ describe('splitAgenda and groupByDay', () => {
 })
 
 describe('toWrapUp', () => {
-  it('lists finished confirmed appointments whose enquiry has no outcome, one per enquiry', () => {
+  it('lists passed appointments still needing attendance, only where the stage says so', () => {
     const list = [
       booking('a1', '2026-11-20T10:00:00Z', { enquiry_id: 'e-a' }),
       booking('a2', '2026-11-24T10:00:00Z', { enquiry_id: 'e-a' }),
-      booking('quoted', '2026-11-23T10:00:00Z', { enquiries: { outcome: 'quoted' } }),
+      booking('marked', '2026-11-23T10:00:00Z', { attendance: 'attended' }),
+      booking('estimated', '2026-11-23T10:00:00Z'),
       booking('cancelled', '2026-11-23T10:00:00Z', { state: 'cancelled' }),
       booking('future', '2026-11-30T10:00:00Z'),
       booking('running', '2026-11-26T11:45:00Z'),
-      booking('older-read', '2026-11-22T10:00:00Z', { enquiries: {} }),
+      booking('unknown', '2026-11-22T10:00:00Z'),
     ]
-    expect(toWrapUp(list, now).map((b) => b.id)).toEqual(['a2', 'older-read'])
+    const stages: Record<string, string> = {
+      'e-a': 'awaiting_quote',
+      'e-marked': 'awaiting_quote',
+      'e-estimated': 'quote_requested',
+      'e-cancelled': 'awaiting_quote',
+      'e-future': 'booked',
+      'e-running': 'booked',
+    }
+    const stageOf = (id: string) => stages[id] ?? null
+    expect(toWrapUp(list, stageOf, now).map((b) => b.id)).toEqual(['a2'])
+    // The latest finished appointment decides: an earlier one without attendance is not listed.
+    const recorded = [
+      booking('old', '2026-11-20T10:00:00Z', { enquiry_id: 'e-b' }),
+      booking('new', '2026-11-24T10:00:00Z', { enquiry_id: 'e-b', attendance: 'no_show' }),
+    ]
+    expect(toWrapUp(recorded, () => 'awaiting_quote', now)).toEqual([])
+    // Nothing while the stages are not loaded.
+    expect(toWrapUp(list, () => null, now)).toEqual([])
   })
 })
 

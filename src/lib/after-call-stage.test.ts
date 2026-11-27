@@ -61,7 +61,7 @@ describe('after the call', () => {
       visit_link_sent_at: '2026-11-27T09:00:00Z',
     }
     const stage = enquiryStage(sent, now)
-    expect(stage).toEqual({ key: 'link_sent', label: 'Visit link sent' })
+    expect(stage).toEqual({ key: 'link_sent', label: 'Site visit link sent' })
     expect(stageLine(sent, stage, now)).toBe('Site visit link sent 27 Nov')
     expect(nextStep(stage.key)).toBe('after_call')
     expect(matchesStage(stage.key, 'action')).toBe(false)

@@ -294,6 +294,8 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
       </div>
       <div className="flex flex-col gap-2">
         <Button
+          // One filled button at a time: while a choice is open, its own panel holds the action.
+          variant={choice === 'none' ? 'default' : 'outline'}
           className={wide}
           onClick={() => {
             setChoice('none')
@@ -303,7 +305,7 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
           Write the estimate
         </Button>
         <Button
-          variant={choice === 'visit' ? 'default' : 'outline'}
+          variant="outline"
           aria-expanded={choice === 'visit'}
           className={wide}
           onClick={() => setChoice((c) => (c === 'visit' ? 'none' : 'visit'))}
@@ -311,7 +313,7 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
           Book the site visit
         </Button>
         <Button
-          variant={choice === 'link' ? 'default' : 'outline'}
+          variant="outline"
           aria-expanded={choice === 'link'}
           className={wide}
           onClick={() => setChoice((c) => (c === 'link' ? 'none' : 'link'))}

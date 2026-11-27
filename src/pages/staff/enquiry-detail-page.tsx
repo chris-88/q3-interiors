@@ -12,13 +12,18 @@ import {
   useEnquiryPhotos,
   useFormVersions,
   useSetEnquiryStatus,
+  statusLabel,
   type EnquiryAttribution,
   type EnquiryDetail,
   type EnquiryEvent,
   type EnquiryPhoto,
 } from '@/api/enquiries'
 import { useEnquiryBookings, type StaffBooking } from '@/api/staff-booking'
-import { AfterCallChoices, WeAlreadySpoke } from '@/components/staff/after-call'
+import {
+  AfterCallChoices,
+  WeAlreadySpoke,
+  WRITE_ESTIMATE_EVENT,
+} from '@/components/staff/after-call'
 import { BookingActions } from '@/components/staff/booking-actions'
 import { ChaseForm } from '@/components/staff/chase-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
@@ -341,24 +346,17 @@ function NextStepCard({
         ) : (
           <p>The appointment has happened.</p>
         )}
+        <p className="text-sm">No estimate sent yet.</p>
         {estimateVisits(bookings.data ?? []).length > 0 && (
           <Button
             className="h-12 w-full sm:w-auto sm:px-6"
-            onClick={() =>
-              document.getElementById('estimate')?.scrollIntoView({ behavior: 'smooth' })
-            }
+            onClick={() => window.dispatchEvent(new Event(WRITE_ESTIMATE_EVENT))}
           >
             Write the estimate
           </Button>
         )}
-        <p className="text-sm">No quote recorded yet.</p>
-        <OutcomeForm
-          key={outcomeKey(enquiry)}
-          enquiryId={enquiry.id}
-          current={outcomeOf(enquiry)}
-          badge={false}
-          primary="quote"
-        />
+        {/* Won and lost before anything has gone out stay one tap away, not as buttons. */}
+        <OutcomeLater enquiry={enquiry} />
       </>
     )
   else if (step === 'estimate') {
@@ -424,7 +422,7 @@ function NextStepCard({
       className="bg-background border-action flex flex-col gap-3 rounded-md border-2 p-4"
     >
       <h2 id="next-step" className="text-base font-medium">
-        Next step
+        {step === 'result' ? 'Result' : 'Next step'}
       </h2>
       {body}
     </section>
@@ -451,9 +449,27 @@ function featuredBooking(
   return null
 }
 
+/** Next step already offers "Write the estimate", so the Estimate section does not repeat it. */
+function writeOfferedAbove(enquiry: EnquiryDetail, bookings: StaffBooking[], now: number): boolean {
+  const step = nextStep(enquiryStage(enquiry, now).key)
+  return step === 'after_call' || (step === 'record' && estimateVisits(bookings).length > 0)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Sections
 // ---------------------------------------------------------------------------------------------
+
+/** Staff wording for the customer's questions (the form's own labels speak to the customer). */
+const STAFF_LABELS: Record<string, string> = {
+  appointment_preference: 'Wants',
+  name: 'Name',
+  phone: 'Phone',
+  site_street: 'Street',
+  site_unit: 'Apartment or unit',
+  kitchen_layout: 'Kitchen layout',
+  rooms_involved: 'Rooms',
+  project_type_other: 'What they described',
+}
 
 /** Their answers, through the form version they answered; empty answers are left out. */
 function Project({
@@ -487,7 +503,7 @@ function Project({
       return value === null
         ? []
         : [
-            <Row key={field.id} label={field.label}>
+            <Row key={field.id} label={STAFF_LABELS[field.id] ?? field.label}>
               <ContactValue type={field.type} value={value} />
             </Row>,
           ]
@@ -517,9 +533,6 @@ function Project({
           </Row>
         )}
       </dl>
-      <p className="text-muted-foreground mt-4 text-xs">
-        Form: {form.formId} version {form.version}
-      </p>
     </Section>
   )
 }
@@ -782,7 +795,7 @@ function Notes({ enquiry }: { enquiry: EnquiryDetail }) {
       </form>
       <details className="group mt-4 border-t pt-2">
         <summary className="text-muted-foreground flex min-h-12 cursor-pointer items-center text-sm">
-          Change status (now: {enquiry.status.replace(/_/g, ' ')})
+          Change status (now: {statusLabel(enquiry.status)})
         </summary>
         <section aria-label="Change status" className="pt-2">
           {isKnown(ENQUIRY_STATUSES, enquiry.status) ? (
@@ -876,6 +889,9 @@ function More({ enquiry }: { enquiry: EnquiryDetail }) {
         More
       </summary>
       <div className="flex flex-col gap-3 border-t p-3">
+        <p className="text-muted-foreground px-1 text-xs">
+          Form: {enquiry.form_id} version {enquiry.form_version}
+        </p>
         <History events={enquiry.enquiry_events} />
         <Attribution attribution={enquiry.enquiry_attribution} />
         <Section title="Had to chase details">
@@ -944,7 +960,14 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
           form={forms.data?.get(`prepare@${enquiry.prepare_form_version ?? 1}`)}
           siteForm={siteForm}
         />
-        {bookings.data && <EstimateSection enquiry={enquiry} bookings={bookings.data} now={now} />}
+        {bookings.data && (
+          <EstimateSection
+            enquiry={enquiry}
+            bookings={bookings.data}
+            now={now}
+            offeredAbove={writeOfferedAbove(enquiry, bookings.data, now)}
+          />
+        )}
         <Appointments bookings={bookings} featured={featured} />
         <Notes enquiry={enquiry} />
         <More enquiry={enquiry} />

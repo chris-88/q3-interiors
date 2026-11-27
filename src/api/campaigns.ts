@@ -175,9 +175,10 @@ export function useMarkLinkUsed() {
   })
 }
 
-export function useSpend(campaignId: string) {
+export function useSpend(campaignId: string, enabled = true) {
   return useQuery({
     queryKey: ['campaign-spend', campaignId],
+    enabled,
     queryFn: async (): Promise<SpendEntry[]> => {
       const { data, error } = await supabase
         .from('campaign_spend')

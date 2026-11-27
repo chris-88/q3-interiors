@@ -58,6 +58,10 @@ export type StaffWorld = {
   pilotByContent: Record<string, unknown>
   /** What staff-booking's move_options returns. */
   moveOptions: unknown
+  /** What staff-booking's visit_options returns (after a call: book the site visit). */
+  visitOptions?: unknown
+  /** staff-booking request bodies, in order. */
+  staffBookingCalls?: Record<string, unknown>[]
 }
 
 export function staffWorld(): StaffWorld {
@@ -176,6 +180,7 @@ function syncEnquiryBookings(world: StaffWorld, enquiryId: string) {
       starts_at: b.starts_at,
       confirmed_at: b.confirmed_at ?? null,
       state: b.state,
+      attendance: b.attendance ?? null,
       appointment_types: { mode: (b.appointment_types as { mode: string }).mode },
     }))
 }
@@ -411,6 +416,43 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         rows.push({ id, label, project_type: type, archived_at: null, position: rows.length + 1 })
         return json(route, 200, id)
       }
+      if (table === 'rpc/record_call_held_early' || table === 'rpc/send_visit_link') {
+        // The server's rules (see 20261129140000_after_call.sql).
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as { p_enquiry_id: string }
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === b.p_enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        const at = new Date().toISOString()
+        const ahead = ((world.tables.bookings ?? []) as Record<string, unknown>[]).filter(
+          (x) =>
+            x.enquiry_id === row.id &&
+            ['reserved', 'calendar_pending', 'confirmed'].includes(String(x.state)) &&
+            Date.parse(String(x.starts_at)) > Date.now(),
+        )
+        const mode = (x: Record<string, unknown>) => (x.appointment_types as { mode: string }).mode
+        if (ahead.some((x) => mode(x) === 'on_site'))
+          return json(route, 400, { code: '22023', message: 'site visit booked' })
+        if (table === 'rpc/send_visit_link') {
+          if (!(row.answers as Record<string, unknown>).email)
+            return json(route, 400, { code: '22023', message: 'no email address' })
+          row.visit_link_sent_at = at
+          pushEvent(row, { kind: 'visit_link_sent', actor_name: caller.display_name })
+          return json(route, 200, null)
+        }
+        for (const x of ahead.filter((x) => mode(x) === 'phone'))
+          Object.assign(x, {
+            state: 'cancelled',
+            cancelled_at: at,
+            cancelled_by: 'staff',
+            cancel_reason: 'Spoke before the call',
+          })
+        syncEnquiryBookings(world, String(row.id))
+        row.call_held_at = at
+        pushEvent(row, { kind: 'call_held_early', actor_name: caller.display_name })
+        return json(route, 200, { cancelled: ahead.length })
+      }
       if (table === 'rpc/send_estimate') {
         // The server's rules (see 20261129100000_estimates.sql), with the shared range rule.
         if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
@@ -420,13 +462,30 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
           p_percent: number
           p_work: string
           p_items?: string[]
+          p_enquiry_id?: string
         }
-        const booking = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
+        const found = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
           (x) => x.id === b.p_booking_id,
         )
+        // No booking: an enquiry whose call was held early ("We already spoke").
+        const heldEarly = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => !b.p_booking_id && e.id === b.p_enquiry_id && e.call_held_at,
+        )
+        const booking: Record<string, unknown> | undefined =
+          found ??
+          (heldEarly
+            ? {
+                id: null,
+                enquiry_id: heldEarly.id,
+                appointment_types: { mode: 'phone' },
+                attendance: 'attended',
+              }
+            : undefined)
         if (!booking) return json(route, 404, { code: 'P0002', message: 'appointment not found' })
-        if ((booking.appointment_types as { mode: string }).mode !== 'on_site')
-          return json(route, 400, { code: '22023', message: 'site visits only' })
+        const after =
+          (booking.appointment_types as { mode: string }).mode === 'on_site' ? 'visit' : 'call'
+        if (after === 'call' && booking.attendance !== 'attended')
+          return json(route, 400, { code: '22023', message: 'call not held' })
         const work = (b.p_work ?? '').trim()
         const items = (b.p_items ?? []).map((i) => i.trim())
         if (
@@ -459,7 +518,11 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
             high_eur: range.high,
             work_items: items,
             work_looked_at: work || null,
-            caveats: WORDING.estimate_caveats.default,
+            caveats:
+              after === 'call'
+                ? WORDING.estimate_call_caveats.default
+                : WORDING.estimate_caveats.default,
+            after,
             sent_at: sent,
             valid_until: new Date(Date.parse(sent) + 10 * 86_400_000).toISOString(),
             quote_requested_at: null,
@@ -895,6 +958,54 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
       bookingId: string
       start?: string
       reason?: string
+      enquiryId?: string
+      siteStreet?: string
+    }
+    world.staffBookingCalls = [...(world.staffBookingCalls ?? []), input]
+    if (input.action === 'visit_options') return json(route, 200, world.visitOptions)
+    if (input.action === 'book_visit' && input.start) {
+      // Like the real function: the address typed goes into the site details, then the visit.
+      const e = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+        (x) => x.id === input.enquiryId,
+      )
+      if (!e) return json(route, 404, { error: 'not_found' })
+      if (input.siteStreet)
+        e.site_details = {
+          site_address: `${input.siteStreet}, ${String((e.answers as Record<string, unknown>).location)}`,
+        }
+      if (!(e.site_details as Record<string, unknown> | null)?.site_address)
+        return json(route, 200, { status: 'ineligible', reason: 'site_address_required' })
+      const id = `b-staff-${(world.tables.bookings ?? []).length + 1}`
+      world.tables.bookings = [
+        ...(world.tables.bookings ?? []),
+        {
+          id,
+          enquiry_id: e.id,
+          state: 'confirmed',
+          starts_at: input.start,
+          ends_at: new Date(Date.parse(input.start) + 60 * 60_000).toISOString(),
+          confirmed_at: new Date().toISOString(),
+          failure_reason: null,
+          calendar_event_id: `q3${id}`,
+          calendar_event_link: null,
+          created_at: new Date().toISOString(),
+          attendance: null,
+          cancelled_at: null,
+          cancelled_by: null,
+          cancel_reason: null,
+          calendar_mismatch: null,
+          appointment_types: { label: 'On-site estimate visit', mode: 'on_site' },
+          enquiries: {
+            reference: e.reference,
+            answers: e.answers,
+            outcome: null,
+            site_details: e.site_details,
+          },
+        },
+      ]
+      syncEnquiryBookings(world, String(e.id))
+      pushEvent(e, { kind: 'visit_booked_by_staff', actor_name: caller.display_name })
+      return json(route, 200, { status: 'booked', bookingId: id })
     }
     const booking = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
       (b) => b.id === input.bookingId,

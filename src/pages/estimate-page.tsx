@@ -5,7 +5,7 @@ import { PublicLayout } from '@/components/public-layout'
 import { TroubleMessage } from '@/components/trouble-message'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatRange } from '../../supabase/functions/_shared/estimate.ts'
+import { estimateWords, formatRange } from '../../supabase/functions/_shared/estimate.ts'
 
 export const QUOTE_THANKS = 'We’ll send your quote: one price, with what’s included and what isn’t.'
 
@@ -73,7 +73,7 @@ export function EstimatePage() {
         <p className="text-title text-ink font-bold tabular-nums">
           {formatRange(e.low, e.high)}, VAT included
         </p>
-        <p className="mt-4 text-sm">The work we looked at:</p>
+        <p className="mt-4 text-sm">{estimateWords(e.after).heading}</p>
         {e.workItems.length > 0 && (
           <ul className="mt-1 list-disc pl-5 text-sm">
             {e.workItems.map((item) => (

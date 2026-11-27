@@ -5,7 +5,7 @@
 // and may only use the tokens listed for them. Vocabulary follows the brand guide: an enquiry; a
 // call or a site visit; an estimate is a price range after a call or visit; a written quote is the
 // price for an agreed scope (never "full quote", "estimated range" or "quotation").
-import { formatRange } from './estimate.ts'
+import { estimateWords, formatRange } from './estimate.ts'
 import { formatLocal } from './time.ts'
 import type {
   BookingContext,
@@ -113,6 +113,15 @@ export const WORDING = {
     where: 'Estimate email, under the price range (saved with each estimate as sent)',
     default:
       'This is an estimate, not a quote. It’s a price range for the work we looked at together, with VAT included. It could change if the scope changes or if we find something we couldn’t see on the visit, which is common in older homes. It’s good for 10 days. If you want to go ahead, tell us and we’ll send your quote: one price, with what’s included and what isn’t.',
+    max: 600,
+    tokens: [],
+  },
+  estimate_call_caveats: {
+    label: 'Estimate after a call',
+    where:
+      'Estimate email sent straight from a call, under the price range (saved with each estimate)',
+    default:
+      'This is an estimate, not a quote. It’s a price range based on what you told us on the call, with VAT included. It could change once we see the space, or if the scope changes. It’s good for 10 days. If you want to go ahead, tell us and we’ll send your quote: one price, with what’s included and what isn’t.',
     max: 600,
     tokens: [],
   },
@@ -471,6 +480,8 @@ export type EstimateEmailInput = {
   businessPhone: string | null
   privacyUrl?: string | null
   siteUrl?: string | null
+  /** What it followed: a site visit (the default) or a call. */
+  after?: 'visit' | 'call'
 }
 
 /**
@@ -485,8 +496,8 @@ export function renderEstimate(input: EstimateEmailInput): RenderedMessage {
       subject: ESTIMATE_SUBJECT,
       paragraphs: [
         [first ? `Hello ${first},` : 'Hello,'],
-        ['Thanks for having us out to look at the work.'],
-        ['The work we looked at:'],
+        [estimateWords(input.after).thanks],
+        [estimateWords(input.after).heading],
       ],
       list: {
         items: input.workItems.map((i) => i.trim()).filter(Boolean),
@@ -495,6 +506,40 @@ export function renderEstimate(input: EstimateEmailInput): RenderedMessage {
       big: `${formatRange(input.low, input.high)}, VAT included`,
       beforeAction: [[input.caveats.trim()]],
       action: input.quoteUrl ? { label: 'Get my quote', url: input.quoteUrl } : undefined,
+      after: [input.businessPhone ? [ESTIMATE_SIGN_OFF, input.businessPhone] : [ESTIMATE_SIGN_OFF]],
+    },
+    input,
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The site visit booking link (after a call)
+// ---------------------------------------------------------------------------------------------
+
+export const VISIT_LINK_SUBJECT = 'Book your site visit with Q3 Interiors'
+
+export type VisitLinkInput = {
+  customerName: string
+  /** The booking page on the time step, site visit chosen (token link). */
+  bookUrl: string
+  businessPhone: string | null
+  privacyUrl?: string | null
+  siteUrl?: string | null
+}
+
+/** "Book your site visit": after a call, the customer picks their own time. */
+export function renderVisitLink(input: VisitLinkInput): RenderedMessage {
+  const first = firstName(input.customerName)
+  return compose(
+    {
+      subject: VISIT_LINK_SUBJECT,
+      paragraphs: [
+        [first ? `Hello ${first},` : 'Hello,'],
+        [
+          'Thanks for the call. The next step is a site visit so we can look at the space and price the work. Pick a time that suits you.',
+        ],
+      ],
+      action: { label: 'Book my site visit', url: input.bookUrl },
       after: [input.businessPhone ? [ESTIMATE_SIGN_OFF, input.businessPhone] : [ESTIMATE_SIGN_OFF]],
     },
     input,

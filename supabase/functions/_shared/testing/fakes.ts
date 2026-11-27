@@ -221,6 +221,8 @@ export class FakeDb implements Db {
       end: end + type.buffer_after_minutes * MIN,
     }
     const live = this.bookings.filter((b) => LIVE.has(b.state))
+    // A past appointment with its attendance recorded is done: not the enquiry's live booking.
+    const current = live.filter((b) => !b.attendance)
     if (type.mode === 'on_site') {
       const day = toLocal(start).date
       const count = live.filter(
@@ -234,7 +236,7 @@ export class FakeDb implements Db {
     if (live.some((b) => b.blocked.start < blocked.end && blocked.start < b.blocked.end)) {
       return { status: 'slot_unavailable', reason: 'taken' }
     }
-    const mine = live.find((b) => b.enquiry_id === enquiryId)
+    const mine = current.find((b) => b.enquiry_id === enquiryId)
     if (mine) return { status: 'already_booked', booking_id: mine.id }
     const id = `b${String(++this.seq).padStart(8, '0')}-0000-4000-8000-000000000000`
     this.bookings.push({
@@ -443,6 +445,15 @@ export class FakeDb implements Db {
   async estimateById(estimateId: string) {
     return this.estimates.get(estimateId) ?? null
   }
+  async visitBookedByStaff(bookingId: string, actorUserId: string, addressAdded: boolean) {
+    const b = this.bookings.find((x) => x.id === bookingId)
+    if (b)
+      this.events.push({
+        enquiryId: b.enquiry_id,
+        kind: 'visit_booked_by_staff',
+        detail: `${actorUserId}${addressAdded ? '; address entered by staff' : ''}`,
+      })
+  }
   async requestQuote(enquiryId: string, estimateId: string) {
     const estimate = this.estimates.get(estimateId)
     if (!estimate || estimate.enquiry_id !== enquiryId) return 'not_found' as const
@@ -541,7 +552,10 @@ export class FakeDb implements Db {
     return this.bookings.find((b) => b.id === id) ?? null
   }
   async liveBookingFor(enquiryId: string) {
-    return this.bookings.find((b) => b.enquiry_id === enquiryId && LIVE.has(b.state)) ?? null
+    return (
+      this.bookings.find((b) => b.enquiry_id === enquiryId && LIVE.has(b.state) && !b.attendance) ??
+      null
+    )
   }
   async cancelBooking(
     id: string,

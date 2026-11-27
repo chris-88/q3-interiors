@@ -57,3 +57,13 @@ export function formatRange(low: number, high: number): string {
 export function formatPercent(percent: number): string {
   return Number.isInteger(percent) ? String(percent) : percent.toFixed(1)
 }
+
+/** The thanks line and the heading over the work, by what the estimate followed. */
+export function estimateWords(after: 'visit' | 'call' | undefined) {
+  return after === 'call'
+    ? {
+        thanks: 'Thanks for talking the work through with us.',
+        heading: 'The work we talked about:',
+      }
+    : { thanks: 'Thanks for having us out to look at the work.', heading: 'The work we looked at:' }
+}

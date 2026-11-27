@@ -3,6 +3,7 @@ import { backoffSeconds } from './calendar-job.ts'
 import {
   renderAccountEmail,
   renderEstimate,
+  renderVisitLink,
   renderMessage,
   renderStaffAlert,
   type RenderedMessage,
@@ -106,6 +107,11 @@ export function quoteUrl(appUrl: string, token: string, estimateId: string): str
   return `${appUrl}/#/estimate/${token}/${estimateId}`
 }
 
+/** The booking page on the time step with a site visit chosen (after a call). */
+export function visitLinkUrl(appUrl: string, token: string): string {
+  return `${appUrl}/#/book/${token}?visit=1`
+}
+
 /** The set-password page; GoTrue's token hash is verified there with verifyOtp. */
 export function setPasswordUrl(staffUrl: string, tokenHash: string, template: string): string {
   const params = new URLSearchParams({ token_hash: tokenHash, type: 'recovery' })
@@ -204,6 +210,35 @@ export async function processCommunication(
         high: estimate.high_eur,
         caveats: estimate.caveats,
         quoteUrl: quoteUrl(deps.appUrl, token, estimate.id),
+        businessPhone: settings.business_phone,
+        privacyUrl: `${deps.appUrl}/#/privacy`,
+        siteUrl: deps.appUrl,
+        after: estimate.after === 'call' ? 'call' : 'visit',
+      }),
+    )
+  }
+  if (comm.template === 'visit_link') {
+    const enquiry = comm.enquiry_id ? await db.getEnquiry(comm.enquiry_id) : null
+    if (!enquiry) {
+      await db.communicationSkipped(comm.id, 'Enquiry no longer exists')
+      return 'skipped'
+    }
+    // Booked meanwhile (by them or by staff): the link has nothing left to do.
+    const live = await db.liveBookingFor(enquiry.id)
+    if (live && Date.parse(live.starts_at) > (deps.now ?? Date.now)()) {
+      await db.communicationSkipped(comm.id, 'Not sent: an appointment is already booked')
+      return 'skipped'
+    }
+    const settings = await db.getSettings()
+    // A fresh 30-day token, minted at send time and never logged, like the booking links.
+    const token = await db.mintAccessToken(enquiry.id)
+    const name = enquiry.answers.name
+    return send(
+      comm,
+      deps,
+      renderVisitLink({
+        customerName: typeof name === 'string' ? name : '',
+        bookUrl: visitLinkUrl(deps.appUrl, token),
         businessPhone: settings.business_phone,
         privacyUrl: `${deps.appUrl}/#/privacy`,
         siteUrl: deps.appUrl,

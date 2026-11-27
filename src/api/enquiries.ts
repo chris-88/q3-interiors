@@ -31,6 +31,8 @@ const summaryBookingSchema = z
     starts_at: z.string(),
     confirmed_at: z.string().nullable(),
     state: z.string(),
+    // Recorded after the start (attended, no_show); a held call opens the next step.
+    attendance: z.string().nullable().default(null),
     // The type's mode (call or visit) for the list line; absent from older reads.
     appointment_types: z.object({ mode: z.string() }).nullable().default(null),
   })
@@ -53,6 +55,9 @@ const enquirySummarySchema = z.object({
   outcome_value: z.coerce.number().nullable().default(null),
   // Any string: retired reasons (project_cancelled) and ones a newer release adds.
   outcome_reason: z.string().nullable().default(null),
+  // After the call: "We already spoke", and the site visit booking link (2026-11-29).
+  call_held_at: z.string().nullable().default(null),
+  visit_link_sent_at: z.string().nullable().default(null),
   bookings: z
     .array(z.unknown())
     .default([])
@@ -125,7 +130,7 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
 
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
 
-const SUMMARY_COLUMNS = `id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, bookings (starts_at, confirmed_at, state, appointment_types (mode)), ${ESTIMATE_COLUMNS}`
+const SUMMARY_COLUMNS = `id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, call_held_at, visit_link_sent_at, bookings (starts_at, confirmed_at, state, attendance, appointment_types (mode)), ${ESTIMATE_COLUMNS}`
 
 export function useEnquiries() {
   return useQuery({

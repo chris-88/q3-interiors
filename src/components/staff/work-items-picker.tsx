@@ -35,12 +35,15 @@ export function WorkItemsPicker({
   ticked,
   onChange,
   invalid,
+  after = 'visit',
 }: {
   /** The enquiry's project type value; null offers the "any job" items only. */
   projectType: string | null
   ticked: string[]
   onChange: (ticked: string[]) => void
   invalid?: boolean
+  /** After a call the work was talked about, not looked at. */
+  after?: 'visit' | 'call'
 }) {
   const items = useWorkItems()
   const add = useAddWorkItem()
@@ -77,7 +80,7 @@ export function WorkItemsPicker({
   return (
     <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby="work-items-hint">
       <legend className="mb-1 flex w-full items-center justify-between gap-2 text-sm font-medium">
-        <span>Work we looked at</span>
+        <span>{after === 'call' ? 'Work we talked about' : 'Work we looked at'}</span>
         {offered.length > 0 && (
           <Button
             type="button"
@@ -93,7 +96,7 @@ export function WorkItemsPicker({
       <p id="work-items-hint" className="text-muted-foreground -mt-1 text-xs">
         {editing
           ? 'Remove an item to stop offering it. Estimates already sent keep it.'
-          : 'Tap what you looked at. The customer sees them as a list.'}
+          : `Tap what you ${after === 'call' ? 'talked about' : 'looked at'}. The customer sees them as a list.`}
       </p>
       {items.isPending ? (
         <Skeleton className="h-28 w-full" />

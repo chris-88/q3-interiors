@@ -18,6 +18,7 @@ import {
   type EnquiryPhoto,
 } from '@/api/enquiries'
 import { useEnquiryBookings, type StaffBooking } from '@/api/staff-booking'
+import { AfterCallChoices, WeAlreadySpoke } from '@/components/staff/after-call'
 import { BookingActions } from '@/components/staff/booking-actions'
 import { ChaseForm } from '@/components/staff/chase-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
@@ -287,6 +288,7 @@ function NextStepCard({
             </a>
           )}
           <MarkContacted enquiry={enquiry} />
+          <WeAlreadySpoke enquiry={enquiry} call={null} />
         </div>
         <OutcomeLater enquiry={enquiry} />
       </>
@@ -295,7 +297,10 @@ function NextStepCard({
     body = (
       <>
         <p>Not booked yet. Ring or email to arrange a time.</p>
-        <MarkContacted enquiry={enquiry} />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <MarkContacted enquiry={enquiry} />
+          <WeAlreadySpoke enquiry={enquiry} call={null} />
+        </div>
         <OutcomeLater enquiry={enquiry} />
       </>
     )
@@ -303,6 +308,7 @@ function NextStepCard({
     body = (
       <>
         <p>Contacted. Nothing booked yet.</p>
+        <WeAlreadySpoke enquiry={enquiry} call={null} />
         <OutcomeLater enquiry={enquiry} />
       </>
     )
@@ -311,6 +317,16 @@ function NextStepCard({
       <>
         <AppointmentSummary booking={featured} />
         <BookingActions booking={featured} attendance={false} />
+        {featured.appointment_types.mode === 'phone' && (
+          <WeAlreadySpoke enquiry={enquiry} call={featured} />
+        )}
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  else if (step === 'after_call')
+    body = (
+      <>
+        <AfterCallChoices enquiry={enquiry} now={now} />
         <OutcomeLater enquiry={enquiry} />
       </>
     )

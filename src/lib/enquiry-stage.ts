@@ -12,6 +12,8 @@ export type StageBooking = {
   state: string
   /** The appointment type's mode (`phone`, `on_site`), when the read included it. */
   mode?: string | null
+  /** Attended or no-show, once recorded. */
+  attendance?: string | null
 }
 
 /** An estimate sent after a site visit (the newest is the current one). */
@@ -30,6 +32,10 @@ export type StageInput = {
   bookings: StageBooking[]
   /** Absent from older reads and tests: no estimate. */
   estimates?: StageEstimate[]
+  /** "We already spoke" (the call held early or without a booking). */
+  call_held_at?: string | null
+  /** The latest "Book your site visit" link emailed. */
+  visit_link_sent_at?: string | null
 }
 
 export const STAGES = [
@@ -38,6 +44,8 @@ export const STAGES = [
   'in_review',
   'contacted',
   'booked',
+  'call_held',
+  'link_sent',
   'awaiting_quote',
   'estimate_sent',
   'quote_requested',
@@ -56,6 +64,8 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   in_review: 'In review',
   contacted: 'Contacted',
   booked: 'Booked',
+  call_held: 'Call held',
+  link_sent: 'Visit link sent',
   awaiting_quote: 'Awaiting quote',
   estimate_sent: 'Estimate sent',
   quote_requested: 'Quote requested',
@@ -70,6 +80,7 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
 export const NEEDS_ACTION: ReadonlySet<StageKey> = new Set([
   'new',
   'contact',
+  'call_held',
   'awaiting_quote',
   'quote_requested',
   'no_answer',
@@ -128,6 +139,28 @@ export function estimateFollowUp(e: StageEstimate, now: number): string | null {
   return null
 }
 
+/**
+ * When the call was held, if the next thing is to move them on: "We already spoke", or the latest
+ * past appointment was a call marked attended. Null once a later appointment has started.
+ */
+export function callHeldAt(e: StageInput, now: number): string | null {
+  const passed = passedBooking(e.bookings, now)
+  const attended =
+    passed && passed.mode === 'phone' && passed.attendance === 'attended' ? passed.starts_at : null
+  const early = e.call_held_at ?? null
+  // A visit (or another call) after the early "We already spoke" is what counts now.
+  if (early && passed && Date.parse(passed.starts_at) > Date.parse(early)) return attended
+  if (early && attended) return Date.parse(early) > Date.parse(attended) ? early : attended
+  return early ?? attended
+}
+
+/** The booking link sent since the call was held, if any. */
+export function visitLinkSentAt(e: StageInput, now: number): string | null {
+  const held = callHeldAt(e, now)
+  const sent = e.visit_link_sent_at ?? null
+  return held && sent && Date.parse(sent) >= Date.parse(held) ? sent : null
+}
+
 export type Stage = { key: StageKey; label: string }
 
 /**
@@ -138,6 +171,8 @@ export type Stage = { key: StageKey; label: string }
  * 4. an estimate sent: quote requested -> Quote requested; past its 10 days with no request ->
  *    No answer in 10 days; otherwise -> Estimate sent;
  * 4b. a live appointment (reserved, confirming or confirmed) not yet started -> Booked;
+ * 4c. a call held (attended, or "We already spoke"): a site visit link sent since -> Visit link
+ *     sent; otherwise -> Call held;
  * 5. a confirmed, not cancelled appointment that has started -> Awaiting quote;
  * 6. asked to be contacted and status still new or in review -> Call back;
  * 7. status contacted -> Contacted; in review -> In review; new -> New;
@@ -153,6 +188,7 @@ export function enquiryStage(e: StageInput, now: number): Stage {
   const estimate = currentEstimate(e.estimates)
   if (estimate) return known(estimateState(estimate, now))
   if (upcomingBooking(e.bookings, now)) return known('booked')
+  if (callHeldAt(e, now)) return known(visitLinkSentAt(e, now) ? 'link_sent' : 'call_held')
   if (passedBooking(e.bookings, now)) return known('awaiting_quote')
   if (e.contact_requested_at && (e.status === 'new' || e.status === 'in_review'))
     return known('contact')
@@ -191,6 +227,14 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
       if (!b) return 'Booked'
       const when = `${appointmentKind(b.mode)} ${formatShortWhen(b.starts_at)}`
       return b.state === 'confirmed' ? when : `${when} (not confirmed yet)`
+    }
+    case 'call_held': {
+      const held = callHeldAt(e, now)
+      return held ? `Call held ${formatDayMonth(held)}, next step to choose` : stage.label
+    }
+    case 'link_sent': {
+      const sent = visitLinkSentAt(e, now)
+      return sent ? `Site visit link sent ${formatDayMonth(sent)}` : stage.label
     }
     case 'awaiting_quote': {
       const b = passedBooking(e.bookings, now)
@@ -347,6 +391,8 @@ export type NextStep =
   | 'appointment'
   /** The appointment happened, no outcome yet: attendance and Record quote. */
   | 'record'
+  /** A call held: write the estimate, book the site visit, or send a booking link. */
+  | 'after_call'
   /** An estimate is out: where it stands, an updated one, and Record quote. */
   | 'estimate'
   /** Quoted: Mark won or lost, Edit quote. */
@@ -371,6 +417,9 @@ export function nextStep(stage: StageKey): NextStep {
       return 'appointment'
     case 'awaiting_quote':
       return 'record'
+    case 'call_held':
+    case 'link_sent':
+      return 'after_call'
     case 'estimate_sent':
     case 'quote_requested':
     case 'no_answer':

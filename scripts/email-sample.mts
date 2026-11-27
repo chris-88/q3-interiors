@@ -3,17 +3,20 @@
 //
 //   npm run email:sample -- estimate <address>             send the sample to <address>
 //   npm run email:sample -- estimate --html <file>          write the HTML (and .txt) instead
+//   npm run email:sample -- estimate --after-call <address> the estimate sent straight from a call
+//   npm run email:sample -- visit-link <address>           "Book your site visit" (after a call)
+//   (--html <file> works with each of them)
 //
 // The customer is made up and nothing is written to the database. The business phone and the
 // caveats wording are read from the live database (read only), so the email matches what a
 // customer gets today. It is sent with the stack's Resend key (pass, for this run only, never
 // printed) from the same sender as the stack, through the same renderer and mailer the worker
-// uses. Its "Get my quote" button points at a sample link that only shows "This link has expired".
+// uses. Its buttons point at sample links that only show "This link has expired".
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import { estimateRange } from '../supabase/functions/_shared/estimate.ts'
 import { createResendMailer, isSuppressed } from '../supabase/functions/_shared/email.ts'
-import { renderEstimate, WORDING } from '../supabase/functions/_shared/messages.ts'
+import { renderEstimate, renderVisitLink, WORDING } from '../supabase/functions/_shared/messages.ts'
 import { SITE_URL } from '../supabase/functions/_shared/site.ts'
 
 const FROM = 'Q3 Interiors <bookings@q3interiors.ie>'
@@ -45,9 +48,13 @@ function live(sql: string): string | null {
   }
 }
 
-const [kind, ...rest] = process.argv.slice(2)
-if (kind !== 'estimate')
-  fail('usage: npm run email:sample -- estimate <address> | estimate --html <file>')
+const [kind, ...args] = process.argv.slice(2)
+if (kind !== 'estimate' && kind !== 'visit-link')
+  fail(
+    'usage: npm run email:sample -- estimate [--after-call] <address> | visit-link <address> (or --html <file> for the address)',
+  )
+const afterCall = args.includes('--after-call')
+const rest = args.filter((a) => a !== '--after-call')
 const htmlAt = rest.indexOf('--html')
 const htmlFile = htmlAt >= 0 ? rest[htmlAt + 1] : undefined
 const address = htmlAt >= 0 ? undefined : rest[0]
@@ -57,26 +64,38 @@ if (!htmlFile && (!address || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)))
 if (address && isSuppressed(address)) fail(`${address} is a reserved test address`)
 
 const range = estimateRange(10_000, 5)
-const message = renderEstimate({
-  customerName: 'Ann Sample',
-  workItems: [
-    'Strip out the old kitchen',
-    'New units and worktop',
-    'Tiled floor',
-    'Plastering',
-    'Painting',
-  ],
-  note: 'Keep the existing window and move the radiator to the back wall.',
-  low: range.low,
-  high: range.high,
-  caveats:
-    live(`select body from public.message_blocks where key = 'estimate_caveats'`) ??
-    WORDING.estimate_caveats.default,
-  quoteUrl: `${SITE_URL}/#/estimate/sample-link-not-active/00000000-0000-4000-8000-000000000000`,
-  businessPhone: live('select contact_phone from public.business_details limit 1'),
-  privacyUrl: `${SITE_URL}/#/privacy`,
-  siteUrl: SITE_URL,
-})
+const businessPhone = live('select contact_phone from public.business_details limit 1')
+const caveatKey = afterCall ? 'estimate_call_caveats' : 'estimate_caveats'
+const message =
+  kind === 'visit-link'
+    ? renderVisitLink({
+        customerName: 'Ann Sample',
+        bookUrl: `${SITE_URL}/#/book/sample-link-not-active?visit=1`,
+        businessPhone,
+        privacyUrl: `${SITE_URL}/#/privacy`,
+        siteUrl: SITE_URL,
+      })
+    : renderEstimate({
+        customerName: 'Ann Sample',
+        workItems: [
+          'Strip out the old kitchen',
+          'New units and worktop',
+          'Tiled floor',
+          'Plastering',
+          'Painting',
+        ],
+        note: 'Keep the existing window and move the radiator to the back wall.',
+        low: range.low,
+        high: range.high,
+        caveats:
+          live(`select body from public.message_blocks where key = '${caveatKey}'`) ??
+          WORDING[caveatKey].default,
+        quoteUrl: `${SITE_URL}/#/estimate/sample-link-not-active/00000000-0000-4000-8000-000000000000`,
+        businessPhone,
+        privacyUrl: `${SITE_URL}/#/privacy`,
+        siteUrl: SITE_URL,
+        after: afterCall ? 'call' : 'visit',
+      })
 
 if (htmlFile) {
   fs.writeFileSync(htmlFile, message.html)
@@ -89,7 +108,7 @@ if (htmlFile) {
     subject: `${message.subject} (sample)`,
     text: message.text,
     html: message.html,
-    idempotencyKey: `sample:estimate:${Date.now()}`,
+    idempotencyKey: `sample:${kind}:${Date.now()}`,
   })
   console.log(`email:sample: sent "${message.subject} (sample)" to ${address} (${id ?? 'no id'})`)
 }

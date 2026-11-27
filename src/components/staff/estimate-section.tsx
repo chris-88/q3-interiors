@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBusinessDetails } from '@/api/business'
 import type { EnquiryDetail } from '@/api/enquiries'
 import {
@@ -16,8 +16,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
+import { WRITE_ESTIMATE_EVENT } from '@/components/staff/after-call'
 import { orderTicked, WorkItemsPicker } from '@/components/staff/work-items-picker'
-import { currentEstimate, estimateFollowUp, estimateLine, estimateState } from '@/lib/enquiry-stage'
+import {
+  callHeldAt,
+  currentEstimate,
+  estimateFollowUp,
+  estimateLine,
+  estimateState,
+} from '@/lib/enquiry-stage'
 import { formatDayMonth, formatShortWhen } from '@/lib/format'
 import {
   estimateRange,
@@ -39,6 +46,45 @@ export function estimateVisits(bookings: StaffBooking[]): StaffBooking[] {
   return bookings
     .filter((b) => b.appointment_types.mode === 'on_site' && b.state === 'confirmed')
     .sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))
+}
+
+/** What a new estimate follows: the latest confirmed site visit, else a call that was held. */
+export type EstimateSource = { after: 'visit' | 'call'; bookingId: string | null; line: string }
+
+export function estimateSource(
+  enquiry: EnquiryDetail,
+  bookings: StaffBooking[],
+  now: number,
+): EstimateSource | null {
+  const visit = estimateVisits(bookings)[0]
+  if (visit)
+    return {
+      after: 'visit',
+      bookingId: visit.id,
+      line: `For the site visit on ${formatShortWhen(visit.starts_at)}.`,
+    }
+  const call = bookings
+    .filter(
+      (b) =>
+        b.appointment_types.mode === 'phone' &&
+        b.state === 'confirmed' &&
+        b.attendance === 'attended',
+    )
+    .sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))[0]
+  const early = enquiry.call_held_at
+  if (call && (!early || Date.parse(call.starts_at) >= Date.parse(early)))
+    return {
+      after: 'call',
+      bookingId: call.id,
+      line: `After the call on ${formatShortWhen(call.starts_at)}, no site visit.`,
+    }
+  if (early && callHeldAt(enquiry, now))
+    return {
+      after: 'call',
+      bookingId: null,
+      line: `After the call on ${formatDayMonth(early)}, no site visit.`,
+    }
+  return null
 }
 
 const textOf = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
@@ -86,6 +132,7 @@ function sendError(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   if (message.includes('no email address')) return 'This enquiry has no email address to send to.'
   if (message.includes('site visits only')) return 'Estimates go with a site visit, not a call.'
+  if (message.includes('call not held')) return 'The call is not recorded as held yet.'
   if (message.includes('not confirmed')) return 'The site visit is not confirmed.'
   if (message.includes('not allowed')) return 'Your account cannot send estimates.'
   return 'The estimate was not sent. Try again.'
@@ -93,12 +140,12 @@ function sendError(error: unknown): string {
 
 function EstimateForm({
   enquiry,
-  visit,
+  source,
   onSent,
   onCancel,
 }: {
   enquiry: EnquiryDetail
-  visit: StaffBooking
+  source: EstimateSource
   onSent: (to: string) => void
   onCancel: () => void
 }) {
@@ -125,7 +172,10 @@ function EstimateForm({
   const p = Number(percent)
   const range =
     n !== null && n >= PRICE_MIN && n <= PRICE_MAX && isValidPercent(p) ? estimateRange(n, p) : null
-  const caveats = wording.data?.estimate_caveats?.trim() || WORDING.estimate_caveats.default
+  const caveats =
+    source.after === 'call'
+      ? wording.data?.estimate_call_caveats?.trim() || WORDING.estimate_call_caveats.default
+      : wording.data?.estimate_caveats?.trim() || WORDING.estimate_caveats.default
   const preview = renderEstimate({
     customerName: name,
     workItems: items.length || work.trim() ? items : ['The work you tick appears here'],
@@ -137,6 +187,7 @@ function EstimateForm({
     businessPhone: business.data?.contact_phone ?? null,
     privacyUrl: `${SITE_URL}/#/privacy`,
     siteUrl: SITE_URL,
+    after: source.after,
   })
 
   const check = () => {
@@ -169,9 +220,7 @@ function EstimateForm({
         if (check()) setConfirming(true)
       }}
     >
-      <p className="text-muted-foreground text-sm">
-        For the site visit on {formatShortWhen(visit.starts_at)}. All figures include VAT.
-      </p>
+      <p className="text-muted-foreground text-sm">{source.line} All figures include VAT.</p>
       <div className={field}>
         <label htmlFor="estimate-price" className="text-sm font-medium">
           Price in euro
@@ -219,6 +268,7 @@ function EstimateForm({
       <div id="estimate-items" tabIndex={-1} className="flex flex-col gap-1">
         <WorkItemsPicker
           projectType={projectType}
+          after={source.after}
           ticked={ticked}
           invalid={Boolean(errors.items)}
           onChange={(next) => {
@@ -311,7 +361,7 @@ function EstimateForm({
                 if (!values) return setConfirming(false)
                 send.mutate(
                   {
-                    bookingId: visit.id,
+                    bookingId: source.bookingId,
                     price: values.price,
                     percent: values.percent,
                     work: values.work,
@@ -364,7 +414,19 @@ export function EstimateSection({
 }) {
   const [open, setOpen] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
-  const visit = estimateVisits(bookings)[0] ?? null
+  const visit = estimateSource(enquiry, bookings, now)
+  // The Next step's "Write the estimate" opens the form here.
+  useEffect(() => {
+    const show = () => {
+      setOpen(true)
+      setSentTo(null)
+      window.requestAnimationFrame(() =>
+        document.getElementById('estimate')?.scrollIntoView({ behavior: 'smooth' }),
+      )
+    }
+    window.addEventListener(WRITE_ESTIMATE_EVENT, show)
+    return () => window.removeEventListener(WRITE_ESTIMATE_EVENT, show)
+  }, [])
   const all = [...enquiry.estimates].sort((a, b) => Date.parse(b.sent_at) - Date.parse(a.sent_at))
   const current = currentEstimate(all)
   if (!visit && !current) return null
@@ -401,7 +463,7 @@ export function EstimateSection({
       {visit && open && (
         <EstimateForm
           enquiry={enquiry}
-          visit={visit}
+          source={visit}
           onCancel={() => setOpen(false)}
           onSent={(to) => {
             setOpen(false)

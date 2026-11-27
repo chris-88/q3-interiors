@@ -79,6 +79,10 @@ expect_code "anon cannot add an estimate work item" 42501 \
   "$(curl -s -X POST "$rest/rpc/add_estimate_work_item" "${headers[@]}" -d '{"p_project_type":"kitchen","p_label":"test"}')"
 expect_code "anon cannot remove an estimate work item" 42501 \
   "$(curl -s -X POST "$rest/rpc/archive_estimate_work_item" "${headers[@]}" -d '{"p_id":"00000000-0000-4000-8000-000000000000"}')"
+expect_code "anon cannot record a call held" 42501 \
+  "$(curl -s -X POST "$rest/rpc/record_call_held_early" "${headers[@]}" -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000"}')"
+expect_code "anon cannot send a site visit link" 42501 \
+  "$(curl -s -X POST "$rest/rpc/send_visit_link" "${headers[@]}" -d '{"p_enquiry_id":"00000000-0000-4000-8000-000000000000"}')"
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
 

@@ -162,14 +162,21 @@ function TimeScreen({
   token,
   ctx,
   onBooked,
+  visit = false,
 }: {
   token: string
   ctx: BookingContext
   onBooked: () => void
+  /** The "Book your site visit" link after a call: start on the site visit. */
+  visit?: boolean
 }) {
   const routes = ROUTES.filter((r) => ctx.types.some((t) => t.mode === r))
   const [route, setRoute] = useState<Route | null>(() =>
-    ctx.preference && routes.includes(ctx.preference) ? ctx.preference : null,
+    visit && routes.includes('on_site')
+      ? 'on_site'
+      : ctx.preference && routes.includes(ctx.preference)
+        ? ctx.preference
+        : null,
   )
   const type = ctx.types.find((t) => t.mode === route) ?? null
   const availability = useAvailability(token, type?.id ?? null)
@@ -595,6 +602,9 @@ export function BookingPage() {
   const doParam = search.get('do')
   const initialAction =
     doParam === 'change' || doParam === 'cancel' || doParam === 'prepare' ? doParam : null
+  // The site visit link sent after a call (?visit=1).
+  const visitLink = search.get('visit') === '1'
+  const [openedAt] = useState(() => Date.now())
   const context = useBookingContext(token)
   const [round, setRound] = useState(0)
   const latest = context.data?.booking ?? null
@@ -611,8 +621,14 @@ export function BookingPage() {
   const current = status.data?.booking ?? latest
   const state = current?.state
   // One live region for the page's booking status, kept mounted across the screens.
+  // After a call, the visit link opens on the time step, not on the call that has happened.
+  const pastCall =
+    visitLink &&
+    current?.state === 'confirmed' &&
+    current.type.mode === 'phone' &&
+    Date.parse(current.start) <= openedAt
   const announcement =
-    state === 'confirmed' && current
+    state === 'confirmed' && current && !pastCall
       ? ROUTE_COPY[current.type.mode].booked
       : state === 'reserved' || state === 'calendar_pending'
         ? 'Confirming your appointment…'
@@ -654,7 +670,7 @@ export function BookingPage() {
           </AlertDescription>
         </Alert>
       )
-  } else if (current && current.state === 'confirmed') {
+  } else if (current && current.state === 'confirmed' && !pastCall) {
     content = (
       <ManageBooking
         token={token}
@@ -672,7 +688,7 @@ export function BookingPage() {
       <>
         <JourneyProgress current={2} />
         <div className="mt-6">
-          {current?.state === 'cancelled' && (
+          {current?.state === 'cancelled' && !visitLink && (
             <Alert className="mb-6">
               <AlertTitle>Your appointment is cancelled</AlertTitle>
               <AlertDescription>
@@ -695,6 +711,7 @@ export function BookingPage() {
             key={`${round}-${current?.id ?? 'none'}`}
             token={token}
             ctx={ctx}
+            visit={visitLink}
             onBooked={() => void context.refetch()}
           />
         </div>

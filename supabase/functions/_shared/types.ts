@@ -46,6 +46,8 @@ export type BookingRow = {
   created_at: string
   confirmed_at?: string | null
   cancelled_at?: string | null
+  /** Recorded after the start; a booking with attendance is done (no longer the live one). */
+  attendance?: string | null
 }
 
 export type Answers = Record<string, string | string[]>
@@ -77,6 +79,7 @@ export type Template =
   | 'staff_password_reset'
   | 'estimate'
   | 'staff_quote_request'
+  | 'visit_link'
 
 export type StaffAccountTemplate = 'staff_invite' | 'staff_password_reset'
 
@@ -86,6 +89,7 @@ export type CustomerTemplate = Exclude<
   | 'staff_callback_request'
   | 'staff_quote_request'
   | 'estimate'
+  | 'visit_link'
   | StaffAccountTemplate
 >
 
@@ -171,6 +175,8 @@ export type EstimateRow = {
   sent_at: string
   valid_until: string
   quote_requested_at: string | null
+  /** What it followed: a site visit or a call (absent before 2026-11-29: a visit). */
+  after?: 'visit' | 'call'
 }
 
 /** Everything the functions need from Postgres. Implemented with postgres.js in `db.ts`. */
@@ -254,6 +260,8 @@ export interface Db {
   getWording(): Promise<Record<string, string>>
   // Estimates after a site visit
   estimateById(estimateId: string): Promise<EstimateRow | null>
+  /** After a call: the history line for a site visit staff booked for the customer. */
+  visitBookedByStaff(bookingId: string, actorUserId: string, addressAdded: boolean): Promise<void>
   /** Records "Get my quote" once (alerting staff); repeats change nothing. */
   requestQuote(
     enquiryId: string,

@@ -37,10 +37,51 @@ describe('after the call', () => {
     expect(stageLine(held, stage, now)).toBe('Call held 25 Nov, next step to choose')
     expect(nextStep(stage.key)).toBe('after_call')
     expect(matchesStage(stage.key, 'action')).toBe(true)
-    // A no-show is not a held call.
-    expect(enquiryStage({ ...base, bookings: [call({ attendance: 'no_show' })] }, now).key).toBe(
-      'awaiting_quote',
-    )
+    // A no-show is not a held call: it is a missed call, to ring or rebook.
+    const missed = { ...base, bookings: [call({ attendance: 'no_show' })] }
+    const m = enquiryStage(missed, now)
+    expect(m).toEqual({ key: 'missed_call', label: 'Missed call' })
+    expect(stageLine(missed, m, now)).toBe('Missed call Wed 25 Nov · ring or rebook')
+    expect(nextStep(m.key)).toBe('missed')
+    expect(matchesStage(m.key, 'action')).toBe(true)
+  })
+
+  it('a missed site visit reads Missed visit; anything since it moves on', () => {
+    const visit = call({ mode: 'on_site', attendance: 'no_show' })
+    const missed = { ...base, bookings: [visit] }
+    const m = enquiryStage(missed, now)
+    expect(m).toEqual({ key: 'missed_visit', label: 'Missed visit' })
+    expect(stageLine(missed, m, now)).toBe('Missed visit Wed 25 Nov · ring or rebook')
+    expect(nextStep(m.key)).toBe('missed')
+    // Rebooked: the new appointment leads.
+    const rebooked = {
+      ...missed,
+      bookings: [visit, call({ mode: 'on_site', starts_at: '2026-12-02T10:00:00Z' })],
+    }
+    expect(enquiryStage(rebooked, now).key).toBe('booked')
+    // "We already spoke" after the missed call: the call is held.
+    const spoke = {
+      ...base,
+      bookings: [call({ attendance: 'no_show' })],
+      call_held_at: '2026-11-26T09:30:00Z',
+    }
+    expect(enquiryStage(spoke, now).key).toBe('call_held')
+    // An estimate sent after it: the estimate's stage.
+    const estimated = {
+      ...missed,
+      estimates: [
+        {
+          sent_at: '2026-11-26T09:00:00Z',
+          valid_until: '2026-12-06T09:00:00Z',
+          low_eur: 9500,
+          high_eur: 10500,
+          quote_requested_at: null,
+        },
+      ],
+    }
+    expect(enquiryStage(estimated, now).key).toBe('estimate_sent')
+    // An outcome still wins.
+    expect(enquiryStage({ ...missed, outcome: 'lost' }, now).key).toBe('lost')
   })
 
   it('"We already spoke" holds the call with or without a booking', () => {

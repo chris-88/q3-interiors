@@ -69,8 +69,9 @@ function book(
   e: ReturnType<typeof enquiry>,
   id: string,
   start: string,
-  over: { state?: string; attendance?: string | null } = {},
+  over: { state?: string; attendance?: string | null; mode?: 'phone' | 'on_site' } = {},
 ) {
+  const mode = over.mode ?? 'phone'
   const state = over.state ?? 'confirmed'
   const row = {
     id,
@@ -88,7 +89,10 @@ function book(
     cancelled_by: state === 'cancelled' ? 'customer' : null,
     cancel_reason: null,
     calendar_mismatch: null,
-    appointment_types: { label: 'Phone consultation', mode: 'phone' },
+    appointment_types:
+      mode === 'phone'
+        ? { label: 'Phone consultation', mode: 'phone' }
+        : { label: 'On-site estimate visit', mode: 'on_site' },
     enquiries: { reference: e.reference, answers: e.answers, outcome: null, site_details: null },
   }
   world.tables.bookings = [...(world.tables.bookings ?? []), row]
@@ -97,7 +101,7 @@ function book(
     confirmed_at: row.confirmed_at,
     state,
     attendance: row.attendance,
-    appointment_types: { mode: 'phone' },
+    appointment_types: { mode },
   })
 }
 
@@ -127,7 +131,24 @@ function seed(world: StaffWorld) {
     status: 'contacted',
     call_held_at: '2026-11-25T11:00:00Z',
   })
-  world.tables.enquiries = [fresh, asked, missed, cancelled, coming, held]
+  const missedVisit = enquiry('e-mvis01', 'Gerry Sample', {
+    status: 'contacted',
+    answers: {
+      appointment_preference: 'on_site',
+      project_type: 'kitchen',
+      location: 'Dublin 8',
+      name: 'Gerry Sample',
+      email: 'gerry@example.com',
+      phone: '087 765 4321',
+      site_street: '12 Example Road',
+    },
+    site_details: { site_address: '12 Example Road, Dublin 8' },
+  })
+  book(world, missedVisit, 'b-mvis', '2026-11-25T10:00:00Z', {
+    attendance: 'no_show',
+    mode: 'on_site',
+  })
+  world.tables.enquiries = [fresh, asked, missed, cancelled, coming, held, missedVisit]
   world.tables.form_versions = publishedForms.map((f) => ({
     form_id: f.formId,
     version: f.version,
@@ -216,7 +237,7 @@ test('offered after a missed or cancelled call; not with a call to come or a cal
 }) => {
   await open(page, '/#/enquiries/e-miss01')
   await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toBeVisible()
-  await shot(page, 'book-call-no-show')
+  await shot(page, 'missed-call')
   await page.goto('/#/enquiries/e-canc01')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Declan Sample')
   await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toBeVisible()
@@ -228,4 +249,42 @@ test('offered after a missed or cancelled call; not with a call to come or a cal
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Fiona Test')
   await expect(nextStep(page).getByRole('button', { name: 'Write the estimate' })).toBeVisible()
   await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toHaveCount(0)
+})
+
+test('a missed call or visit: its own stage, Ring first, then rebook; not "Estimate to write"', async ({
+  page,
+}) => {
+  await open(page, '/#/')
+  const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
+  const ciara = rows.filter({ hasText: 'Ciara Test' })
+  await expect(ciara).toContainText('Missed call Tue 24 Nov · ring or rebook')
+  await expect(ciara).toContainText('Needs action')
+  await expect(ciara).not.toContainText('Estimate to write')
+  const gerry = rows.filter({ hasText: 'Gerry Sample' })
+  await expect(gerry).toContainText('Missed visit Wed 25 Nov · ring or rebook')
+  await page.getByRole('radio', { name: /^Needs action/ }).check({ force: true })
+  await expect(rows.filter({ hasText: 'Ciara Test' })).toHaveCount(1)
+  await expect(rows.filter({ hasText: 'Gerry Sample' })).toHaveCount(1)
+  await shot(page, 'missed-list')
+
+  await gerry.getByRole('link').click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Gerry Sample')
+  await expect(nextStep(page)).toContainText('Missed site visit Wed 25 Nov, 10:00')
+  await expect(filled(page)).toHaveCount(1)
+  await expect(filled(page)).toHaveText('Ring Gerry')
+  await expect(nextStep(page).getByRole('button', { name: 'Book the site visit' })).toBeVisible()
+  await expect(nextStep(page).getByRole('button', { name: 'Send a booking link' })).toBeVisible()
+  await expect(nextStep(page).getByRole('button', { name: 'Write the estimate' })).toHaveCount(0)
+  await expect(nextStep(page).getByRole('button', { name: 'Mark won' })).toHaveCount(0)
+  await shot(page, 'missed-visit')
+
+  await page.goto('/#/enquiries/e-miss01')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ciara Test')
+  await expect(filled(page)).toHaveText('Ring Ciara')
+  await expect(nextStep(page).getByRole('button', { name: 'Send a booking link' })).toHaveCount(0)
+
+  // To wrap up agrees with Needs action: a missed appointment already has its attendance.
+  await page.goto('/#/appointments')
+  await expect(page.getByRole('heading', { name: 'Appointments' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'To wrap up' })).toHaveCount(0)
 })

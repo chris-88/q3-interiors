@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronLeft, Copy, Play } from 'lucide-react'
-import { Link, useLocation, useParams, useSearchParams } from 'react-router'
+import { Link, useLocation, useParams } from 'react-router'
 import {
   adErrorMessage,
   adEventLabel,
@@ -18,12 +18,11 @@ import {
   useRequestChange,
   useWithdrawRequest,
   type Ad,
-  type AdListItem,
   type AdRequest,
   type AdVersion,
 } from '@/api/ads'
 import { AdFrame } from '@/components/staff/ad-frame'
-import { chip } from '@/components/staff/chips'
+import { AdCampaign, EnquiriesFromAd } from '@/components/staff/ad-campaign'
 import { ListWalk } from '@/components/staff/list-walk'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -33,14 +32,10 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  AD_FILTERS,
   adOrder,
-  groupAds,
-  matchesAdFilter,
   neighbours,
   previewOptions,
   readAdFilter,
-  thumbnailPath,
   type AdFilter,
   type PreviewOption,
 } from '@/lib/ads/screens'
@@ -52,236 +47,9 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={status === 'new' ? 'default' : 'outline'}>{adStatusLabel(status)}</Badge>
 }
 
-const currentOf = (ad: AdListItem) => [...ad.ad_versions].sort((a, b) => b.version - a.version)[0]
-
 // ---------------------------------------------------------------------------------------------
 // The list: posters in a grid, grouped by set, filtered by chips.
 // ---------------------------------------------------------------------------------------------
-
-function AdTile({
-  ad,
-  filter,
-  selecting,
-  selected,
-  onToggle,
-}: {
-  ad: AdListItem
-  filter: AdFilter
-  selecting: boolean
-  selected: boolean
-  onToggle: () => void
-}) {
-  const current = currentOf(ad)
-  const thumb = useAdFileUrl(thumbnailPath(current?.ad_variants ?? []))
-  const body = (
-    <>
-      <span className="relative block aspect-[4/5] overflow-hidden rounded-md bg-black">
-        {thumb.url ? (
-          <img src={thumb.url} alt="" className="size-full object-cover" />
-        ) : thumb.isPending ? (
-          <Skeleton className="size-full rounded-none" />
-        ) : null}
-        {selecting && (
-          <span
-            aria-hidden="true"
-            className={`absolute top-2 left-2 flex size-7 items-center justify-center rounded-md border-2 border-white ${
-              selected ? 'bg-white text-black' : 'bg-black/40'
-            }`}
-          >
-            {selected && <Check className="size-5" />}
-          </span>
-        )}
-      </span>
-      <span className="mt-2 line-clamp-3 text-sm leading-snug font-medium">{ad.name}</span>
-      <span className="mt-1 flex flex-wrap items-center gap-2">
-        <StatusBadge status={ad.status} />
-        {current && current.version > 1 && (
-          <span className="text-muted-foreground text-xs">Version {current.version}</span>
-        )}
-      </span>
-    </>
-  )
-  if (selecting)
-    return (
-      <label className="has-[:focus-visible]:outline-action relative block cursor-pointer rounded-md p-1 has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-solid">
-        <input type="checkbox" className="sr-only" checked={selected} onChange={onToggle} />
-        {body}
-      </label>
-    )
-  return (
-    <Link to={`/ads/${ad.id}?show=${filter}`} className="block rounded-md p-1">
-      {body}
-    </Link>
-  )
-}
-
-function SelectBar({
-  ads,
-  selected,
-  filter,
-  onDone,
-}: {
-  ads: AdListItem[]
-  selected: Set<string>
-  filter: AdFilter
-  onDone: (message: string) => void
-}) {
-  const archive = useArchiveAd()
-  const [busy, setBusy] = useState(false)
-  const chosen = ads.filter((a) => selected.has(a.id))
-  // In Archived, the action brings ads back; everywhere else it archives.
-  const bringBack = filter === 'archived'
-  const run = async () => {
-    setBusy(true)
-    let done = 0
-    let failed = 0
-    for (const ad of chosen) {
-      try {
-        await archive.mutateAsync({ adId: ad.id, archived: !bringBack })
-        done += 1
-      } catch {
-        failed += 1
-      }
-    }
-    setBusy(false)
-    const what = done === 1 ? '1 ad' : `${done} ads`
-    onDone(
-      `${bringBack ? 'Brought back' : 'Archived'} ${what}.` +
-        (failed ? ` ${failed} could not be changed; try again.` : '') +
-        (bringBack || done === 0 ? '' : ' Find them under Archived.'),
-    )
-  }
-  return (
-    <div className="bg-background sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-3 border-t px-4 py-3">
-      <span className="text-sm" aria-live="polite">
-        {chosen.length} selected
-      </span>
-      <Button
-        className="h-12 px-6"
-        disabled={chosen.length === 0 || busy}
-        onClick={() => void run()}
-      >
-        {busy
-          ? 'Working…'
-          : `${bringBack ? 'Bring back' : 'Archive'} ${chosen.length || ''}`.trim()}
-      </Button>
-    </div>
-  )
-}
-
-export function AdsPage() {
-  const me = useCurrentStaff()
-  const isAdmin = me.role === 'admin'
-  const ads = useAds()
-  const [params, setParams] = useSearchParams()
-  const filter = readAdFilter(`?${params.toString()}`)
-  const [selecting, setSelecting] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [message, setMessage] = useState('')
-  const shown = (ads.data ?? []).filter((ad) => matchesAdFilter(ad.status, filter))
-  const groups = groupAds(shown)
-  const stopSelecting = () => {
-    setSelecting(false)
-    setSelected(new Set())
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-section text-ink font-medium">Ads</h1>
-        {isAdmin && shown.length > 0 && (
-          <Button
-            variant="outline"
-            className="h-12"
-            aria-pressed={selecting}
-            onClick={() => (selecting ? stopSelecting() : (setSelecting(true), setMessage('')))}
-          >
-            {selecting ? 'Cancel' : 'Select'}
-          </Button>
-        )}
-      </div>
-      <fieldset className="min-w-0">
-        <legend className="sr-only">Show</legend>
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-          {AD_FILTERS.map(([key, label]) => (
-            <label key={key} className={chip}>
-              <input
-                type="radio"
-                name="ads-filter"
-                className="sr-only"
-                checked={filter === key}
-                onChange={() => {
-                  setParams(key === 'review' ? {} : { show: key }, { replace: true })
-                  stopSelecting()
-                }}
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <output className="block text-sm">{message}</output>
-      {ads.isPending ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" aria-busy="true">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="aspect-[4/5] w-full" />
-          ))}
-        </div>
-      ) : ads.isError ? (
-        <Alert variant="destructive" role="alert">
-          <AlertDescription>
-            Could not load the ads.{' '}
-            <Button variant="outline" size="sm" onClick={() => void ads.refetch()}>
-              Try again
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : shown.length === 0 ? (
-        <p className="bg-background text-muted-foreground rounded-md border p-6 text-center">
-          {ads.data.length === 0
-            ? 'No ads yet. They appear here when one is published from the ad studio.'
-            : 'No ads here.'}
-        </p>
-      ) : (
-        groups.map((group) => (
-          <section key={group.set} aria-label={group.set} className="flex flex-col gap-2">
-            <h2 className="text-base font-medium">{group.set}</h2>
-            <ul className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {group.ads.map((ad) => (
-                <li key={ad.id}>
-                  <AdTile
-                    ad={ad}
-                    filter={filter}
-                    selecting={selecting}
-                    selected={selected.has(ad.id)}
-                    onToggle={() =>
-                      setSelected((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(ad.id)) next.delete(ad.id)
-                        else next.add(ad.id)
-                        return next
-                      })
-                    }
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
-      {selecting && ads.data && (
-        <SelectBar
-          ads={shown}
-          selected={selected}
-          filter={filter}
-          onDone={(text) => {
-            setMessage(text)
-            stopSelecting()
-          }}
-        />
-      )}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------------------------
 // The ad page: preview first, then review, the words to post, and everything else under More.
@@ -905,6 +673,8 @@ function AdView({ ad }: { ad: Ad }) {
         <div className="flex flex-col gap-4">
           <Review ad={ad} version={version} isCurrent={isCurrent} />
           <ToPost ad={ad} version={version} />
+          <AdCampaign ad={ad} />
+          <EnquiriesFromAd ad={ad} />
           <More ad={ad} version={version} isCurrent={isCurrent} />
         </div>
       </div>

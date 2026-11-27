@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { WorkItemsPicker } from '@/components/staff/work-items-picker'
+import { Confirm } from '@/components/staff/confirm'
 import { currentEstimate, siteAddress, updatedQuoteDueLine } from '@/lib/enquiry-stage'
 import { formatDayMonth } from '@/lib/format'
 import { formatEuro, PRICE_MAX, PRICE_MIN } from '../../../supabase/functions/_shared/estimate.ts'
@@ -377,44 +378,27 @@ function QuoteForm({
         </p>
       )}
       {confirming && validPrice ? (
-        <div role="alertdialog" aria-labelledby="quote-confirm" className="rounded-md border p-3">
-          <p id="quote-confirm" className="font-medium">
-            Send the quote for {formatEuro(n)} to {email}?
-          </p>
-          <p className="text-muted-foreground mt-1 text-sm">
-            The email and its PDF go within a minute. The enquiry is marked quoted.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <Button
-              type="button"
-              className="h-12 sm:px-6"
-              disabled={send.isPending}
-              onClick={() => {
-                if (!check()) return setConfirming(false)
-                send.mutate(
-                  {
-                    price: n,
-                    included,
-                    excluded,
-                    note,
-                    estimateId: previous?.estimate_id ?? estimate?.id ?? null,
-                  },
-                  { onSuccess: () => onSent(email ?? '') },
-                )
-              }}
-            >
-              {send.isPending ? 'Sending…' : 'Yes, send it'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 sm:px-6"
-              onClick={() => setConfirming(false)}
-            >
-              Not yet
-            </Button>
-          </div>
-        </div>
+        <Confirm
+          question={`Send the quote for ${formatEuro(n)} to ${email}?`}
+          detail="The email and its PDF go within a minute. The enquiry is marked quoted."
+          confirm="Yes, send it"
+          pendingLabel="Sending…"
+          pending={send.isPending}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            if (!check()) return setConfirming(false)
+            send.mutate(
+              {
+                price: n,
+                included,
+                excluded,
+                note,
+                estimateId: previous?.estimate_id ?? estimate?.id ?? null,
+              },
+              { onSuccess: () => onSent(email ?? '') },
+            )
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button type="submit" className="h-12 sm:px-6" disabled={!email}>
@@ -444,6 +428,8 @@ export function QuoteSection({ enquiry, now }: { enquiry: EnquiryDetail; now: nu
     const show = () => {
       setOpen(true)
       setSentTo(null)
+      // The section may be folded on the enquiry page: open it, then bring it into view.
+      document.getElementById('fold-quote')?.setAttribute('open', '')
       window.requestAnimationFrame(() =>
         document.getElementById('quote')?.scrollIntoView({ behavior: 'smooth' }),
       )

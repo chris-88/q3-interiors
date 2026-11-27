@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronLeft, Mail, MapPin, Phone } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Mail, MapPin, Phone } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import {
   ENQUIRY_STATUSES,
@@ -11,66 +11,52 @@ import {
   useEnquiryPhotoFile,
   useEnquiryPhotos,
   useFormVersions,
-  useSetEnquiryStatus,
   statusLabel,
   type EnquiryAttribution,
   type EnquiryDetail,
   type EnquiryEvent,
   type EnquiryPhoto,
 } from '@/api/enquiries'
-import { useEnquiryBookings, type StaffBooking } from '@/api/staff-booking'
-import {
-  AfterCallChoices,
-  BookACall,
-  MissedAppointment,
-  WeAlreadySpoke,
-  WRITE_ESTIMATE_EVENT,
-} from '@/components/staff/after-call'
-import { BookingActions } from '@/components/staff/booking-actions'
-import { QuoteSection, QuoteSummary, WRITE_QUOTE_EVENT } from '@/components/staff/quote-section'
 import { currentQuote } from '@/api/quotes'
+import { useEnquiryBookings } from '@/api/staff-booking'
+import { BookingActions } from '@/components/staff/booking-actions'
 import { ChaseForm } from '@/components/staff/chase-form'
-import { DueChip } from '@/components/staff/due-chip'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
+import { ActionBar, barAction, NowCard, StageStrip } from '@/components/staff/enquiry-now'
+import { EstimateSection, estimateSource } from '@/components/staff/estimate-section'
 import {
-  EstimateSection,
-  EstimateSummary,
-  estimateVisits,
-} from '@/components/staff/estimate-section'
-import { enquiryName, projectLine, storedSearch } from '@/components/staff/enquiry-text'
+  enquiryName,
+  projectLine,
+  projectType,
+  storedSearch,
+} from '@/components/staff/enquiry-text'
 import { eventLine } from '@/components/staff/event-text'
 import { ListWalk } from '@/components/staff/list-walk'
-import { OutcomeForm } from '@/components/staff/outcome-form'
-import { StageBadge } from '@/components/staff/stage-badge'
+import { QuoteSection } from '@/components/staff/quote-section'
 import { useLoadedAt } from '@/components/staff/use-loaded-at'
 import { StatusForm } from '@/components/staff/status-form'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { formatAnswer, visibleFields } from '@/forms/logic'
 import type { FormDefinition } from '@/forms/types'
 import { appointmentBadge } from '@/lib/agenda'
 import {
-  missedBooking,
   currentEstimate,
   directionsHref,
-  enquiryStage,
-  mailHref,
-  nextStep,
-  passedBooking,
-  siteAddress,
-  telHref,
-  upcomingBooking,
   groupStages,
+  mailHref,
+  siteAddress,
   stageOf,
+  telHref,
 } from '@/lib/enquiry-stage'
-import { formatDateTime, formatShortWhen } from '@/lib/format'
-import { OUTCOME_STAGES } from '@/lib/outcome'
+import { formatDateTime, formatDayMonth, formatShortWhen } from '@/lib/format'
 import { isKnown } from '@/lib/tolerant'
 import { neighbours } from '@/lib/walk'
 import { findProject } from '@/lib/website'
+import { formatEuro, formatRange } from '../../../supabase/functions/_shared/estimate.ts'
 
 // ---------------------------------------------------------------------------------------------
 // Small parts
@@ -179,335 +165,6 @@ function QuickActions({ enquiry }: { enquiry: EnquiryDetail }) {
 // ---------------------------------------------------------------------------------------------
 // Next step: the one thing to do at this stage
 // ---------------------------------------------------------------------------------------------
-
-function MarkContacted({ enquiry }: { enquiry: EnquiryDetail }) {
-  const setStatus = useSetEnquiryStatus()
-  if (enquiry.status === 'contacted' || !isKnown(ENQUIRY_STATUSES, enquiry.status)) return null
-  return (
-    <>
-      <Button
-        variant="outline"
-        className="h-12 w-full sm:w-auto sm:px-6"
-        disabled={setStatus.isPending}
-        onClick={() => setStatus.mutate({ id: enquiry.id, status: 'contacted', reason: null })}
-      >
-        {setStatus.isPending ? 'Saving…' : 'Mark as contacted'}
-      </Button>
-      {setStatus.isError && (
-        <p role="alert" className="text-destructive text-sm">
-          Not saved. Try again.
-        </p>
-      )}
-    </>
-  )
-}
-
-function outcomeOf(e: EnquiryDetail) {
-  return {
-    stage: isKnown(OUTCOME_STAGES, e.outcome) ? e.outcome : null,
-    quoteAmount: e.quote_amount,
-    quoteDate: e.quote_date,
-    wonValue: e.outcome_value,
-    wonDate: e.won_date,
-    reason: e.outcome_reason,
-    note: e.outcome_note,
-  }
-}
-
-const outcomeKey = (e: EnquiryDetail) =>
-  `${e.outcome}-${e.outcome_value}-${e.quote_amount}-${e.outcome_reason}-${e.won_date}-${e.quote_date}-${e.outcome_note}`
-
-/** For stages before an outcome: record a quote, win or loss without hunting for it. */
-function OutcomeLater({
-  enquiry,
-  label = 'Record a quote or result',
-}: {
-  enquiry: EnquiryDetail
-  label?: string
-}) {
-  const [open, setOpen] = useState(false)
-  if (!open)
-    return (
-      <Button
-        variant="ghost"
-        className="h-12 self-start px-2 underline underline-offset-4"
-        onClick={() => setOpen(true)}
-      >
-        {label}
-      </Button>
-    )
-  return (
-    <div className="border-t pt-3">
-      <OutcomeForm
-        key={outcomeKey(enquiry)}
-        enquiryId={enquiry.id}
-        current={outcomeOf(enquiry)}
-        badge={false}
-        primary="quote"
-      />
-    </div>
-  )
-}
-
-function AppointmentSummary({ booking }: { booking: StaffBooking }) {
-  const badge = appointmentBadge(booking)
-  return (
-    <div className="flex flex-col gap-0.5">
-      <p className="text-muted-foreground text-sm">{booking.appointment_types.label}</p>
-      <p className="text-title text-ink leading-tight font-medium tabular-nums">
-        {formatShortWhen(booking.starts_at)}
-      </p>
-      {badge && (
-        <div>
-          <Badge variant="outline">{badge.label}</Badge>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function NextStepCard({
-  enquiry,
-  bookings,
-  now,
-}: {
-  enquiry: EnquiryDetail
-  bookings: ReturnType<typeof useEnquiryBookings>
-  now: number
-}) {
-  const stage = enquiryStage(enquiry, now)
-  const step = nextStep(stage.key)
-  const call = telHref(enquiry.answers.phone)
-  const first = enquiryName(enquiry).split(' ')[0]
-  const needsBooking = step === 'appointment' || step === 'record'
-  const featured = featuredBooking(enquiry, bookings.data ?? [], now)
-  // While the "Book a call" panel is open, its Book button is the one filled action.
-  const [bookingCall, setBookingCall] = useState(false)
-  const bookCall = <BookACall enquiry={enquiry} onOpenChange={setBookingCall} />
-
-  let body: ReactNode
-  if (needsBooking && bookings.isPending) body = <Skeleton className="h-24 w-full" />
-  else if (needsBooking && bookings.isError)
-    body = <p className="text-destructive text-sm">Could not load the appointment.</p>
-  else if (step === 'contact')
-    body = (
-      <>
-        <p>
-          Asked to be contacted
-          {enquiry.contact_requested_at ? `, ${formatDateTime(enquiry.contact_requested_at)}` : ''}
-          {enquiry.contact_request_reason ? `: ${enquiry.contact_request_reason}` : ''}.
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {call && (
-            <a
-              href={call}
-              className={buttonVariants({
-                variant: bookingCall ? 'outline' : 'default',
-                className: 'h-12 w-full sm:w-auto sm:px-6',
-              })}
-            >
-              Ring {first}
-            </a>
-          )}
-          <MarkContacted enquiry={enquiry} />
-          <WeAlreadySpoke enquiry={enquiry} call={null} />
-        </div>
-        {bookCall}
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'reach')
-    body = (
-      <>
-        <p>Not booked yet. Ring or email to arrange a time.</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <MarkContacted enquiry={enquiry} />
-          <WeAlreadySpoke enquiry={enquiry} call={null} />
-        </div>
-        {bookCall}
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'waiting')
-    body = (
-      <>
-        <p>Contacted. Nothing booked yet.</p>
-        <WeAlreadySpoke enquiry={enquiry} call={null} />
-        {bookCall}
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'appointment' && featured)
-    body = (
-      <>
-        <AppointmentSummary booking={featured} />
-        <BookingActions booking={featured} attendance={false} />
-        {featured.appointment_types.mode === 'phone' && (
-          <WeAlreadySpoke enquiry={enquiry} call={featured} />
-        )}
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'missed') {
-    const missed = missedBooking(enquiry, now)
-    body = (
-      <>
-        <MissedAppointment
-          enquiry={enquiry}
-          mode={stage.key === 'missed_visit' ? 'on_site' : 'phone'}
-          when={missed?.starts_at ?? null}
-        />
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  } else if (step === 'after_call')
-    body = (
-      <>
-        <AfterCallChoices enquiry={enquiry} now={now} />
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'record')
-    body = (
-      <>
-        {featured ? (
-          <>
-            <AppointmentSummary booking={featured} />
-            <BookingActions booking={featured} moveCancel={false} />
-          </>
-        ) : (
-          <p>The appointment has happened.</p>
-        )}
-        <p className="text-sm">No estimate sent yet.</p>
-        {estimateVisits(bookings.data ?? []).length > 0 && (
-          <Button
-            className="h-12 w-full sm:w-auto sm:px-6"
-            onClick={() => window.dispatchEvent(new Event(WRITE_ESTIMATE_EVENT))}
-          >
-            Write the estimate
-          </Button>
-        )}
-        {/* Won and lost before anything has gone out stay one tap away, not as buttons. */}
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'estimate') {
-    const estimate = currentEstimate(enquiry.estimates)
-    body = (
-      <>
-        {estimate && <EstimateSummary estimate={estimate} now={now} />}
-        {stage.key === 'quote_requested' ? (
-          <>
-            <p className="text-sm">They asked for their quote.</p>
-            <Button
-              className="h-12 w-full sm:w-auto sm:px-6"
-              onClick={() => window.dispatchEvent(new Event(WRITE_QUOTE_EVENT))}
-            >
-              Write the quote
-            </Button>
-            <OutcomeLater enquiry={enquiry} label="Record a quote sent another way" />
-          </>
-        ) : (
-          <>
-            {stage.key === 'no_answer' && (
-              <p className="text-sm">No answer after 10 days. Ring to follow up.</p>
-            )}
-            <OutcomeLater enquiry={enquiry} />
-          </>
-        )}
-      </>
-    )
-  } else if (step === 'quote_change' || (step === 'quoted' && currentQuote(enquiry.quotes))) {
-    const quote = currentQuote(enquiry.quotes)
-    body = (
-      <>
-        {quote && <QuoteSummary enquiry={enquiry} quote={quote} now={now} />}
-        {step === 'quote_change' && (
-          <Button
-            className="h-12 w-full sm:w-auto sm:px-6"
-            onClick={() => window.dispatchEvent(new Event(WRITE_QUOTE_EVENT))}
-          >
-            Send an updated quote
-          </Button>
-        )}
-        <OutcomeForm
-          key={outcomeKey(enquiry)}
-          enquiryId={enquiry.id}
-          current={outcomeOf(enquiry)}
-          badge={false}
-          primary="won"
-        />
-      </>
-    )
-  } else if (step === 'quoted' || step === 'result')
-    body = (
-      <OutcomeForm
-        key={outcomeKey(enquiry)}
-        enquiryId={enquiry.id}
-        current={outcomeOf(enquiry)}
-        badge={false}
-        primary={step === 'quoted' ? 'won' : 'none'}
-      />
-    )
-  else if (step === 'closed')
-    body = (
-      <>
-        <p>Marked not suitable{enquiry.status_reason ? `: ${enquiry.status_reason}` : ''}.</p>
-        <OutcomeLater enquiry={enquiry} />
-      </>
-    )
-  else if (step === 'appointment')
-    // The list said booked but the appointment is gone (moved or cancelled since): show the rest.
-    body = <p>No upcoming appointment now. Reload to see the latest.</p>
-  else
-    body = (
-      <NewerValue
-        what={
-          enquiry.outcome !== null && !isKnown(OUTCOME_STAGES, enquiry.outcome)
-            ? `Outcome: ${enquiry.outcome} ${enquiry.outcome_reason ?? ''}`
-            : `Status: ${enquiry.status}`
-        }
-      />
-    )
-
-  return (
-    <section
-      aria-labelledby="next-step"
-      className="bg-background border-action flex flex-col gap-3 rounded-md border-2 p-4"
-    >
-      <h2 id="next-step" className="text-base font-medium">
-        {step === 'result' ? 'Result' : 'Next step'}
-      </h2>
-      {body}
-    </section>
-  )
-}
-
-/**
- * The booking the Next step card holds (the next appointment, or the one that just happened), so
- * the list below does not repeat its controls. A full booking row has no confirmed time; its
- * state stands in for it.
- */
-function featuredBooking(
-  enquiry: EnquiryDetail,
-  bookings: StaffBooking[],
-  now: number,
-): StaffBooking | null {
-  const step = nextStep(enquiryStage(enquiry, now).key)
-  const rows = bookings.map((b) => ({
-    ...b,
-    confirmed_at: b.state === 'confirmed' ? b.starts_at : null,
-  }))
-  if (step === 'appointment') return upcomingBooking(rows, now)
-  if (step === 'record') return passedBooking(rows, now)
-  return null
-}
-
-/** Next step already offers "Write the estimate", so the Estimate section does not repeat it. */
-function writeOfferedAbove(enquiry: EnquiryDetail, bookings: StaffBooking[], now: number): boolean {
-  const step = nextStep(enquiryStage(enquiry, now).key)
-  return step === 'after_call' || (step === 'record' && estimateVisits(bookings).length > 0)
-}
 
 // ---------------------------------------------------------------------------------------------
 // Sections
@@ -936,33 +593,64 @@ function History({ events }: { events: EnquiryEvent[] }) {
   )
 }
 
-function More({ enquiry }: { enquiry: EnquiryDetail }) {
+function Details({ enquiry }: { enquiry: EnquiryDetail }) {
   return (
-    <details className="bg-background group rounded-md border">
-      <summary className="flex min-h-12 cursor-pointer items-center px-4 text-base font-medium">
-        More
-      </summary>
-      <div className="flex flex-col gap-3 border-t p-3">
-        <p className="text-muted-foreground px-1 text-xs">
-          Form: {enquiry.form_id} version {enquiry.form_version}
-        </p>
-        <History events={enquiry.enquiry_events} />
-        <Attribution attribution={enquiry.enquiry_attribution} />
-        <Section title="Had to chase details">
-          <ChaseForm
-            key={`${enquiry.chase_flagged_at}-${enquiry.chase_note}`}
-            enquiryId={enquiry.id}
-            current={{
-              at: enquiry.chase_flagged_at,
-              note: enquiry.chase_note,
-              by: enquiry.chase_flagged_by_name,
-            }}
+    <div className="flex flex-col gap-3">
+      <p className="text-sm">
+        Reference <span className="font-mono">{enquiry.reference}</span> · received{' '}
+        <time dateTime={enquiry.submitted_at}>{formatDateTime(enquiry.submitted_at)}</time> · form{' '}
+        {enquiry.form_id} version {enquiry.form_version}
+      </p>
+      <Attribution attribution={enquiry.enquiry_attribution} />
+      <Section title="Had to chase details">
+        <ChaseForm
+          key={`${enquiry.chase_flagged_at}-${enquiry.chase_note}`}
+          enquiryId={enquiry.id}
+          current={{
+            at: enquiry.chase_flagged_at,
+            note: enquiry.chase_note,
+            by: enquiry.chase_flagged_by_name,
+          }}
+        />
+      </Section>
+      <Section title="Delete">
+        <DeleteEnquiry enquiryId={enquiry.id} reference={enquiry.reference} />
+      </Section>
+    </div>
+  )
+}
+
+/**
+ * A section folded to one line that opens in place (review P3): the title and a short summary.
+ * Its section keeps its name for screen readers; the heading inside is not shown twice.
+ */
+function Fold({
+  id,
+  title,
+  summary,
+  children,
+}: {
+  id: string
+  title: string
+  summary?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <details
+      id={`fold-${id}`}
+      className="bg-background group rounded-md border [&_section]:border-0 [&_section]:p-0 [&>div>section>h2]:sr-only [&>div>section>h2+div]:mt-0"
+    >
+      <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 [&::-webkit-details-marker]:hidden">
+        <span className="font-medium">{title}</span>
+        <span className="text-muted-foreground flex min-w-0 items-center gap-1 text-right text-sm">
+          <span className="min-w-0 break-words">{summary}</span>
+          <ChevronRight
+            className="size-4 shrink-0 transition-transform group-open:rotate-90"
+            aria-hidden="true"
           />
-        </Section>
-        <Section title="Delete">
-          <DeleteEnquiry enquiryId={enquiry.id} reference={enquiry.reference} />
-        </Section>
-      </div>
+        </span>
+      </summary>
+      <div className="flex flex-col gap-4 border-t p-4">{children}</div>
     </details>
   )
 }
@@ -977,57 +665,107 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
   const form = forms.data?.get(`${enquiry.form_id}@${enquiry.form_version}`)
   const siteForm = forms.data?.get(`site_details@${enquiry.site_details_form_version ?? 1}`)
   const view = stageOf(enquiry, now)
-  const stage = view
-  const featured = featuredBooking(enquiry, bookings.data ?? [], now)?.id ?? null
+  const rows = bookings.data ?? []
+  const address = siteAddress(enquiry.answers, enquiry.site_details)
+  const job = projectType(enquiry, form)
+  const latest = [...rows].sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))[0]
+  const estimate = currentEstimate(enquiry.estimates)
+  const quote = currentQuote(enquiry.quotes)
+  const showEstimate = !!estimate || (bookings.data && !!estimateSource(enquiry, rows, now))
+  const showQuote = !!quote || enquiry.estimates.length > 0
+  const notes = enquiry.enquiry_events.filter((e) => e.kind === 'note_added').length
+  const bar = barAction(view)
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-      <div className="flex flex-col gap-4 lg:sticky lg:top-4">
-        <div className="flex flex-col gap-1">
+    <div className="grid grid-cols-1 gap-4 pb-24 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:pb-0">
+      <div className="flex flex-col gap-3 lg:sticky lg:top-4">
+        <div className="flex flex-col gap-0.5">
           <h1 className="text-title text-ink leading-tight font-medium break-words">
             {enquiryName(enquiry)}
           </h1>
-          <p className="text-muted-foreground">{projectLine(enquiry, form)}</p>
+          <p className="text-muted-foreground break-words">
+            {[
+              job,
+              address ??
+                (typeof enquiry.answers.location === 'string' ? enquiry.answers.location : null),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
           {enquiry.inspiration && (
             <p className="text-sm">
               Came from the website: {websiteProjectLine(enquiry.inspiration)}
             </p>
           )}
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <StageBadge stage={stage} />
-            <DueChip view={view} />
-            <span className="text-muted-foreground font-mono text-xs">{enquiry.reference}</span>
-            <span className="text-muted-foreground text-xs">
-              Received{' '}
-              <time dateTime={enquiry.submitted_at}>{formatDateTime(enquiry.submitted_at)}</time>
-            </span>
-          </div>
         </div>
+        <StageStrip view={view} />
         <QuickActions enquiry={enquiry} />
-        <NextStepCard enquiry={enquiry} bookings={bookings} now={now} />
+        <NowCard enquiry={enquiry} view={view} />
+        <ActionBar enquiry={enquiry} view={view} bookings={rows} now={now} />
       </div>
-      <div className="flex flex-col gap-4">
-        {forms.isPending ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <Project enquiry={enquiry} form={form} siteForm={siteForm} />
-        )}
-        <Prepared
-          enquiry={enquiry}
-          form={forms.data?.get(`prepare@${enquiry.prepare_form_version ?? 1}`)}
-          siteForm={siteForm}
-        />
-        {bookings.data && (
-          <EstimateSection
+      <div className="flex flex-col gap-3">
+        <Fold id="answers" title="Their answers" summary={projectLine(enquiry, form)}>
+          {forms.isPending ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <Project enquiry={enquiry} form={form} siteForm={siteForm} />
+          )}
+          <Prepared
             enquiry={enquiry}
-            bookings={bookings.data}
-            now={now}
-            offeredAbove={writeOfferedAbove(enquiry, bookings.data, now)}
+            form={forms.data?.get(`prepare@${enquiry.prepare_form_version ?? 1}`)}
+            siteForm={siteForm}
           />
+        </Fold>
+        {(rows.length > 0 || bookings.isPending || bookings.isError) && (
+          <Fold
+            id="appointments"
+            title="Appointments"
+            summary={
+              latest
+                ? `${formatShortWhen(latest.starts_at)}${latest.attendance === 'attended' ? ' · went ahead' : latest.state === 'cancelled' ? ' · cancelled' : ''}`
+                : null
+            }
+          >
+            <Appointments bookings={bookings} featured={null} />
+          </Fold>
         )}
-        <QuoteSection enquiry={enquiry} now={now} />
-        <Appointments bookings={bookings} featured={featured} />
-        <Notes enquiry={enquiry} />
-        <More enquiry={enquiry} />
+        {showEstimate && bookings.data && (
+          <Fold
+            id="estimate"
+            title="Estimate"
+            summary={
+              estimate
+                ? `Sent ${formatDayMonth(estimate.sent_at)} · ${formatRange(estimate.low_eur, estimate.high_eur)}`
+                : 'Not sent yet'
+            }
+          >
+            <EstimateSection
+              enquiry={enquiry}
+              bookings={bookings.data}
+              now={now}
+              offeredAbove={bar === 'write_estimate' || bar === 'choose_next'}
+            />
+          </Fold>
+        )}
+        {showQuote && (
+          <Fold
+            id="quote"
+            title="Quote"
+            summary={quote ? `${quote.number} · ${formatEuro(quote.price_eur)}` : 'Not sent yet'}
+          >
+            <QuoteSection enquiry={enquiry} now={now} />
+          </Fold>
+        )}
+        <Fold
+          id="activity"
+          title="Notes and history"
+          summary={notes === 1 ? '1 note' : notes > 1 ? `${notes} notes` : 'Add a note'}
+        >
+          <Notes enquiry={enquiry} />
+          <History events={enquiry.enquiry_events} />
+        </Fold>
+        <Fold id="details" title="Details" summary="Reference, source, delete">
+          <Details enquiry={enquiry} />
+        </Fold>
       </div>
     </div>
   )

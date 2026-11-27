@@ -1,6 +1,17 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld, type StaffWorld } from './fake-staff'
+import {
+  chooseAction,
+  installFakeStaff,
+  nowCard,
+  openActions,
+  openFold,
+  openFolds,
+  primaryAction,
+  signIn,
+  type StaffWorld,
+  staffWorld,
+} from './fake-staff'
 
 /*
  * The redesigned Enquiries list, enquiry page and Appointments agenda. Fake backend only (sample
@@ -335,6 +346,7 @@ test('the enquiry page walks the list and offers call, email and directions', as
   await expect(walk).toContainText('3 of 7')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
   await expect(page.getByText('Kitchen · Dublin 8').first()).toBeVisible()
+  await openFold(page, 'Details')
   await expect(page.getByText('Q3-CALL01')).toBeVisible()
   await walk.getByRole('link', { name: 'Next' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Helen Example')
@@ -361,36 +373,54 @@ test('the enquiry page walks the list and offers call, email and directions', as
   }
 })
 
-test('Next step: a contact request, then marked contacted; empty answers are hidden', async ({
+test('the now card: a contact request, then marked contacted; empty answers are hidden', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-call01')
-  const next = page.getByRole('region', { name: 'Next step' })
-  await expect(next).toContainText('Asked to be contacted')
-  await expect(next).toContainText('No suitable time online')
-  await expect(next.getByRole('link', { name: 'Ring Aoife' })).toHaveAttribute(
-    'href',
-    'tel:0877654321',
+  await expect(nowCard(page)).toContainText('Your move')
+  await expect(nowCard(page)).toContainText('Asked us to ring')
+  await expect(nowCard(page)).toContainText('No suitable time online')
+  // One primary in the bar: ring them.
+  await expect(primaryAction(page)).toHaveText('Ring Aoife')
+  await expect(primaryAction(page)).toHaveAttribute('href', 'tel:0877654321')
+  // The strip says where they are.
+  await expect(page.getByRole('list', { name: 'Where they are' }).getByRole('listitem')).toHaveText(
+    ['Call (now)', 'Site visit', 'Estimate', 'Quote', 'Deposit'],
   )
-  // Empty answers are left out, not shown as "Not given".
+  // Sections are folded to one line each; empty answers are left out when opened.
+  await expect(page.getByRole('region', { name: 'Project' })).toBeHidden()
+  await openFold(page, 'Their answers')
   const project = page.getByRole('region', { name: 'Project' })
   await expect(project).toContainText('Town or Eircode')
   await expect(project).not.toContainText('House name or number and street')
   await expect(project).not.toContainText('layout')
   await expect(page.getByText(/Not given|Not answered/)).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Help us prepare' })).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Appointments' })).toHaveCount(0)
+  await expect(page.locator('#fold-appointments')).toHaveCount(0)
   await shot(page, 'enquiry-contact-390')
 
-  await next.getByRole('button', { name: 'Mark as contacted' }).click()
-  await expect(next).toContainText('Contacted. Nothing booked yet.')
-  await expect(page.getByText('Contacted', { exact: true }).first()).toBeVisible()
+  // Other actions: each says what it does; Mark as contacted is one of them.
+  const sheet = await openActions(page)
+  await expect(sheet.getByRole('heading', { name: 'Call back: other actions' })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^Mark as contacted/ })).toContainText(
+    'Records that you were in touch',
+  )
+  for (const row of await sheet.getByRole('listitem').all())
+    expect((await row.boundingBox())?.height).toBeGreaterThanOrEqual(56)
+  await shot(page, 'enquiry-actions-sheet-390')
+  await sheet.getByRole('button', { name: /^Mark as contacted/ }).click()
+  await sheet.getByRole('button', { name: 'Mark as contacted' }).click()
+  await page.keyboard.press('Escape')
+  await expect(nowCard(page)).toContainText('Waiting on Aoife')
+  await expect(nowCard(page)).toContainText('Contacted, nothing booked')
+  // Focus is back on the button that opened the sheet.
+  await expect(page.getByRole('button', { name: 'More actions' })).toBeFocused()
   expect(world.rpcCalls.filter((c) => c.name === 'set_enquiry_status').map((c) => c.body)).toEqual([
     { p_enquiry_id: 'e-call01', p_status: 'contacted', p_reason: null },
   ])
 })
 
-test('Next step: an upcoming appointment, moved and then cancelled from the card', async ({
+test('an appointment to come: in the diary; moved, then cancelled, from the actions', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-visit1')
@@ -406,24 +436,30 @@ test('Next step: an upcoming appointment, moved and then cancelled from the card
       },
     ],
   }
-  const next = page.getByRole('region', { name: 'Next step' })
-  await expect(next).toContainText('On-site estimate visit')
-  await expect(next).toContainText('Fri 27 Nov, 10:30')
-  // The past, cancelled call is in the history list with its badge; the card holds the visit.
+  await expect(nowCard(page)).toContainText('In the diary')
+  await expect(nowCard(page)).toContainText('Site visit Fri 27 Nov, 10:30')
+  // The past, cancelled call is in the appointments with its badge, without Move.
+  await openFold(page, 'Appointments')
   const appointments = page.getByRole('region', { name: 'Appointments' })
   await expect(appointments).toContainText('Cancelled')
   await expect(appointments.getByRole('button', { name: 'Move' })).toHaveCount(0)
   await shot(page, 'enquiry-appointment-390')
 
-  await next.getByRole('button', { name: 'Move' }).click()
-  await next.getByRole('button', { name: /11:00/ }).click()
-  await next.getByRole('button', { name: 'Move to 11:00' }).click()
-  await expect(next).toContainText('Mon 30 Nov, 11:00')
+  await expect(primaryAction(page)).toHaveText('Move or cancel')
+  await primaryAction(page).click()
+  const sheet = page.getByRole('dialog')
+  await sheet.getByRole('button', { name: 'Move' }).click()
+  await sheet.getByRole('button', { name: /11:00/ }).click()
+  await sheet.getByRole('button', { name: 'Move to 11:00' }).click()
+  await page.keyboard.press('Escape')
+  await expect(nowCard(page)).toContainText('Mon 30 Nov, 11:00')
 
-  await next.getByRole('button', { name: 'Cancel' }).click()
-  await next.getByLabel('Reason (shown in history)').fill('Customer rang to cancel')
-  await next.getByRole('button', { name: 'Cancel appointment' }).click()
-  await expect(next).toContainText('Contacted. Nothing booked yet.')
+  await primaryAction(page).click()
+  await sheet.getByRole('button', { name: 'Cancel' }).click()
+  await sheet.getByLabel('Reason (shown in history)').fill('Customer rang to cancel')
+  await sheet.getByRole('button', { name: 'Cancel appointment' }).click()
+  await page.keyboard.press('Escape')
+  await expect(nowCard(page)).toContainText('Contacted, nothing booked')
   const booking = (world.tables.bookings as Record<string, unknown>[]).find(
     (b) => b.id === 'b-visit',
   )
@@ -431,44 +467,52 @@ test('Next step: an upcoming appointment, moved and then cancelled from the card
   expect(booking?.cancel_reason).toBe('Customer rang to cancel')
 })
 
-test('Next step: after the appointment, attendance and the quote; then won from Quoted', async ({
+test('after the appointment: how it went, a quote recorded; then won from the actions', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-await1')
-  const next = page.getByRole('region', { name: /^(Next step|Result)$/ })
-  await expect(next).toContainText('Tue 24 Nov, 10:00')
-  await expect(next).toContainText('No estimate sent yet.')
-  await next.getByRole('button', { name: 'Attended' }).click()
-  await expect(next.getByRole('button', { name: 'Attended' })).toHaveAttribute(
+  await expect(nowCard(page)).toContainText('How did it go?')
+  await expect(nowCard(page)).toContainText('Site visit Tue 24 Nov')
+  await expect(primaryAction(page)).toHaveText('How did it go?')
+  await primaryAction(page).click()
+  const sheet = page.getByRole('dialog')
+  await sheet.getByRole('button', { name: 'Attended' }).click()
+  await expect(sheet.getByRole('button', { name: 'Attended' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
-  await next.getByRole('button', { name: 'Record a quote or result' }).click()
-  await next.getByRole('button', { name: 'Record quote' }).click()
-  await next.getByLabel('Quote amount (€, incl. VAT)').fill('12,300')
-  await next.getByLabel('Date quoted').fill('2026-11-25')
-  await next.getByRole('button', { name: 'Save quote' }).click()
-  await expect(next).toContainText('Quoted €12,300.00 on 25 Nov 2026')
-  await expect(next.getByRole('button', { name: 'Mark won' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(nowCard(page)).toContainText('Write the estimate')
+  const quote = await chooseAction(page, /^Record a quote or result/)
+  await quote.getByRole('button', { name: 'Record quote' }).click()
+  await quote.getByLabel('Quote amount (€, incl. VAT)').fill('12,300')
+  await quote.getByLabel('Date quoted').fill('2026-11-25')
+  await quote.getByRole('button', { name: 'Save quote' }).click()
+  await expect(quote).toContainText('Quoted €12,300.00 on 25 Nov 2026')
   expect(world.rpcCalls.map((c) => c.name)).toEqual(
     expect.arrayContaining(['set_booking_attendance', 'record_enquiry_outcome']),
   )
 
-  // A quoted enquiry: Mark won is the main action, Edit quote and Mark lost beside it.
+  // A quoted enquiry waits on them; Mark won stays among the other actions.
   await page.goto('/#/enquiries/e-quote1')
-  await expect(next).toContainText('Quoted €18,450.00 on 21 Nov 2026')
-  await expect(next.getByRole('button', { name: 'Edit quote' })).toBeVisible()
-  await expect(next.getByRole('button', { name: 'Mark lost' })).toBeVisible()
+  await expect(nowCard(page)).toContainText('Waiting on')
+  await expect(nowCard(page)).toContainText('Quoted €18,450')
   await shot(page, 'enquiry-quoted-390')
-  await next.getByRole('button', { name: 'Mark won' }).click()
-  await next.getByLabel('Date won').fill('2026-11-25')
-  await next.getByRole('button', { name: 'Save as won' }).click()
-  await expect(next).toContainText('Won €18,450.00 on 25 Nov 2026')
-  await expect(next.getByRole('button', { name: 'Edit win' })).toBeVisible()
+  const won = await chooseAction(page, /^Mark won/)
+  await won.getByRole('button', { name: 'Mark won' }).click()
+  await won.getByLabel('Date won').fill('2026-11-25')
+  await won.getByRole('button', { name: 'Save as won' }).click()
+  await page.keyboard.press('Escape')
+  // Won: the result only; corrections are in the actions.
+  await expect(nowCard(page)).toContainText('Result')
+  await expect(nowCard(page)).toContainText('Won €18,450')
+  const fix = await chooseAction(page, /^Correct the result/)
+  await expect(fix.getByRole('button', { name: 'Edit win' })).toBeVisible()
 })
 
 test('Notes, the demoted status, and everything else under More', async ({ page }) => {
   const world = await open(page, '/#/enquiries/e-new001')
+  await openFolds(page)
   // Ciara's answers include the kitchen layout; empty ones (rooms) are not shown.
   const project = page.getByRole('region', { name: 'Project' })
   await expect(project).toContainText('Changing it')
@@ -493,9 +537,7 @@ test('Notes, the demoted status, and everything else under More', async ({ page 
     page.getByRole('region', { name: 'Change status' }).getByLabel('Status'),
   ).toBeVisible()
 
-  // More: history, where they came from, chase, delete.
-  await expect(page.getByRole('region', { name: 'History' })).toBeHidden()
-  await page.getByText('More', { exact: true }).click()
+  // Notes and history together; Details: where they came from, chase, delete.
   await expect(page.getByRole('region', { name: 'History' })).toContainText('Note added')
   await expect(page.getByRole('region', { name: 'Where they came from' })).toContainText(
     'instagram',
@@ -558,9 +600,11 @@ test('desktop: the list, the enquiry in two columns, and the agenda', async ({ p
   await shot(page, 'list-desktop')
 
   await page.goto('/#/enquiries/e-visit1')
-  const next = page.getByRole('region', { name: 'Next step' })
-  const project = page.getByRole('region', { name: 'Project' })
+  // From 1024px the header, strip, now card and actions are the left column.
+  const next = nowCard(page)
+  const project = page.locator('#fold-answers')
   await expect(next).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
   const left = await next.boundingBox()
   const right = await project.boundingBox()
   expect(left && right && left.x + left.width <= right.x).toBe(true)

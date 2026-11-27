@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld } from './fake-staff'
+import { installFakeStaff, openFold, signIn, staffWorld } from './fake-staff'
 
 /*
  * Staff see where a website enquiry started and the new project type (form enquiry@3). Fake
@@ -81,6 +81,7 @@ test('the enquiry page says which website project it came from; v3 types read pl
   await expect(
     page.getByText('Came from the website: Georgian office fit-out, Fitzwilliam Square, Dublin 2'),
   ).toBeVisible()
+  await openFold(page, 'Their answers')
   await expect(page.getByRole('region', { name: 'Project' })).toContainText('Workplace fit-out')
   await shot(page, 'staff-enquiry-website-390')
 

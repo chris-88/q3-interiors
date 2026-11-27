@@ -10,6 +10,7 @@ import {
   type VisitSlot,
 } from '@/api/after-call'
 import type { EnquiryDetail } from '@/api/enquiries'
+import { Confirm } from '@/components/staff/confirm'
 import { SlotPicker } from '@/components/booking/slot-picker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -31,13 +32,23 @@ const wide = 'h-12 w-full sm:w-auto sm:px-6'
 export function WeAlreadySpoke({
   enquiry,
   call,
+  startConfirming = false,
+  onDone,
 }: {
   enquiry: EnquiryDetail
   /** The booked call still to come, if any. */
   call: { starts_at: string } | null
+  /** Open at the question (the actions sheet already asked which action). */
+  startConfirming?: boolean
+  /** Called once it is saved, or when the question is put away. */
+  onDone?: () => void
 }) {
   const held = useCallHeldEarly(enquiry.id)
-  const [confirming, setConfirming] = useState(false)
+  const [confirming, setConfirming] = useState(startConfirming)
+  const stop = () => {
+    setConfirming(false)
+    onDone?.()
+  }
   if (!confirming)
     return (
       <Button variant="outline" className={wide} onClick={() => setConfirming(true)}>
@@ -45,39 +56,35 @@ export function WeAlreadySpoke({
       </Button>
     )
   return (
-    <div role="alertdialog" aria-labelledby="spoke-confirm" className="rounded-md border p-3">
-      <p id="spoke-confirm" className="font-medium">
-        Record the call as held today?
-      </p>
-      <p className="text-muted-foreground mt-1 text-sm">
-        {call
+    <Confirm
+      question="Record the call as held today?"
+      detail={
+        call
           ? `The call booked for ${formatShortWhen(call.starts_at)} is cancelled and the time freed. No email goes to the customer and no reminder is sent.`
-          : 'Nothing is sent to the customer.'}
-      </p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <Button
-          className="h-12 sm:px-6"
-          disabled={held.isPending}
-          onClick={() => held.mutate(undefined, { onSuccess: () => setConfirming(false) })}
-        >
-          {held.isPending ? 'Saving…' : 'Yes, we spoke'}
-        </Button>
-        <Button variant="outline" className="h-12 sm:px-6" onClick={() => setConfirming(false)}>
-          Not yet
-        </Button>
-      </div>
-      {held.isError && (
-        <p role="alert" className="text-destructive mt-2 text-sm">
-          {held.error.message.includes('site visit booked')
+          : 'Nothing is sent to the customer.'
+      }
+      confirm="Yes, we spoke"
+      pending={held.isPending}
+      onConfirm={() => held.mutate(undefined, { onSuccess: stop })}
+      onCancel={stop}
+      error={
+        held.isError
+          ? held.error.message.includes('site visit booked')
             ? 'A site visit is already booked.'
-            : 'Not saved. Try again.'}
-        </p>
-      )}
-    </div>
+            : 'Not saved. Try again.'
+          : null
+      }
+    />
   )
 }
 
-function SendLinkPanel({ enquiry, onClose }: { enquiry: EnquiryDetail; onClose: () => void }) {
+export function SendLinkPanel({
+  enquiry,
+  onClose,
+}: {
+  enquiry: EnquiryDetail
+  onClose: () => void
+}) {
   const send = useSendVisitLink(enquiry.id)
   const email = text(enquiry.answers.email)
   const [sent, setSent] = useState(false)
@@ -94,37 +101,32 @@ function SendLinkPanel({ enquiry, onClose }: { enquiry: EnquiryDetail; onClose: 
       </output>
     )
   return (
-    <div role="alertdialog" aria-labelledby="link-confirm" className="rounded-md border p-3">
-      <p id="link-confirm" className="font-medium">
-        Email {email} a link to book their site visit?
-      </p>
-      <p className="text-muted-foreground mt-1 text-sm">
-        They pick a time from the same free times you see. Their details are kept.
-      </p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <Button
-          className="h-12 sm:px-6"
-          disabled={send.isPending}
-          onClick={() => send.mutate(undefined, { onSuccess: () => setSent(true) })}
-        >
-          {send.isPending ? 'Sending…' : 'Yes, send it'}
-        </Button>
-        <Button variant="outline" className="h-12 sm:px-6" onClick={onClose}>
-          Not yet
-        </Button>
-      </div>
-      {send.isError && (
-        <p role="alert" className="text-destructive mt-2 text-sm">
-          {send.error.message.includes('site visit booked')
+    <Confirm
+      question={`Email ${email} a link to book their site visit?`}
+      detail="They pick a time from the same free times you see. Their details are kept."
+      confirm="Yes, send it"
+      pending={send.isPending}
+      pendingLabel="Sending…"
+      onConfirm={() => send.mutate(undefined, { onSuccess: () => setSent(true) })}
+      onCancel={onClose}
+      error={
+        send.isError
+          ? send.error.message.includes('site visit booked')
             ? 'A site visit is already booked.'
-            : 'The link was not sent. Try again.'}
-        </p>
-      )}
-    </div>
+            : 'The link was not sent. Try again.'
+          : null
+      }
+    />
   )
 }
 
-function BookVisitPanel({ enquiry, onUseLink }: { enquiry: EnquiryDetail; onUseLink: () => void }) {
+export function BookVisitPanel({
+  enquiry,
+  onUseLink,
+}: {
+  enquiry: EnquiryDetail
+  onUseLink: () => void
+}) {
   const options = useVisitOptions(enquiry.id, true)
   const book = useBookVisit(enquiry.id)
   const [slot, setSlot] = useState<VisitSlot | null>(null)
@@ -360,7 +362,7 @@ export function BookACall({
   )
 }
 
-function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onDone: () => void }) {
+export function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onDone: () => void }) {
   const options = useCallOptions(enquiry.id, true)
   const book = useBookCall(enquiry.id)
   const [slot, setSlot] = useState<VisitSlot | null>(null)

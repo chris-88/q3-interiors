@@ -1,6 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld, type StaffWorld } from './fake-staff'
+import {
+  installFakeStaff,
+  openFold,
+  openFolds,
+  signIn,
+  type StaffWorld,
+  staffWorld,
+} from './fake-staff'
 
 /*
  * Forward compatibility: every staff screen must cope with data a newer release wrote (new enum
@@ -212,8 +219,8 @@ test('screens cope with values, kinds, fields and rows a newer release added', a
 
   // The detail: unknown history kind and outcome degrade, the page works.
   await future.click()
+  await openFolds(page)
   await expect(page.getByText('Q3-NEWW22')).toBeVisible()
-  await page.getByText('More', { exact: true }).click()
   await expect(page.getByText('Update recorded')).toBeVisible()
   await expect(page.getByText('Sent the pre-visit survey')).toBeVisible()
   await expect(
@@ -292,7 +299,8 @@ test('while someone is typing, a newer build waits behind a bar that cannot be d
   )
   await page.goto('/#/enquiries/e-1')
   await signIn(page, 'staff@example.com', 'another long password')
-  // The status select lives under Notes now, one tap down.
+  // The status select lives under Notes and history, one fold down.
+  await openFold(page, 'Notes and history')
   await page.getByText(/^Change status/).click()
   await page
     .getByRole('region', { name: 'Change status' })

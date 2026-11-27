@@ -819,7 +819,9 @@ export function stageOf(e: ViewInput, now: number): StageView {
         () => 'How did it go?',
         b ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}` : stage.label,
         'record_outcome',
-        ['move'],
+        b?.mode === 'on_site'
+          ? ['write_estimate', 'move', 'record_quote']
+          : ['move', 'record_quote'],
       )
     }
     case 'missed_call':
@@ -833,7 +835,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
         b ? `Missed ${kindWord(b.mode).toLowerCase()} ${formatShortDay(b.starts_at)}` : stage.label,
         'ring',
         stage.key === 'missed_visit'
-          ? ['book_visit', 'email', 'not_suitable']
+          ? ['book_visit', 'send_link', 'email', 'not_suitable']
           : ['book_call', 'email', 'not_suitable'],
       )
     }
@@ -846,7 +848,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
         () => 'Choose next step',
         held ? `Spoke ${formatShortDay(held)}` : stage.label,
         'choose_next',
-        ['book_visit', 'send_link', 'write_estimate', 'not_suitable'],
+        ['book_visit', 'send_link', 'write_estimate', 'record_quote', 'not_suitable'],
       )
     }
     case 'link_sent': {
@@ -857,7 +859,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
         sent ? `Link sent ${formatDayMonth(sent)}` : 'Link sent',
         sent ? `Visit link sent ${formatDayMonth(sent)}` : stage.label,
         'book_visit',
-        ['send_link', 'write_estimate', 'ring'],
+        ['send_link', 'write_estimate', 'ring', 'record_quote'],
       )
     }
     case 'awaiting_quote': {
@@ -893,7 +895,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
           ? `Estimate ${range} · ran out ${formatDayMonth(estimate.valid_until)}`
           : stage.label,
         'ring',
-        ['write_quote', 'updated_estimate', 'mark_lost'],
+        ['write_quote', 'updated_estimate', 'record_quote', 'mark_lost'],
       )
     }
     case 'quote_requested': {
@@ -975,6 +977,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
         'we_spoke',
         'mark_contacted',
         'email',
+        'record_quote',
         'not_suitable',
       ])
     }
@@ -983,6 +986,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
         'ring',
         'we_spoke',
         'email',
+        'record_quote',
         'not_suitable',
       ])
     default:

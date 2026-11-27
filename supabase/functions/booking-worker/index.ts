@@ -7,7 +7,7 @@ import { processSyncJob, reconcile, scheduleReminder } from '../_shared/changes.
 import { processCommunication } from '../_shared/email.ts'
 import { accountStore } from '../_shared/db.ts'
 import { processPhotoDeletions } from '../_shared/photo-deletions.ts'
-import { authAdmin, config, json, photoStore, runtime } from '../_shared/runtime.ts'
+import { authAdmin, config, json, photoStore, quoteMaking, runtime } from '../_shared/runtime.ts'
 
 function sameSecret(a: string, b: string): boolean {
   if (a.length !== b.length) return false
@@ -66,6 +66,7 @@ Deno.serve(async (req) => {
             recoveryTokenHash: (email: string) => auth.recoveryTokenHash(email),
           }
         : undefined
+      const quotes = quoteMaking()
       for (const message of await db.claimCommunications(10)) {
         tally(
           counts.email,
@@ -75,6 +76,7 @@ Deno.serve(async (req) => {
             appUrl: config.appUrl,
             staffUrl: config.staffUrl,
             accounts,
+            quotes,
           }),
         )
       }

@@ -1,5 +1,6 @@
 // Wiring for the Edge Functions (Deno only). Reads configuration from the functions container's
 // environment, set by the stack's docker-compose.q3-interiors.yml from pass.
+import { createGotenberg, type PdfMaker } from './pdf.ts'
 import { accessTokenProvider } from './calendar-job.ts'
 import { SITE_URL, STAFF_URL } from './site.ts'
 import { createDb } from './db.ts'
@@ -7,7 +8,7 @@ import { createResendMailer, type Mailer } from './email.ts'
 import { createGoogleCalendar, type CalendarApi } from './google.ts'
 import { addressHash, clientAddress, type Limiter } from './limits.ts'
 import { createAuthAdmin, type AuthAdmin } from './gotrue.ts'
-import { createPhotoStore, type PhotoStore } from './storage.ts'
+import { createPhotoStore, createQuoteFiles, type PhotoStore, type QuoteFiles } from './storage.ts'
 import type { Db } from './types.ts'
 
 const env = (name: string) => Deno.env.get(name)?.trim() || null
@@ -30,6 +31,8 @@ export const config = {
   anonKey: env('SUPABASE_ANON_KEY'),
   // Only for GoTrue admin calls (staff accounts); never leaves the functions container.
   serviceKey: env('SUPABASE_SERVICE_ROLE_KEY'),
+  // Gotenberg (quote PDFs), internal to the stack; null leaves quote emails waiting (retries).
+  pdfUrl: env('Q3_PDF_URL'),
 }
 
 export type Runtime = {
@@ -65,6 +68,23 @@ export function authAdmin(): AuthAdmin | null {
   return config.serviceKey
     ? createAuthAdmin({ url: config.supabaseUrl, serviceKey: config.serviceKey })
     : null
+}
+
+/** The private quotes bucket (service key, internal gateway), or null without the key. */
+export function quoteFiles(): QuoteFiles | null {
+  return config.serviceKey
+    ? createQuoteFiles({ url: config.supabaseUrl, serviceKey: config.serviceKey })
+    : null
+}
+
+/** What the worker needs to send a quote: the PDF maker and the bucket, or undefined. */
+export function quoteMaking(): { pdf: PdfMaker; files: QuoteFiles } | undefined {
+  const files = quoteFiles()
+  if (!config.pdfUrl || !files) return undefined
+  return {
+    pdf: createGotenberg({ url: config.pdfUrl, fontBase: `${config.appUrl}/quote/` }),
+    files,
+  }
 }
 
 /** The private photo bucket (service key, internal gateway), or null without the key. */

@@ -5,6 +5,8 @@ import postgres from 'postgres'
 import type { Interval, Reservation } from './slots.ts'
 import type {
   EstimateRow,
+  BusinessDetails,
+  QuoteRow,
   AppointmentType,
   Answers,
   BookingContext,
@@ -153,7 +155,7 @@ export function createDb(): Db {
       await q`select private.fail_calendar_job(${jobId}, ${error}, ${outcomeUnknown})`
     },
     async claimCommunications(limit, bookingId) {
-      return (await q`select id, enquiry_id, staff_user_id, booking_id, estimate_id, template, recipient, dedupe_key, attempts, max_attempts,
+      return (await q`select id, enquiry_id, staff_user_id, booking_id, estimate_id, quote_id, template, recipient, dedupe_key, attempts, max_attempts,
         to_jsonb(about_start) #>> '{}' as about_start
         from private.claim_communications(${limit}, ${bookingId ?? null})`) as unknown as Communication[]
     },
@@ -240,6 +242,30 @@ export function createDb(): Db {
         await q`select to_jsonb(b) as b from public.bookings b where enquiry_id = ${enquiryId}
         and state in ('reserved', 'calendar_pending', 'confirmed') and attendance is null limit 1`
       return (row?.b as BookingRow | undefined) ?? null
+    },
+    async quoteById(quoteId) {
+      const [row] =
+        await q`select q.id, q.enquiry_id, q.number, q.version, q.price_eur, q.included, q.excluded,
+        q.note, q.deposit_percent::float8 as deposit_percent, q.deposit_eur,
+        to_char(q.valid_until, 'YYYY-MM-DD') as valid_until, q.terms,
+        to_jsonb(q.sent_at) #>> '{}' as sent_at, q.pdf_path,
+        to_jsonb(q.change_requested_at) #>> '{}' as change_requested_at,
+        not exists (select 1 from public.quotes n where n.enquiry_id = q.enquiry_id and n.version > q.version) as current
+        from public.quotes q where q.id = ${quoteId}`
+      return (row as unknown as QuoteRow | undefined) ?? null
+    },
+    async quotePdfStored(quoteId, path) {
+      await q`update public.quotes set pdf_path = ${path} where id = ${quoteId}`
+    },
+    async requestQuoteChange(enquiryId, quoteId, text) {
+      const [row] =
+        await q`select private.request_quote_change(${enquiryId}, ${quoteId}, ${text}) as r`
+      return row?.r as 'requested' | 'not_found'
+    },
+    async businessDetails() {
+      const [row] =
+        await q`select legal_name, trading_name, contact_phone, contact_email from public.business_details limit 1`
+      return (row as unknown as BusinessDetails | undefined) ?? null
     },
     async visitBookedByStaff(bookingId, actorUserId, addressAdded) {
       await q`select private.visit_booked_by_staff(${bookingId}, ${actorUserId}, ${addressAdded})`

@@ -38,3 +38,42 @@ export function createPhotoStore(opts: { url: string; serviceKey: string }): Pho
     },
   }
 }
+
+export const QUOTE_BUCKET = 'quotes'
+
+/** The private `quotes` bucket: the PDFs the worker stores and the customer's page hands back. */
+export interface QuoteFiles {
+  /** Store (or overwrite: a retried send) one PDF. Throws on failure. */
+  put(path: string, bytes: Uint8Array): Promise<void>
+  /** The stored PDF, or null if it is missing. */
+  get(path: string): Promise<Uint8Array | null>
+}
+
+export function createQuoteFiles(opts: { url: string; serviceKey: string }): QuoteFiles {
+  const headers = { Authorization: `Bearer ${opts.serviceKey}`, apikey: opts.serviceKey }
+  const object = `${opts.url}/storage/v1/object`
+  return {
+    async put(path, bytes) {
+      const res = await fetch(`${object}/${QUOTE_BUCKET}/${path}`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/pdf', 'x-upsert': 'true' },
+        body: new Uint8Array(bytes),
+        signal: AbortSignal.timeout(20_000),
+      })
+      if (!res.ok) throw new Error(`storage put ${res.status}`)
+      await res.body?.cancel()
+    },
+    async get(path) {
+      const res = await fetch(`${object}/${QUOTE_BUCKET}/${path}`, {
+        headers,
+        signal: AbortSignal.timeout(20_000),
+      })
+      if (res.status === 400 || res.status === 404) {
+        await res.body?.cancel()
+        return null
+      }
+      if (!res.ok) throw new Error(`storage get ${res.status}`)
+      return new Uint8Array(await res.arrayBuffer())
+    },
+  }
+}

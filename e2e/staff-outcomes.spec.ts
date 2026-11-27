@@ -1,6 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld } from './fake-staff'
+import {
+  chooseAction,
+  installFakeStaff,
+  nowCard,
+  openActions,
+  openFold,
+  signIn,
+  staffWorld,
+} from './fake-staff'
 
 /*
  * Slice 7: outcomes after the appointment. Fake backend; SCREENSHOTS_DIR keeps phone-width and
@@ -89,13 +97,12 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await shot(page, 'list-filter-awaiting-390')
   await yours.getByRole('link').first().click()
 
-  // Record the quote from the Next step card (the Outcome section moved there). Once won, the
-  // same card is titled Result (review F7).
-  const outcome = page.getByRole('region', { name: /^(Next step|Result)$/ })
-  // After the visit the next step is the estimate; a quote is one tap away (review F3).
-  await expect(outcome).toContainText('No estimate sent yet')
-  await expect(outcome.getByRole('button', { name: 'Mark won' })).toHaveCount(0)
-  await outcome.getByRole('button', { name: 'Record a quote or result' }).click()
+  // Record a quote or result, from the other actions (review P7). Won and lost are not
+  // offered before anything has gone out (review F3).
+  await expect(nowCard(page)).toContainText('How did it go?')
+  const outcome = await openActions(page)
+  await expect(outcome.getByRole('button', { name: /^Mark won/ })).toHaveCount(0)
+  await outcome.getByRole('button', { name: /^Record a quote or result/ }).click()
   await outcome.getByRole('button', { name: 'Record quote' }).click()
   await outcome.getByLabel('Quote amount (€, incl. VAT)').fill('lots')
   await outcome.getByRole('button', { name: 'Save quote' }).click()
@@ -107,10 +114,11 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await outcome.getByLabel('Date quoted').fill('2026-11-21')
   await outcome.getByRole('button', { name: 'Save quote' }).click()
   await expect(outcome).toContainText('Quoted €18,450.50 on 21 Nov 2026')
-  await outcome.scrollIntoViewIfNeeded()
   await shot(page, 'enquiry-quoted-390')
 
   // Mark won: the amount starts from the quote.
+  await page.keyboard.press('Escape')
+  await chooseAction(page, /^Mark won/)
   await outcome.getByRole('button', { name: 'Mark won' }).click()
   await expect(outcome.getByLabel('Agreed value (€, incl. VAT)')).toHaveValue('18450.5')
   await outcome.getByLabel('Agreed value (€, incl. VAT)').fill('17900')
@@ -124,18 +132,19 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await outcome.getByLabel('Agreed value (€, incl. VAT)').fill('18000')
   await outcome.getByRole('button', { name: 'Save as won' }).click()
   await expect(outcome).toContainText('Won €18,000.00 on 24 Nov 2026')
-  await page.getByText('More', { exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(nowCard(page)).toContainText('Won €18,000')
+  await openFold(page, 'Notes and history')
   const history = page.getByRole('region', { name: 'History' })
   await expect(history.getByText(/^Won €18,000\.00 on 2026-11-24 \(was won\)$/)).toBeVisible()
   await expect(history.getByText(/^Quoted €18,450\.50 on 2026-11-21$/)).toBeVisible()
-  await outcome.scrollIntoViewIfNeeded()
   await shot(page, 'enquiry-won-390')
 
   // Mark another lost: a reason is required, "other" needs a note.
   await page.goto('/#/enquiries/e-new')
-  // Contacted, nothing booked: the outcome is one tap away on the Next step card.
-  const other = page.getByRole('region', { name: /^(Next step|Result)$/ })
-  await other.getByRole('button', { name: 'Record a quote or result' }).click()
+  // Contacted, nothing booked: Not suitable is among the actions; a loss is recorded once a
+  // quote is out, so record one sent another way first.
+  const other = await chooseAction(page, /^Record a quote or result/)
   await other.getByRole('button', { name: 'Mark lost' }).click()
   await other.getByRole('button', { name: 'Save as lost' }).click()
   await expect(other.getByRole('alert')).toHaveText('Choose a reason.')
@@ -163,7 +172,7 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await page.setViewportSize({ width: 1280, height: 900 })
   await shot(page, 'list-finished-desktop')
   await page.goto('/#/enquiries/e-visit')
-  await expect(page.getByRole('region', { name: 'Result' })).toContainText('Won €18,000.00')
+  await expect(nowCard(page)).toContainText('Won €18,000')
   await shot(page, 'enquiry-won-desktop')
 })
 

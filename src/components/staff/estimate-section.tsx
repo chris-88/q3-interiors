@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { WRITE_ESTIMATE_EVENT } from '@/components/staff/after-call'
+import { Confirm } from '@/components/staff/confirm'
 import { orderTicked, WorkItemsPicker } from '@/components/staff/work-items-picker'
 import {
   callHeldAt,
@@ -344,50 +345,28 @@ function EstimateForm({
         </p>
       )}
       {confirming && range ? (
-        <div
-          role="alertdialog"
-          aria-labelledby="estimate-confirm"
-          className="rounded-md border p-3"
-        >
-          <p id="estimate-confirm" className="font-medium">
-            Send {formatRange(range.low, range.high)} to {email}?
-          </p>
-          <p className="text-muted-foreground mt-1 text-sm">
-            The email goes within a minute. It cannot be called back; an updated estimate can
-            follow.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <Button
-              type="button"
-              className="h-12 sm:px-6"
-              disabled={send.isPending}
-              onClick={() => {
-                const values = check()
-                if (!values) return setConfirming(false)
-                send.mutate(
-                  {
-                    bookingId: source.bookingId,
-                    price: values.price,
-                    percent: values.percent,
-                    work: values.work,
-                    items: values.items,
-                  },
-                  { onSuccess: () => onSent(email) },
-                )
-              }}
-            >
-              {send.isPending ? 'Sending…' : 'Yes, send it'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 sm:px-6"
-              onClick={() => setConfirming(false)}
-            >
-              Not yet
-            </Button>
-          </div>
-        </div>
+        <Confirm
+          question={`Send ${formatRange(range.low, range.high)} to ${email}?`}
+          detail="The email goes within a minute. It cannot be called back; an updated estimate can follow."
+          confirm="Yes, send it"
+          pendingLabel="Sending…"
+          pending={send.isPending}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            const values = check()
+            if (!values) return setConfirming(false)
+            send.mutate(
+              {
+                bookingId: source.bookingId,
+                price: values.price,
+                percent: values.percent,
+                work: values.work,
+                items: values.items,
+              },
+              { onSuccess: () => onSent(email) },
+            )
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button type="submit" className="h-12 sm:px-6" disabled={!email}>
@@ -428,6 +407,8 @@ export function EstimateSection({
     const show = () => {
       setOpen(true)
       setSentTo(null)
+      // The section may be folded on the enquiry page: open it, then bring it into view.
+      document.getElementById('fold-estimate')?.setAttribute('open', '')
       window.requestAnimationFrame(() =>
         document.getElementById('estimate')?.scrollIntoView({ behavior: 'smooth' }),
       )

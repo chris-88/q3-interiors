@@ -1,6 +1,15 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld, type StaffWorld } from './fake-staff'
+import {
+  chooseAction,
+  installFakeStaff,
+  nowCard,
+  openActions,
+  primaryAction,
+  signIn,
+  staffWorld,
+  type StaffWorld,
+} from './fake-staff'
 
 /*
  * Staff book a call for a customer, "if he wants to put it in his diary and speak with someone":
@@ -176,37 +185,42 @@ async function open(page: Page, path: string) {
   return world
 }
 
-const nextStep = (page: Page) => page.getByRole('region', { name: 'Next step' })
+const sheet = (page: Page) => page.getByRole('dialog')
 const filled = (page: Page) =>
-  // Filled actions; a chosen time (pressed) is a selection, not an action.
-  nextStep(page).locator('[data-slot="button"].bg-primary:not([aria-pressed="true"]), a.bg-primary')
+  // Filled actions in the sheet; a chosen time (pressed) is a selection, not an action.
+  sheet(page).locator('[data-slot="button"].bg-primary:not([aria-pressed="true"]), a.bg-primary')
+const offered = async (page: Page) => {
+  const s = await openActions(page)
+  const names = await s
+    .getByRole('listitem')
+    .evaluateAll((items) => items.map((li) => li.querySelector('.font-medium')?.textContent ?? ''))
+  await page.keyboard.press('Escape')
+  return names
+}
 
 test('book a call for a new enquiry: the customer’s free times, then Booked with Move and Cancel', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-new001')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
-  const bookBtn = nextStep(page).getByRole('button', { name: 'Book a call' })
-  await expect(bookBtn).toHaveAttribute('aria-expanded', 'false')
-  await expect(bookBtn).not.toHaveClass(/bg-primary/)
-  await bookBtn.click()
+  // Ring is the primary; Book a call is in the other actions with what it does.
+  await expect(primaryAction(page)).toHaveText('Ring Aoife')
+  const s = await chooseAction(page, /^Book a call/)
   await expect(
-    nextStep(page).getByText('Pick a time for the call. Aoife gets the usual confirmation email.'),
+    s.getByText('Pick a time for the call. Aoife gets the usual confirmation email.'),
   ).toBeVisible()
-  await nextStep(page).getByRole('button', { name: /^Wed/ }).click()
-  await nextStep(page).getByRole('button', { name: '14:00' }).click()
+  await s.getByRole('button', { name: /^Wed/ }).click()
+  await s.getByRole('button', { name: '14:00' }).click()
   // One filled button: the panel's Book.
   await expect(filled(page)).toHaveCount(1)
   await expect(filled(page)).toHaveText('Book Wed 2 Dec, 14:00')
   await shot(page, 'book-call-panel')
   await filled(page).click()
 
-  // Now Booked: the call with Move and Cancel, and on the list.
-  await expect(nextStep(page)).toContainText('Wed 2 Dec, 14:00')
-  await expect(nextStep(page).getByRole('button', { name: 'Move' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Cancel' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toHaveCount(0)
-  await expect(page.getByText('Booked', { exact: true }).first()).toBeVisible()
+  // Now in the diary: the call, with Move and Cancel under the actions.
+  await expect(nowCard(page)).toContainText('Wed 2 Dec, 14:00')
+  await expect(nowCard(page)).toContainText('In the diary')
+  expect(await offered(page)).not.toContain('Book a call')
   await shot(page, 'book-call-booked')
   expect((world.staffBookingCalls ?? []).find((c) => c.action === 'book_call')).toMatchObject({
     action: 'book_call',
@@ -222,12 +236,14 @@ test('book a call for a new enquiry: the customer’s free times, then Booked wi
   await expect(row).toContainText('Call booked')
 })
 
-test('a call-back request: Ring stays the main action until the panel opens', async ({ page }) => {
+test('a call-back request: Ring is the main action; Book a call is one of the others', async ({
+  page,
+}) => {
   await open(page, '/#/enquiries/e-ask001')
-  await expect(filled(page)).toHaveText('Ring Brian')
-  await nextStep(page).getByRole('button', { name: 'Book a call' }).click()
-  await nextStep(page).getByRole('button', { name: /^Thu/ }).click()
-  await nextStep(page).getByRole('button', { name: '10:00' }).click()
+  await expect(primaryAction(page)).toHaveText('Ring Brian')
+  const s = await chooseAction(page, /^Book a call/)
+  await s.getByRole('button', { name: /^Thu/ }).click()
+  await s.getByRole('button', { name: '10:00' }).click()
   await expect(filled(page)).toHaveCount(1)
   await expect(filled(page)).toHaveText('Book Thu 3 Dec, 10:00')
   await shot(page, 'book-call-callback')
@@ -237,19 +253,20 @@ test('offered after a missed or cancelled call; not with a call to come or a cal
   page,
 }) => {
   await open(page, '/#/enquiries/e-miss01')
-  await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toBeVisible()
+  expect(await offered(page)).toContain('Book a call')
   await shot(page, 'missed-call')
   await page.goto('/#/enquiries/e-canc01')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Declan Sample')
-  await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toBeVisible()
+  // Contacted, the call cancelled: waiting on them, and booking a call is the main action.
+  await expect(primaryAction(page)).toHaveText('Book a call')
   await page.goto('/#/enquiries/e-come01')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Eimear Example')
-  await expect(nextStep(page).getByRole('button', { name: 'Move' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toHaveCount(0)
+  await expect(primaryAction(page)).toHaveText('Move or cancel')
+  expect(await offered(page)).not.toContain('Book a call')
   await page.goto('/#/enquiries/e-held01')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Fiona Test')
-  await expect(nextStep(page).getByRole('button', { name: 'Write the estimate' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Book a call' })).toHaveCount(0)
+  await expect(primaryAction(page)).toHaveText('Choose the next step')
+  expect(await offered(page)).not.toContain('Book a call')
 })
 
 test('a missed call or visit: its own stage, Ring first, then rebook; not "Estimate to write"', async ({
@@ -271,21 +288,21 @@ test('a missed call or visit: its own stage, Ring first, then rebook; not "Estim
 
   await gerry.getByRole('link').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Gerry Sample')
-  await expect(nextStep(page)).toContainText('Missed site visit Wed 25 Nov, 10:00')
-  await expect(filled(page)).toHaveCount(1)
-  await expect(filled(page)).toHaveText('Ring Gerry')
-  await expect(nextStep(page).getByRole('button', { name: 'Book the site visit' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Send a booking link' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Write the estimate' })).toHaveCount(0)
-  await expect(nextStep(page).getByRole('button', { name: 'Mark won' })).toHaveCount(0)
+  await expect(nowCard(page)).toContainText('Missed visit Wed 25 Nov')
+  await expect(primaryAction(page)).toHaveText('Ring Gerry')
+  const visitActions = await offered(page)
+  expect(visitActions).toContain('Book the site visit')
+  expect(visitActions).toContain('Send a booking link')
+  expect(visitActions).not.toContain('Write the estimate')
+  expect(visitActions).not.toContain('Mark won')
   await shot(page, 'missed-visit')
 
   await page.goto('/#/enquiries/e-miss01')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ciara Test')
-  await expect(filled(page)).toHaveText('Ring Ciara')
-  await expect(nextStep(page).getByRole('button', { name: 'Send a booking link' })).toHaveCount(0)
+  await expect(primaryAction(page)).toHaveText('Ring Ciara')
+  expect(await offered(page)).not.toContain('Send a booking link')
 
-  // To wrap up agrees with Needs action: a missed appointment already has its attendance.
+  // A missed appointment already has its attendance: nothing to wrap up on Appointments.
   await page.goto('/#/appointments')
   await expect(page.getByRole('heading', { name: 'Appointments' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'To wrap up' })).toHaveCount(0)

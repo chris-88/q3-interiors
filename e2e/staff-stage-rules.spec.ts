@@ -1,6 +1,16 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld, type StaffWorld } from './fake-staff'
+import {
+  chooseAction,
+  installFakeStaff,
+  nowCard,
+  openActions,
+  openFolds,
+  primaryAction,
+  signIn,
+  staffWorld,
+  type StaffWorld,
+} from './fake-staff'
 
 /*
  * Stage rules and labels from the first UX review of the staff console: an appointment still to
@@ -183,7 +193,6 @@ async function open(page: Page, path = '/#/') {
 
 const rows = (page: Page) => page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem')
 const row = (page: Page, name: string) => rows(page).filter({ hasText: name })
-const nextStep = (page: Page) => page.getByRole('region', { name: 'Next step' })
 const h1 = (page: Page, name: string) =>
   expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
 
@@ -203,15 +212,12 @@ test('screens at 390px for the review (before and after)', async ({ page }) => {
   ] as const) {
     await page.goto(`/#/enquiries/${id}`)
     await h1(page, name)
-    await expect(page.getByRole('region', { name: 'Project' })).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Where they are' })).toBeVisible()
     await shot(page, file)
   }
   await page.goto('/#/enquiries/e-visit1')
   await h1(page, 'Brian Example')
-  await page
-    .getByRole('button', { name: /^Write (the|an) estimate$/ })
-    .last()
-    .click()
+  await chooseAction(page, /^Write the estimate/)
   await expect(page.getByLabel('Plus or minus')).toBeVisible()
   await shot(page, 'f7-f8-estimate-form')
   await page.goto('/#/appointments')
@@ -231,11 +237,14 @@ test('F1: a visit still to come is never hidden by an estimate', async ({ page }
   await expect(page.getByRole('region', { name: /^In the diary/ })).toContainText('Orla Test')
   await orla.getByRole('link').click()
   await h1(page, 'Orla Test')
-  await expect(nextStep(page)).toContainText('Sat 28 Nov, 10:00')
-  await expect(nextStep(page).getByRole('button', { name: 'Move' })).toBeVisible()
-  await expect(nextStep(page).getByRole('button', { name: 'Cancel' })).toBeVisible()
+  await expect(nowCard(page)).toContainText('In the diary')
+  await expect(nowCard(page)).toContainText('Sat 28 Nov, 10:00')
+  await primaryAction(page).click()
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Move' })).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Cancel' })).toBeVisible()
+  await page.keyboard.press('Escape')
   // The estimate is still there, in its own section.
-  await expect(page.getByRole('region', { name: 'Estimate' })).toContainText('€9,500 to €10,500')
+  await expect(page.locator('#fold-estimate summary')).toContainText('€9,500 to €10,500')
 })
 
 test('F2: one list of work: an appointment over and unrecorded is under Your move', async ({
@@ -256,26 +265,21 @@ test('F3, F7: after a visit the next step is the estimate, with one filled butto
 }) => {
   await open(page, '/#/enquiries/e-visit1')
   await h1(page, 'Brian Example')
-  await expect(page.getByText('How did it go?').first()).toBeVisible()
-  const next = nextStep(page)
-  await expect(next).toContainText('No estimate sent yet.')
-  await expect(next).not.toContainText('No quote recorded yet')
-  await expect(next.getByRole('button', { name: 'Attended' })).toBeVisible()
-  await expect(next.getByRole('button', { name: 'Mark won' })).toHaveCount(0)
-  await expect(next.getByRole('button', { name: 'Mark lost' })).toHaveCount(0)
-  // One filled button: the next action.
-  const filled = next.locator('[data-slot="button"].bg-primary, a.bg-primary')
+  await expect(nowCard(page)).toContainText('How did it go?')
+  // One filled button on the page: the primary action, in the bar.
+  const filled = page.locator('[data-slot="button"].bg-primary:visible, a.bg-primary:visible')
   await expect(filled).toHaveCount(1)
-  await expect(filled).toHaveText('Write the estimate')
+  await expect(filled).toHaveText('How did it go?')
+  // Won and lost are not offered before anything has gone out; writing the estimate is.
+  const sheet = await openActions(page)
+  await expect(sheet.getByRole('button', { name: /^Mark won/ })).toHaveCount(0)
+  await expect(sheet.getByRole('button', { name: /^Mark lost/ })).toHaveCount(0)
   // The Estimate section does not repeat it.
-  const estimate = page.getByRole('region', { name: 'Estimate' })
+  await sheet.getByRole('button', { name: /^Write the estimate/ }).click()
+  const estimate = page.getByRole('region', { name: 'Estimate', exact: true })
   await expect(estimate).toContainText('No estimate sent yet.')
   await expect(estimate.getByRole('button', { name: /Write (the|an) estimate/ })).toHaveCount(0)
-  // Won and lost stay reachable.
-  await next.getByRole('button', { name: 'Record a quote or result' }).click()
-  await expect(next.getByRole('button', { name: 'Mark won' })).toBeVisible()
-  // The Next step button opens the form; the percentage select is a 48px target.
-  await next.getByRole('button', { name: 'Write the estimate' }).click()
+  // The percentage select is a 48px target.
   const select = estimate.getByLabel('Plus or minus')
   await expect(select).toBeVisible()
   expect((await select.boundingBox())?.height).toBeGreaterThanOrEqual(48)
@@ -290,19 +294,24 @@ test('F4: list lines lead with the news', async ({ page }) => {
   await expect(row(page, 'Brian Example')).toContainText('How did it go?')
 })
 
-test('F5: a won enquiry shows a Result card, not Next step', async ({ page }) => {
+test('F5: a won enquiry shows the result only; corrections are in the actions', async ({
+  page,
+}) => {
   await open(page, '/#/enquiries/e-won001')
   await h1(page, 'Fiona Test')
-  await expect(nextStep(page)).toHaveCount(0)
-  const result = page.getByRole('region', { name: 'Result' })
-  await expect(result).toContainText('Won €18,000.00')
-  await expect(result.getByRole('button', { name: 'Edit win' })).toBeVisible()
-  await expect(result.locator('[data-slot="button"].bg-primary')).toHaveCount(0)
+  await expect(nowCard(page)).toContainText('Result')
+  await expect(nowCard(page)).toContainText('Won €18,000')
+  await expect(
+    page.locator('[data-slot="button"].bg-primary:visible, a.bg-primary:visible'),
+  ).toHaveCount(0)
+  const sheet = await chooseAction(page, /^Correct the result/)
+  await expect(sheet.getByRole('button', { name: 'Edit win' })).toBeVisible()
 })
 
 test('F6: staff wording on the enquiry page', async ({ page }) => {
   await open(page, '/#/enquiries/e-attnd1')
   await h1(page, 'Helen Example')
+  await openFolds(page)
   const project = page.getByRole('region', { name: 'Project' })
   await expect(project).toContainText('Name')
   await expect(project).toContainText('Wants')
@@ -310,6 +319,5 @@ test('F6: staff wording on the enquiry page', async ({ page }) => {
   await expect(project).not.toContainText('Appointment preference')
   await expect(project).not.toContainText('Form: enquiry version')
   await expect(page.getByText('Change status (now: Contacted)')).toBeVisible()
-  await page.getByText('More', { exact: true }).click()
-  await expect(page.getByText('Form: enquiry version 2')).toBeVisible()
+  await expect(page.getByText(/form enquiry version 2/)).toBeVisible()
 })

@@ -1,6 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld, type StaffWorld } from './fake-staff'
+import {
+  chooseAction,
+  installFakeStaff,
+  nowCard,
+  primaryAction,
+  signIn,
+  type StaffWorld,
+  staffWorld,
+} from './fake-staff'
 
 /*
  * Estimates on a site visit: the staff form with its live range and email preview, the confirm
@@ -188,13 +196,10 @@ test('staff write an estimate on a site visit: live range, email preview, confir
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-visit1')
-  const section = page.getByRole('region', { name: 'Estimate' })
+  const section = page.getByRole('region', { name: 'Estimate', exact: true })
+  // Once the visit's time has passed it is one of the actions (the section does not repeat it).
+  await chooseAction(page, /^Write the estimate/)
   await expect(section).toContainText('No estimate sent yet.')
-  // The Next step offers it once the visit has happened (the section does not repeat it).
-  await page
-    .getByRole('region', { name: 'Next step' })
-    .getByRole('button', { name: 'Write the estimate' })
-    .click()
 
   // Checked like the server: a price is needed, and a ticked item or a note.
   await section.getByRole('button', { name: 'Send estimate' }).click()
@@ -298,12 +303,8 @@ test('an enquiry with no project type is offered the "any job" items, and a note
   )
   if (row) delete row.answers.project_type
   await page.reload()
-  const section = page.getByRole('region', { name: 'Estimate' })
-  // The Next step offers it once the visit has happened (the section does not repeat it).
-  await page
-    .getByRole('region', { name: 'Next step' })
-    .getByRole('button', { name: 'Write the estimate' })
-    .click()
+  const section = page.getByRole('region', { name: 'Estimate', exact: true })
+  await chooseAction(page, /^Write the estimate/)
   expect(await chipLabels(page)).toEqual(['Strip out', 'Painting', 'Waste removal'])
   await section.getByLabel('Price in euro').fill('2500')
   await section.getByLabel('Anything else (optional)').fill('Hall floor relaid on new joists.')
@@ -336,7 +337,6 @@ test('the list and the enquiry page show where each estimate stands', async ({ p
   await expect(yours.getByRole('listitem').filter({ hasText: 'Declan Sample' })).toHaveCount(1)
   await shot(page, 'staff-estimate-list')
   await asked.getByRole('link').click()
-  const next = page.getByRole('region', { name: 'Next step' })
-  await expect(next).toContainText('Quote requested 25 Nov')
-  await expect(next).toContainText('They asked for their quote.')
+  await expect(nowCard(page)).toContainText('Asked for a quote 25 Nov')
+  await expect(primaryAction(page)).toHaveText('Write the quote')
 })

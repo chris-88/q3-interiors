@@ -1,6 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld, type StaffWorld } from './fake-staff'
+import {
+  chooseAction,
+  installFakeStaff,
+  primaryAction,
+  signIn,
+  staffWorld,
+  type StaffWorld,
+} from './fake-staff'
 
 /*
  * Moving a customer on after the introductory call: "We already spoke", then the three next
@@ -157,25 +164,26 @@ async function open(page: Page, path: string) {
   return world
 }
 
-const nextStep = (page: Page) => page.getByRole('region', { name: 'Next step' })
+const now = (page: Page) => page.getByRole('region', { name: 'Now', exact: true })
 
 test('"We already spoke" cancels the call quietly and offers the three next steps', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-early1')
-  const card = nextStep(page)
-  await expect(card.getByText('Tue 1 Dec, 11:00')).toBeVisible()
-  await card.getByRole('button', { name: 'We already spoke' }).click()
-  const confirm = card.getByRole('alertdialog')
+  await expect(now(page)).toContainText('Call Tue 1 Dec, 11:00')
+  const sheet = await chooseAction(page, /^We already spoke/)
+  const confirm = sheet.getByRole('alertdialog')
   await expect(confirm).toContainText('No email goes to the customer and no reminder is sent.')
   await shot(page, 'after-call-we-already-spoke')
   await confirm.getByRole('button', { name: 'Yes, we spoke' }).click()
 
-  await expect(card.getByText('Call held 27 Nov')).toBeVisible()
-  await expect(card.getByRole('button', { name: 'Write the estimate' })).toBeVisible()
-  await expect(card.getByRole('button', { name: 'Book the site visit' })).toBeVisible()
-  await expect(card.getByRole('button', { name: 'Send a booking link' })).toBeVisible()
-  await expect(page.getByText('Call held', { exact: true }).first()).toBeVisible()
+  await expect(now(page)).toContainText('Choose the next step')
+  await expect(now(page)).toContainText('Spoke Fri 27 Nov')
+  await primaryAction(page).click()
+  await expect(sheet.getByText('Call held 27 Nov')).toBeVisible()
+  await expect(sheet.getByRole('button', { name: 'Write the estimate' })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: 'Book the site visit' })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: 'Send a booking link' })).toBeVisible()
   expect(world.rpcCalls.find((c) => c.name === 'record_call_held_early')?.body).toEqual({
     p_enquiry_id: 'e-early1',
   })
@@ -188,8 +196,10 @@ test('an estimate straight from the call: thanks for talking, the work we talked
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-held01')
-  await expect(nextStep(page).getByText('Call held 25 Nov')).toBeVisible()
-  await nextStep(page).getByRole('button', { name: 'Write the estimate' }).click()
+  await expect(now(page)).toContainText('Spoke Wed 25 Nov')
+  await primaryAction(page).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Write the estimate' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   const section = page.getByRole('region', { name: 'Estimate' })
   await expect(
     section.getByText('After the call on Wed 25 Nov, 11:00, no site visit.'),
@@ -216,11 +226,11 @@ test('an estimate straight from the call: thanks for talking, the work we talked
 
 test('held early with no booking: the estimate goes with the enquiry alone', async ({ page }) => {
   const world = await open(page, '/#/enquiries/e-fresh1')
-  const card = nextStep(page)
-  await card.getByRole('button', { name: 'We already spoke' }).click()
-  await expect(card.getByRole('alertdialog')).toContainText('Nothing is sent to the customer.')
-  await card.getByRole('button', { name: 'Yes, we spoke' }).click()
-  await card.getByRole('button', { name: 'Write the estimate' }).click()
+  const sheet = await chooseAction(page, /^We already spoke/)
+  await expect(sheet.getByRole('alertdialog')).toContainText('Nothing is sent to the customer.')
+  await sheet.getByRole('button', { name: 'Yes, we spoke' }).click()
+  await primaryAction(page).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Write the estimate' }).click()
   const section = page.getByRole('region', { name: 'Estimate' })
   await section.getByLabel('Price in euro').fill('3000')
   await section.getByLabel('Anything else (optional)').fill('Hall floor relaid.')
@@ -235,15 +245,16 @@ test('held early with no booking: the estimate goes with the enquiry alone', asy
 
 test('staff book the site visit, typing the address it needs', async ({ page }) => {
   const world = await open(page, '/#/enquiries/e-held01')
-  const card = nextStep(page)
-  await card.getByRole('button', { name: 'Book the site visit' }).click()
-  await expect(card.getByText('A site visit needs the address.')).toBeVisible()
-  await card.getByLabel('House name or number and street').fill('12 Example Road')
-  await card.getByRole('button', { name: /^Wed/ }).click()
-  await card.getByRole('button', { name: '14:00' }).click()
+  const sheet = await chooseAction(page, /^Book the site visit/)
+  await expect(sheet.getByText('A site visit needs the address.')).toBeVisible()
+  await sheet.getByLabel('House name or number and street').fill('12 Example Road')
+  await sheet.getByRole('button', { name: /^Wed/ }).click()
+  await sheet.getByRole('button', { name: '14:00' }).click()
   await shot(page, 'after-call-book-visit')
-  await card.getByRole('button', { name: /^Book Wed 2 Dec, 14:00/ }).click()
-  await expect(nextStep(page).getByText('Wed 2 Dec, 14:00')).toBeVisible()
+  await sheet.getByRole('button', { name: /^Book Wed 2 Dec, 14:00/ }).click()
+  await expect(sheet.getByText(/Site visit booked for Wed 2 Dec, 14:00/)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(now(page)).toContainText('Wed 2 Dec, 14:00')
   const call = (world.staffBookingCalls ?? []).find((c) => c.action === 'book_visit')
   expect(call).toMatchObject({
     action: 'book_visit',
@@ -258,16 +269,15 @@ test('a booking link: confirm, then the enquiry shows it was sent until they boo
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-held01')
-  const card = nextStep(page)
-  await card.getByRole('button', { name: 'Send a booking link' }).click()
-  await expect(card.getByRole('alertdialog')).toContainText(
+  const sheet = await chooseAction(page, /^Send a booking link/)
+  await expect(sheet.getByRole('alertdialog')).toContainText(
     'Email brian@example.com a link to book their site visit?',
   )
-  await card.getByRole('button', { name: 'Yes, send it' }).click()
-  await expect(
-    card.getByText('Site visit link sent 27 Nov. Waiting for them to book.'),
-  ).toBeVisible()
-  await expect(card.getByRole('button', { name: 'Send the booking link again' })).toBeVisible()
+  await sheet.getByRole('button', { name: 'Yes, send it' }).click()
+  await expect(sheet.getByText('Link sent to brian@example.com.')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(now(page)).toContainText('Waiting on Brian')
+  await expect(now(page)).toContainText('Visit link sent 27 Nov')
   expect(world.rpcCalls.find((c) => c.name === 'send_visit_link')?.body).toEqual({
     p_enquiry_id: 'e-held01',
   })

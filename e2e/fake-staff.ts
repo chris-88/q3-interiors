@@ -1172,3 +1172,42 @@ export async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
+
+// The enquiry page (2026-11-30): one primary action in a bar, the others in a sheet, sections folded.
+/** The sheet of other actions, opened from the bar's "More actions" (or "Actions") button. */
+export async function openActions(page: Page) {
+  await page
+    .getByRole('region', { name: 'Actions' })
+    .getByRole('button', { name: /^(More actions|Actions)$/ })
+    .click()
+  return page.getByRole('dialog')
+}
+/** Open the sheet and choose an action by its title; returns the sheet showing its panel. */
+export async function chooseAction(page: Page, name: string | RegExp) {
+  const sheet = await openActions(page)
+  await sheet.getByRole('button', { name }).click()
+  return sheet
+}
+/** The bar's primary action. */
+export const primaryAction = (page: Page) =>
+  page.getByRole('region', { name: 'Actions' }).locator('a, button').first()
+/** Open a folded section ("Their answers", "Appointments", "Estimate", "Quote", ...). */
+export async function openFold(page: Page, name: string) {
+  const fold = page
+    .locator('details')
+    .filter({ has: page.locator('summary', { hasText: name }) })
+    .first()
+  if (!(await fold.evaluate((d) => (d as HTMLDetailsElement).open)))
+    await fold.locator('summary').first().click()
+}
+/** The read-only "now" card. */
+export const nowCard = (page: Page) => page.getByRole('region', { name: 'Now', exact: true })
+/** Open every folded section on the enquiry page (older checks read them all). */
+export async function openFolds(page: Page) {
+  await page.locator('details[id^="fold-"]').first().waitFor()
+  await page.evaluate(() =>
+    document.querySelectorAll<HTMLDetailsElement>('details[id^="fold-"]').forEach((d) => {
+      d.open = true
+    }),
+  )
+}

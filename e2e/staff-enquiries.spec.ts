@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
-import { installFakeStaff, signIn, staffWorld } from './fake-staff'
+import { installFakeStaff, nowCard, openFolds, signIn, staffWorld } from './fake-staff'
 
 const shot = async (page: Page, name: string) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
@@ -130,11 +130,11 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   // A v2 enquiry with a contact request.
   await sample.getByRole('link').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sample Customer')
+  // The contact request is the now card (it was a red alert at the top), with the reason.
+  await expect(nowCard(page)).toContainText('Asked us to ring')
+  await expect(nowCard(page)).toContainText('No suitable time online')
+  await openFolds(page)
   await expect(page.getByText('Q3-BBBB22')).toBeVisible()
-  // The contact request is the Next step (it was a red alert at the top).
-  const next = page.getByRole('region', { name: 'Next step' })
-  await expect(next).toContainText('Asked to be contacted')
-  await expect(next).toContainText('No suitable time online')
   const project = page.getByRole('region', { name: 'Project' })
   // Staff wording for the labels (review F9), the customer's answers as given.
   await expect(project).toContainText('Wants')
@@ -151,14 +151,15 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   // A v1 enquiry still renders through its own version.
   await page.goto('/#/enquiries/e-v1')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Test Person')
+  await openFolds(page)
   const v1Project = page.getByRole('region', { name: 'Project' })
   await expect(v1Project).toContainText('What would you like done?')
   await expect(v1Project).toContainText('Full refit of the ground floor.')
   await expect(v1Project).toContainText('Kitchen, Bedrooms')
   // The form version is kept under More, not on the visible page (review F9).
   await expect(v1Project).not.toContainText('Form: enquiry version')
-  await page.getByText('More', { exact: true }).click()
-  await expect(page.getByText('Form: enquiry version 1')).toBeVisible()
+
+  await expect(page.getByText(/form enquiry version 1/)).toBeVisible()
   await expect(page.getByText('Asked to be contacted')).toHaveCount(0)
   await shot(page, 's2-staff-v1')
 })
@@ -232,6 +233,7 @@ test('staff see what a customer added after booking: the marker, the answers and
   const row = page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem').first()
   await expect(row).toContainText('added after booking')
   await row.getByRole('link').click()
+  await openFolds(page)
 
   const prepared = page.getByRole('region', { name: 'Help us prepare' })
   await expect(prepared).toContainText('Added after booking')
@@ -240,7 +242,6 @@ test('staff see what a customer added after booking: the marker, the answers and
   await expect(prepared).toContainText('I’m flexible')
   // Access notes sit with the rest of "Help us prepare" now.
   await expect(prepared).toContainText('Side gate')
-  await page.getByText('More', { exact: true }).click()
   await expect(page.getByText('Customer added a photo (after booking)')).toBeVisible()
   await shot(page, '05-staff-photos')
 

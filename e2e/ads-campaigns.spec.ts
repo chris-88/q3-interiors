@@ -47,8 +47,9 @@ function ad(
         notes: null,
         link_url: content ? link(content) : null,
         created_at: '2026-11-26T10:00:00Z',
-        approved_at: null,
-        approved_by_name: null,
+        // Approved the way live data is: the ad's status and the version's stamp agree.
+        approved_at: status === 'approved' ? '2026-11-27T09:00:00Z' : null,
+        approved_by_name: status === 'approved' ? 'Chris Admin' : null,
         ad_variants: [
           {
             id: `${id}-portrait`,
@@ -211,7 +212,9 @@ function seed(world: StaffWorld) {
       outcome: 'won',
       outcome_value: 18000,
     }),
-    enquiry('e1', 'Aoife Example', 'kitchen-calls-animated'),
+    enquiry('e1', 'Aoife Example', 'kitchen-calls-animated', {
+      submitted_at: '2026-11-20T10:00:00Z',
+    }),
     enquiry('e3', 'Ciara Example', 'price-first-animated'),
   ]
 }
@@ -223,7 +226,7 @@ test('an admin sees the campaign, its ads best first, spend, and marks one runni
 }) => {
   const world = await installFakeStaff(page)
   seed(world)
-  await page.goto('/#/ads?show=all')
+  await page.goto('/#/ads')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   const campaign = page.getByRole('region', { name: 'Type test 1' })
   await expect(campaign).toContainText('Set up 27 Nov · Spend 28 Nov to 29 Nov')
@@ -232,7 +235,8 @@ test('an admin sees the campaign, its ads best first, spend, and marks one runni
   await expect(campaign).toContainText('Booked3')
   await expect(campaign).toContainText('Won1')
   await expect(campaign).toContainText('Per enquiry€10.00')
-  await expect(campaign).toContainText('€60.00 so far')
+  // Spend is a fold: its title, the summary, a chevron.
+  await expect(campaign.locator('summary')).toHaveText(/^Spend€60\.00 so far$/)
   await expect(campaign).toContainText('1 of 3 running')
   await expect(campaign).toContainText('Best first: most enquiries, then most booked.')
   // Best first: kitchen (4 enquiries), price (2), bathroom (0).
@@ -248,8 +252,27 @@ test('an admin sees the campaign, its ads best first, spend, and marks one runni
   await expect(loose).not.toContainText('visits')
   await shot(page, 'ads-by-campaign')
 
-  // The ad page: its campaign, running, and the enquiries it brought.
+  // The ad page walks the ranked order it was opened from.
   await rows(page).nth(1).click()
+  const walk = page.getByRole('navigation', { name: 'Ads in this list' })
+  await expect(walk).toContainText('2 of 4')
+  await walk.getByRole('link', { name: 'Previous' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'A new kitchen shouldn’t take ten phone calls.',
+  )
+  await walk.getByRole('link', { name: 'Next' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'Know the price before work starts.',
+  )
+  // Approved (as live data is): no Approve, and Download is the one filled button.
+  await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+  const filled = page.locator(
+    'main [data-slot="button"].bg-primary:not([aria-pressed="true"]), main a.bg-primary',
+  )
+  await expect(filled).toHaveCount(1)
+  await expect(filled).toHaveText(/^Download/)
+
+  // The ad page: its campaign, running, and the enquiries it brought.
   const camp = page.getByRole('region', { name: 'Campaign: Type test 1' })
   await expect(camp).toContainText('Not marked as running.')
   await camp.getByRole('button', { name: 'Mark as running' }).click()
@@ -269,7 +292,7 @@ test('an admin sees the campaign, its ads best first, spend, and marks one runni
 test('staff see numbers and enquiries but no spend, and cannot mark running', async ({ page }) => {
   const world = await installFakeStaff(page)
   seed(world)
-  await page.goto('/#/ads?show=all')
+  await page.goto('/#/ads')
   await signIn(page, 'staff@example.com', 'another long password')
   const campaign = page.getByRole('region', { name: 'Type test 1' })
   await expect(campaign).toContainText('Enquiries6')
@@ -285,16 +308,18 @@ test('staff see numbers and enquiries but no spend, and cannot mark running', as
   await expect(from.getByRole('listitem').nth(0)).toContainText('Brian Example')
   await expect(from.getByRole('listitem').nth(0)).toContainText('Won')
   await expect(from.getByRole('listitem').nth(1)).toContainText('Aoife Example')
+  // The due chip from the stage model sits beside the name, as on the enquiries list.
+  await expect(from.getByRole('listitem').nth(1)).toContainText('Overdue')
 })
 
 test('without spend, cost per enquiry is unknown, never zero', async ({ page }) => {
   const world = await installFakeStaff(page)
   seed(world)
   world.tables.campaign_spend = []
-  await page.goto('/#/ads?show=all')
+  await page.goto('/#/ads')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   const campaign = page.getByRole('region', { name: 'Type test 1' })
   await expect(campaign).toContainText('Per enquiryUnknown')
-  await expect(campaign).toContainText('SpendUnknown')
+  await expect(campaign.locator('summary')).toHaveText('SpendNone entered')
   await expect(campaign).not.toContainText('€0')
 })

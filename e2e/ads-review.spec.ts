@@ -144,12 +144,22 @@ test('an admin approves, confirming when requests are open, and can archive', as
     page.getByRole('listitem').filter({ hasText: 'Use the black background' }),
   ).toContainText('Open')
 
+  // One filled button: Approve while the version is not approved; Download is outlined.
+  const filled = page.locator(
+    'main [data-slot="button"].bg-primary:not([aria-pressed="true"]), main a.bg-primary',
+  )
+  await expect(filled).toHaveCount(1)
+  await expect(filled).toHaveText('Approve')
   await page.getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByRole('alertdialog')).toContainText('Approve with 1 open request?')
   await page.getByRole('button', { name: 'Not yet' }).click()
   await page.getByRole('button', { name: 'Approve' }).click()
   await page.getByRole('button', { name: 'Yes, approve as it is' }).click()
   await expect(page.getByText(/Approved by Chris Admin/)).toBeVisible()
+  // Once approved: no Approve, and Download is the one filled button.
+  await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+  await expect(filled).toHaveCount(1)
+  await expect(filled).toHaveText(/^Download/)
   await expect(page.getByText('Approved').first()).toBeVisible()
 
   await page.getByText('More', { exact: true }).click()

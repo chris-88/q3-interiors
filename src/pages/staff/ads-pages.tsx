@@ -36,9 +36,13 @@ import {
   neighbours,
   previewOptions,
   readAdFilter,
+  adListPath,
+  canApproveVersion,
+  versionApproved,
   type AdFilter,
   type PreviewOption,
 } from '@/lib/ads/screens'
+import { parseWalk, walkIds, WALK_KEY } from '@/lib/ads/by-campaign'
 import { campaignLink } from '@/lib/campaigns'
 import { formatDateTime } from '@/lib/format'
 import { SITE_URL } from '../../../supabase/functions/_shared/site.ts'
@@ -184,7 +188,16 @@ function FramePreview({ option, title }: { option: PreviewOption; title: string 
   return <AdFrame html={html.data} width={option.width} height={option.height} title={title} />
 }
 
-function Preview({ ad, version }: { ad: Ad; version: AdVersion }) {
+function Preview({
+  ad,
+  version,
+  primary,
+}: {
+  ad: Ad
+  version: AdVersion
+  /** Download is the one filled button unless Approve is on offer. */
+  primary: boolean
+}) {
   const options = previewOptions(version.ad_variants, ad.name, version.version)
   const [key, setKey] = useState(options[0]?.key)
   const option = options.find((o) => o.key === key) ?? options[0]
@@ -228,6 +241,7 @@ function Preview({ ad, version }: { ad: Ad; version: AdVersion }) {
       <p className="text-muted-foreground text-center text-sm">{option.caption}</p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <Button
+          variant={primary ? 'default' : 'outline'}
           className="h-12 px-6"
           disabled={download.state === 'busy'}
           onClick={() => download.start(option.download.path, option.download.filename)}
@@ -406,18 +420,25 @@ function Review({ ad, version, isCurrent }: { ad: Ad; version: AdVersion; isCurr
     .filter((r) => r.version_id === version.id && r.state === 'open')
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
   const archived = ad.status === 'archived'
-  const canApprove = me.role === 'admin' && isCurrent && !archived && !version.approved_at
+  const canApprove = canApproveVersion({
+    role: me.role,
+    isCurrent,
+    adStatus: ad.status,
+    approvedAt: version.approved_at,
+  })
   const canAsk = isCurrent && !archived
   return (
     <section aria-labelledby="review-heading" className="flex flex-col gap-3">
       <h2 id="review-heading" className="sr-only">
         Review
       </h2>
-      {version.approved_at && (
+      {version.approved_at ? (
         <p className="text-sm">
           Approved by {version.approved_by_name ?? 'an admin'} on{' '}
           {formatDateTime(version.approved_at)}.
         </p>
+      ) : (
+        versionApproved(version, ad.status, isCurrent) && <p className="text-sm">Approved.</p>
       )}
       {open.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -615,7 +636,16 @@ function More({ ad, version, isCurrent }: { ad: Ad; version: AdVersion; isCurren
 
 function Walk({ id, filter }: { id: string; filter: AdFilter }) {
   const ads = useAds()
-  const place = ads.data ? neighbours(adOrder(ads.data, filter), id) : null
+  const [stored] = useState(() => {
+    try {
+      return parseWalk(sessionStorage.getItem(WALK_KEY))
+    } catch {
+      return null
+    }
+  })
+  const place = ads.data
+    ? neighbours(walkIds(stored, filter, id, adOrder(ads.data, filter)), id)
+    : null
   if (!place) return null
   return (
     <ListWalk
@@ -627,6 +657,7 @@ function Walk({ id, filter }: { id: string; filter: AdFilter }) {
 }
 
 function AdView({ ad }: { ad: Ad }) {
+  const me = useCurrentStaff()
   const current = latestVersion(ad)
   const versions = [...ad.ad_versions].sort((a, b) => b.version - a.version)
   const [chosen, setChosen] = useState<number | null>(null)
@@ -668,7 +699,19 @@ function AdView({ ad }: { ad: Ad }) {
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start">
         <div className="lg:sticky lg:top-4">
-          <Preview key={version.id} ad={ad} version={version} />
+          <Preview
+            key={version.id}
+            ad={ad}
+            version={version}
+            primary={
+              !canApproveVersion({
+                role: me.role,
+                isCurrent,
+                adStatus: ad.status,
+                approvedAt: version.approved_at,
+              })
+            }
+          />
         </div>
         <div className="flex flex-col gap-4">
           <Review ad={ad} version={version} isCurrent={isCurrent} />
@@ -691,7 +734,7 @@ export function AdPage() {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-x-4">
         <Link
-          to={filter === 'review' ? '/ads' : `/ads?show=${filter}`}
+          to={adListPath(filter)}
           className="text-primary inline-flex min-h-12 items-center gap-1 text-sm underline"
         >
           <ChevronLeft className="size-4" aria-hidden="true" />

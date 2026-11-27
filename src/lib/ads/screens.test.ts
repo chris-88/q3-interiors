@@ -3,6 +3,8 @@ import {
   adOrder,
   groupAds,
   matchesAdFilter,
+  canApproveVersion,
+  versionApproved,
   neighbours,
   previewOptions,
   readAdFilter,
@@ -21,8 +23,9 @@ const ad = (
 describe('ads list filter', () => {
   it('reads the chip from the address and falls back to To review', () => {
     expect(readAdFilter('?show=archived')).toBe('archived')
-    expect(readAdFilter('?show=nonsense')).toBe('review')
-    expect(readAdFilter('')).toBe('review')
+    expect(readAdFilter('?show=nonsense')).toBe('live')
+    expect(readAdFilter('?show=all')).toBe('live')
+    expect(readAdFilter('')).toBe('live')
   })
 
   it('keeps unknown statuses in To review so nothing disappears', () => {
@@ -32,7 +35,25 @@ describe('ads list filter', () => {
     expect(matchesAdFilter('approved', 'review')).toBe(false)
     expect(matchesAdFilter('archived', 'review')).toBe(false)
     expect(matchesAdFilter('archived', 'archived')).toBe(true)
-    expect(matchesAdFilter('archived', 'all')).toBe(true)
+    expect(matchesAdFilter('archived', 'live')).toBe(false)
+    expect(matchesAdFilter('new', 'live')).toBe(true)
+    expect(matchesAdFilter('approved', 'live')).toBe(true)
+    expect(matchesAdFilter('scheduled', 'live')).toBe(true)
+  })
+})
+
+describe('approval', () => {
+  const base = { role: 'admin', isCurrent: true, adStatus: 'new', approvedAt: null }
+  it('offers Approve to an admin on the current version until it is approved', () => {
+    expect(canApproveVersion(base)).toBe(true)
+    expect(canApproveVersion({ ...base, role: 'staff' })).toBe(false)
+    expect(canApproveVersion({ ...base, isCurrent: false })).toBe(false)
+    expect(canApproveVersion({ ...base, adStatus: 'archived' })).toBe(false)
+    expect(canApproveVersion({ ...base, approvedAt: '2026-11-27T10:00:00Z' })).toBe(false)
+    // Approved on the ad (carried over) without the version's stamp: still never offered.
+    expect(canApproveVersion({ ...base, adStatus: 'approved' })).toBe(false)
+    expect(versionApproved({ approved_at: null }, 'approved', true)).toBe(true)
+    expect(versionApproved({ approved_at: null }, 'approved', false)).toBe(false)
   })
 })
 

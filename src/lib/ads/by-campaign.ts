@@ -103,6 +103,44 @@ export function campaignDates(
   return parts.join(' · ')
 }
 
+/** The order the list showed when an ad was opened, kept per tab for Previous / Next. */
+export type WalkOrder = { filter: string; ids: string[] }
+
+export const WALK_KEY = 'q3.staff.adWalk'
+
+/** Read back a stored walk order; anything malformed is ignored. */
+export function parseWalk(raw: string | null): WalkOrder | null {
+  if (!raw) return null
+  try {
+    const v = JSON.parse(raw) as unknown
+    if (
+      typeof v === 'object' &&
+      v !== null &&
+      typeof (v as WalkOrder).filter === 'string' &&
+      Array.isArray((v as WalkOrder).ids) &&
+      (v as WalkOrder).ids.every((x) => typeof x === 'string')
+    )
+      return v as WalkOrder
+  } catch {
+    // ignored: walk the default order
+  }
+  return null
+}
+
+/**
+ * Previous / Next walk the order the person came from (ranked within each campaign) when it was
+ * stored for this filter and still holds this ad; otherwise the default order.
+ */
+export function walkIds(
+  stored: WalkOrder | null,
+  filter: string,
+  id: string,
+  fallback: string[],
+): string[] {
+  if (stored && stored.filter === filter && stored.ids.includes(id)) return stored.ids
+  return fallback
+}
+
 /** A count, or "Not counted" for visits before counting began. */
 export function countText(n: number | null): string {
   return n === null ? 'Not counted' : String(n)

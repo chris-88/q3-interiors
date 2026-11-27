@@ -1,4 +1,6 @@
 import type { Page, Route } from '@playwright/test'
+import { estimateRange, isValidPercent } from '../supabase/functions/_shared/estimate.ts'
+import { WORDING } from '../supabase/functions/_shared/messages.ts'
 import type { AuthAdmin } from '../supabase/functions/_shared/gotrue.ts'
 import {
   handleAccounts,
@@ -379,6 +381,56 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
           ...events,
         ]
         return json(route, 200, null)
+      }
+      if (table === 'rpc/send_estimate') {
+        // The server's rules (see 20261129100000_estimates.sql), with the shared range rule.
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const b = req.postDataJSON() as {
+          p_booking_id: string
+          p_price: number
+          p_percent: number
+          p_work: string
+        }
+        const booking = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
+          (x) => x.id === b.p_booking_id,
+        )
+        if (!booking) return json(route, 404, { code: 'P0002', message: 'appointment not found' })
+        if ((booking.appointment_types as { mode: string }).mode !== 'on_site')
+          return json(route, 400, { code: '22023', message: 'site visits only' })
+        const work = (b.p_work ?? '').trim()
+        if (work.length < 3 || work.length > 600 || !isValidPercent(b.p_percent))
+          return json(route, 400, { code: '22023', message: 'invalid' })
+        let range
+        try {
+          range = estimateRange(b.p_price, b.p_percent)
+        } catch {
+          return json(route, 400, { code: '22023', message: 'price' })
+        }
+        const row = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+          (e) => e.id === booking.enquiry_id,
+        )
+        if (!row) return json(route, 404, { code: 'P0002', message: 'enquiry not found' })
+        const sent = new Date().toISOString()
+        const id = `00000000-0000-4000-8000-${String(world.rpcCalls.length).padStart(12, '0')}`
+        row.estimates = [
+          ...((row.estimates as unknown[] | undefined) ?? []),
+          {
+            id,
+            booking_id: booking.id,
+            price_eur: b.p_price,
+            plus_minus_percent: b.p_percent,
+            low_eur: range.low,
+            high_eur: range.high,
+            work_looked_at: work,
+            caveats: WORDING.estimate_caveats.default,
+            sent_at: sent,
+            valid_until: new Date(Date.parse(sent) + 10 * 86_400_000).toISOString(),
+            quote_requested_at: null,
+            created_by_name: caller.display_name,
+          },
+        ]
+        pushEvent(row, { kind: 'estimate_sent', detail: null, actor_name: caller.display_name })
+        return json(route, 200, id)
       }
       if (table === 'rpc/add_enquiry_note') {
         // The server's rules (see 20261128160000_enquiry_notes.sql).

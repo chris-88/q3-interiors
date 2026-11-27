@@ -75,12 +75,18 @@ export type Template =
   | 'staff_callback_request'
   | 'staff_invite'
   | 'staff_password_reset'
+  | 'estimate'
+  | 'staff_quote_request'
 
 export type StaffAccountTemplate = 'staff_invite' | 'staff_password_reset'
 
 export type CustomerTemplate = Exclude<
   Template,
-  'staff_new_enquiry' | 'staff_callback_request' | StaffAccountTemplate
+  | 'staff_new_enquiry'
+  | 'staff_callback_request'
+  | 'staff_quote_request'
+  | 'estimate'
+  | StaffAccountTemplate
 >
 
 export type Communication = {
@@ -89,6 +95,8 @@ export type Communication = {
   enquiry_id: string | null
   staff_user_id?: string | null
   booking_id: string | null
+  /** Estimate emails and quote-request alerts: the estimate they are about. */
+  estimate_id?: string | null
   template: Template
   /** For reminders and reschedule notices: the start time the message is about. */
   about_start?: string | null
@@ -149,6 +157,19 @@ export type ReserveResult =
   | { status: 'slot_unavailable'; reason: 'taken' | 'notice' | 'daily_limit' }
   | { status: 'ineligible'; reason: string }
   | { status: 'no_staff' }
+
+/** An estimate as the email and the customer's "Get my quote" page need it. */
+export type EstimateRow = {
+  id: string
+  enquiry_id: string
+  low_eur: number
+  high_eur: number
+  work_looked_at: string
+  caveats: string
+  sent_at: string
+  valid_until: string
+  quote_requested_at: string | null
+}
 
 /** Everything the functions need from Postgres. Implemented with postgres.js in `db.ts`. */
 export interface Db {
@@ -229,6 +250,13 @@ export interface Db {
   // Slice 5
   /** Admin rewording of the email text blocks (key -> text); missing keys use the defaults. */
   getWording(): Promise<Record<string, string>>
+  // Estimates after a site visit
+  estimateById(estimateId: string): Promise<EstimateRow | null>
+  /** Records "Get my quote" once (alerting staff); repeats change nothing. */
+  requestQuote(
+    enquiryId: string,
+    estimateId: string,
+  ): Promise<'requested' | 'already' | 'not_found'>
   // Form v2 part B: "Help us prepare"
   prepareState(enquiryId: string): Promise<PrepareState>
   savePrepare(

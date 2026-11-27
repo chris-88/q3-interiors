@@ -36,7 +36,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions; do
+  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions estimates; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -72,6 +72,9 @@ expect_code "record_visit refuses junk" 22023 \
 visit_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$rest/rpc/record_visit" "${headers[@]}" \
   -d '{"p_session_id":"00000000-0000-4000-8000-0000000000c5","p_surface":"landing","p_form_version":2}')"
 if [[ "$visit_code" == 204 || "$visit_code" == 200 ]]; then echo "ok    record_visit answers a non-browser without error ($visit_code)"; else echo "FAIL  record_visit answered $visit_code"; fail=1; fi
+expect_code "anon cannot send an estimate" 42501 \
+  "$(curl -s -X POST "$rest/rpc/send_estimate" "${headers[@]}" \
+    -d '{"p_booking_id":"00000000-0000-4000-8000-000000000000","p_price":1000,"p_percent":10,"p_work":"test"}')"
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
 
@@ -115,6 +118,9 @@ check "public-booking refuses a details change without a valid token" '{"error":
 check "public-booking refuses a photo without a valid token" '{"error":"invalid_token"}' \
   "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
     -d '{"action":"add_photo","token":"not-a-real-token-0000000000","key":"00000000-0000-4000-8000-000000000000","photo":"","thumb":""}')"
+check "public-booking refuses Get my quote without a valid token" '{"error":"invalid_token"}' \
+  "$(curl -s -X POST "$functions/public-booking" "${headers[@]}" \
+    -d '{"action":"request_quote","token":"not-a-real-token-0000000000","estimateId":"00000000-0000-4000-8000-000000000000"}')"
 check "public-booking refuses a body over its size limit" '{"error":"too_large"}' \
   "$(head -c 3100000 /dev/zero | tr '\0' 'A' | curl -s -X POST "$functions/public-booking" "${headers[@]}" --data-binary @-)"
 types="$(curl -s -X POST "$rest/rpc/public_appointment_types" "${headers[@]}" -d '{}')"

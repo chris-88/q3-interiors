@@ -49,6 +49,12 @@ export function formatShortWhen(iso: string): string {
     : `${shortDay.format(d)} ${dayMonth.format(d)}, ${clock.format(d)}`
 }
 
+/** "27 Nov" in Irish time. */
+export function formatDayMonth(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : dayMonth.format(d)
+}
+
 /** "Fri 27 Nov" in Irish time. */
 export function formatShortDay(iso: string): string {
   const d = new Date(iso)

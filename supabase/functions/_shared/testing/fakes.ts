@@ -22,6 +22,7 @@ import type {
   Communication,
   Db,
   EnquiryRow,
+  EstimateRow,
   PhotoReservation,
   PrepareState,
   PrepareWindow,
@@ -435,6 +436,21 @@ export class FakeDb implements Db {
     return due.map((c) => ({ ...c }))
   }
   wording: Record<string, string> = {}
+  /** Estimates by id (tests and the e2e journey add them directly). */
+  estimates = new Map<string, EstimateRow>()
+  /** Staff alerts queued by requestQuote: estimate id per alert. */
+  quoteAlerts: string[] = []
+  async estimateById(estimateId: string) {
+    return this.estimates.get(estimateId) ?? null
+  }
+  async requestQuote(enquiryId: string, estimateId: string) {
+    const estimate = this.estimates.get(estimateId)
+    if (!estimate || estimate.enquiry_id !== enquiryId) return 'not_found' as const
+    if (estimate.quote_requested_at) return 'already' as const
+    estimate.quote_requested_at = new Date(this.now()).toISOString()
+    this.quoteAlerts.push(estimateId)
+    return 'requested' as const
+  }
   async getWording() {
     return { ...this.wording }
   }

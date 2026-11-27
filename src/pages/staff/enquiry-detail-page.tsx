@@ -22,6 +22,11 @@ import { BookingActions } from '@/components/staff/booking-actions'
 import { ChaseForm } from '@/components/staff/chase-form'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import {
+  EstimateSection,
+  EstimateSummary,
+  estimateVisits,
+} from '@/components/staff/estimate-section'
+import {
   enquiryName,
   projectLine,
   storedFilter,
@@ -42,6 +47,7 @@ import { formatAnswer, visibleFields } from '@/forms/logic'
 import type { FormDefinition } from '@/forms/types'
 import { appointmentBadge } from '@/lib/agenda'
 import {
+  currentEstimate,
   directionsHref,
   enquiryStage,
   mailHref,
@@ -319,6 +325,16 @@ function NextStepCard({
         ) : (
           <p>The appointment has happened.</p>
         )}
+        {estimateVisits(bookings.data ?? []).length > 0 && (
+          <Button
+            className="h-12 w-full sm:w-auto sm:px-6"
+            onClick={() =>
+              document.getElementById('estimate')?.scrollIntoView({ behavior: 'smooth' })
+            }
+          >
+            Write the estimate
+          </Button>
+        )}
         <p className="text-sm">No quote recorded yet.</p>
         <OutcomeForm
           key={outcomeKey(enquiry)}
@@ -329,7 +345,33 @@ function NextStepCard({
         />
       </>
     )
-  else if (step === 'quoted' || step === 'result')
+  else if (step === 'estimate') {
+    const estimate = currentEstimate(enquiry.estimates)
+    body = (
+      <>
+        {estimate && <EstimateSummary estimate={estimate} now={now} />}
+        {stage.key === 'quote_requested' ? (
+          <>
+            <p className="text-sm">They asked for their quote. Record it when it is sent.</p>
+            <OutcomeForm
+              key={outcomeKey(enquiry)}
+              enquiryId={enquiry.id}
+              current={outcomeOf(enquiry)}
+              badge={false}
+              primary="quote"
+            />
+          </>
+        ) : (
+          <>
+            {stage.key === 'no_answer' && (
+              <p className="text-sm">No answer after 10 days. Ring to follow up.</p>
+            )}
+            <OutcomeLater enquiry={enquiry} />
+          </>
+        )}
+      </>
+    )
+  } else if (step === 'quoted' || step === 'result')
     body = (
       <OutcomeForm
         key={outcomeKey(enquiry)}
@@ -886,6 +928,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
           form={forms.data?.get(`prepare@${enquiry.prepare_form_version ?? 1}`)}
           siteForm={siteForm}
         />
+        {bookings.data && <EstimateSection enquiry={enquiry} bookings={bookings.data} now={now} />}
         <Appointments bookings={bookings} featured={featured} />
         <Notes enquiry={enquiry} />
         <More enquiry={enquiry} />

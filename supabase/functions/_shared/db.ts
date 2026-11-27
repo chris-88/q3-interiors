@@ -4,6 +4,7 @@
 import postgres from 'postgres'
 import type { Interval, Reservation } from './slots.ts'
 import type {
+  EstimateRow,
   AppointmentType,
   Answers,
   BookingContext,
@@ -152,7 +153,7 @@ export function createDb(): Db {
       await q`select private.fail_calendar_job(${jobId}, ${error}, ${outcomeUnknown})`
     },
     async claimCommunications(limit, bookingId) {
-      return (await q`select id, enquiry_id, staff_user_id, booking_id, template, recipient, dedupe_key, attempts, max_attempts,
+      return (await q`select id, enquiry_id, staff_user_id, booking_id, estimate_id, template, recipient, dedupe_key, attempts, max_attempts,
         to_jsonb(about_start) #>> '{}' as about_start
         from private.claim_communications(${limit}, ${bookingId ?? null})`) as unknown as Communication[]
     },
@@ -199,6 +200,17 @@ export function createDb(): Db {
     },
     async photoDeletionFailed(path, error) {
       await q`select private.photo_deletion_failed(${path}, ${error})`
+    },
+    async estimateById(estimateId) {
+      const [row] = await q`select id, enquiry_id, low_eur, high_eur, work_looked_at, caveats,
+        to_jsonb(sent_at) #>> '{}' as sent_at, to_jsonb(valid_until) #>> '{}' as valid_until,
+        to_jsonb(quote_requested_at) #>> '{}' as quote_requested_at
+        from public.estimates where id = ${estimateId}`
+      return (row as unknown as EstimateRow | undefined) ?? null
+    },
+    async requestQuote(enquiryId, estimateId) {
+      const [row] = await q`select private.request_quote(${enquiryId}, ${estimateId}) as r`
+      return row?.r as 'requested' | 'already' | 'not_found'
     },
     async getWording() {
       const rows = await q`select key, body from public.message_blocks`

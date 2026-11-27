@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   WORDING,
   WORDING_KEYS,
+  renderEstimate,
   renderMessage,
   renderStaffAlert,
   wordingProblem,
@@ -41,6 +42,7 @@ const GROUPS: { title: string; keys: WordingKey[] }[] = [
   { title: 'Reminder', keys: ['booking_reminder.intro', 'booking_reminder.closing'] },
   { title: 'New time', keys: ['booking_rescheduled.intro', 'booking_rescheduled.closing'] },
   { title: 'Cancellation', keys: ['booking_cancelled.intro', 'booking_cancelled.closing'] },
+  { title: 'Estimate', keys: ['estimate_caveats'] },
   { title: 'Every customer email', keys: ['sign_off'] },
   {
     title: 'Staff alerts',
@@ -54,6 +56,7 @@ const PREVIEWS = {
   reminder: 'Reminder',
   rescheduled: 'New time',
   cancelled: 'Cancellation',
+  estimate: 'Estimate',
   staff_new: 'Staff alert: new enquiry',
   staff_callback: 'Staff alert: call back requested',
 } as const
@@ -101,6 +104,18 @@ function render(kind: PreviewKind, wording: Wording, prepare: Record<string, str
         ...common,
         ctx: visit,
         cancelledStart: visit.booking.starts_at,
+      })
+    case 'estimate':
+      return renderEstimate({
+        customerName: 'Ann Murphy',
+        workLookedAt: 'Kitchen: strip out, new units and worktop, tiled floor.',
+        low: 9500,
+        high: 10500,
+        caveats: wording.estimate_caveats?.trim() || WORDING.estimate_caveats.default,
+        quoteUrl: `${site}/#/estimate/sample`,
+        businessPhone: common.businessPhone,
+        privacyUrl: common.privacyUrl,
+        siteUrl: site,
       })
     default: {
       const summary = {

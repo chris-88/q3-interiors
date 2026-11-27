@@ -52,6 +52,7 @@ import {
   stageOf,
   telHref,
 } from '@/lib/enquiry-stage'
+import { formatEuro as formatAmount } from '@/lib/outcome'
 import { formatDateTime, formatDayMonth, formatShortWhen } from '@/lib/format'
 import { isKnown } from '@/lib/tolerant'
 import { neighbours } from '@/lib/walk'
@@ -680,7 +681,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
   const estimate = currentEstimate(enquiry.estimates)
   const quote = currentQuote(enquiry.quotes)
   const showEstimate = !!estimate || (bookings.data && !!estimateSource(enquiry, rows, now))
-  const showQuote = !!quote || enquiry.estimates.length > 0
+  const showQuote = !!quote || enquiry.estimates.length > 0 || enquiry.quote_amount != null
   const notes = enquiry.enquiry_events.filter((e) => e.kind === 'note_added').length
   const bar = barAction(view)
   return (
@@ -763,7 +764,13 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
           <Fold
             id="quote"
             title="Quote"
-            summary={quote ? `${quote.number} · ${formatEuro(quote.price_eur)}` : 'Not sent yet'}
+            summary={
+              quote
+                ? `${quote.number} · ${formatEuro(quote.price_eur)}`
+                : enquiry.quote_amount != null
+                  ? `Recorded ${formatAmount(enquiry.quote_amount)}`
+                  : 'Not sent yet'
+            }
           >
             <QuoteSection enquiry={enquiry} now={now} />
           </Fold>

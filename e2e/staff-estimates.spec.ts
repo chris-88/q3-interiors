@@ -251,13 +251,19 @@ test('staff write an estimate on its own screen: live range, a draft kept, check
   await page.getByRole('button', { name: 'Add', exact: true }).click()
   await expect(page.getByRole('checkbox', { name: 'Move the radiator' })).toBeChecked()
   await page.getByLabel('Anything else (optional)').fill('Keep the existing window.')
-  await expect(page.getByText('Saved on this phone until you send it.')).toBeVisible()
+  await expect(page.getByText('Saved on this device until you send it.')).toBeVisible()
   await shot(page, 'staff-estimate-form')
 
-  // The draft is kept on this phone: back to the enquiry, which says it was started; then on again.
+  // The draft is kept on this device: the enquiry says it was started and the bar carries on; the
+  // list marks the row "Draft".
   await page.getByRole('link', { name: 'Back to Brian Example' }).click()
-  await expect(nowCard(page)).toContainText('Estimate started, not sent (saved on this phone)')
+  await expect(nowCard(page)).toContainText('Estimate started, not sent (saved on this device)')
+  await expect(primaryAction(page)).toHaveText('Carry on with the estimate')
   await shot(page, 'staff-estimate-draft-now')
+  await page.getByRole('link', { name: 'All enquiries' }).click()
+  await expect(page.getByRole('link', { name: /Brian Example/ })).toContainText('Draft ·')
+  await shot(page, 'staff-estimate-draft-list')
+  await page.getByRole('link', { name: /Brian Example/ }).click()
   await primaryAction(page).click()
   await expect(page.getByLabel('Price in euro')).toHaveValue('10,000')
   await expect(page.getByRole('radio', { name: '5%', exact: true })).toBeChecked()
@@ -281,6 +287,17 @@ test('staff write an estimate on its own screen: live range, a draft kept, check
   await expect(email.getByText('01 555 0100')).toBeVisible()
   await expect(page.getByText('To: brian@example.com')).toBeVisible()
   await expect(page.getByText('Subject: Your estimate from Q3 Interiors')).toBeVisible()
+  // The frame takes the email's own height: the page scrolls, never a box inside it.
+  const frame = page.locator('iframe[title="Estimate email"]')
+  await expect
+    .poll(() =>
+      frame.evaluate((f) => {
+        const doc = (f as HTMLIFrameElement).contentDocument
+        return doc ? doc.documentElement.scrollHeight <= f.clientHeight + 2 : false
+      }),
+    )
+    .toBe(true)
+  await expect(email.getByText(/based on what we saw|VAT included/).first()).toBeVisible()
   await shot(page, 'staff-estimate-confirm')
 
   // One button that names the person replaces the separate confirm.
@@ -326,9 +343,14 @@ test('staff write an estimate on its own screen: live range, a draft kept, check
   expect(world.rpcCalls.find((c) => c.name === 'archive_estimate_work_item')?.body).toEqual({
     p_id: 'wi-seed-7',
   })
-  // From 1024px the task screen keeps one column and its action sits in the flow.
-  await page.setViewportSize({ width: 1280, height: 900 })
+  // From 1024px the title and the task's action are a sticky left column, on the first screen.
+  await page.setViewportSize({ width: 1280, height: 800 })
   await page.getByLabel('Price in euro').fill('12,000')
+  const bar = await page.getByRole('region', { name: 'Actions' }).boundingBox()
+  expect((bar?.y ?? 9999) + (bar?.height ?? 0)).toBeLessThanOrEqual(800)
+  await page.mouse.wheel(0, 600)
+  const after = await page.getByRole('region', { name: 'Actions' }).boundingBox()
+  expect((after?.y ?? 9999) + (after?.height ?? 0)).toBeLessThanOrEqual(800)
   await shot(page, 'staff-estimate-desktop')
 })
 

@@ -6,6 +6,7 @@ import { currentQuote, useQuotePdf, type Quote } from '@/api/quotes'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { DocumentViewer } from '@/components/staff/document-viewer'
 import { siteAddress, updatedQuoteDueLine } from '@/lib/enquiry-stage'
+import { formatEuro as formatAmount } from '@/lib/outcome'
 import { formatDayMonth } from '@/lib/format'
 import { formatEuro } from '../../../supabase/functions/_shared/estimate.ts'
 import {
@@ -146,7 +147,7 @@ export function QuoteSummary({
 export function QuoteSection({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) {
   const current = currentQuote(enquiry.quotes)
   const closed = enquiry.outcome === 'won' || enquiry.outcome === 'lost'
-  if (!current && enquiry.estimates.length === 0) return null
+  if (!current && enquiry.estimates.length === 0 && enquiry.quote_amount == null) return null
   const earlier = [...enquiry.quotes].sort((a, b) => b.version - a.version).slice(1)
   return (
     <section
@@ -160,7 +161,11 @@ export function QuoteSection({ enquiry, now }: { enquiry: EnquiryDetail; now: nu
       {current ? (
         <QuoteSummary enquiry={enquiry} quote={current} now={now} />
       ) : (
-        <p className="text-muted-foreground text-sm">No quote sent from here yet.</p>
+        <p className="text-muted-foreground text-sm">
+          {enquiry.quote_amount != null
+            ? `Recorded ${formatAmount(enquiry.quote_amount)}${enquiry.quote_date ? ` on ${formatDayMonth(`${enquiry.quote_date}T12:00:00Z`)}` : ''}, sent another way. No quote sent from here yet.`
+            : 'No quote sent from here yet.'}
+        </p>
       )}
       {!closed && (
         // Folded sections never draw a filled button: the bar holds the one primary action.

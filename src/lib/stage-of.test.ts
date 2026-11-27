@@ -291,14 +291,51 @@ describe('stripSteps (the strip from the record)', () => {
     ])
   })
 
-  it('won: the deposit is done; a step never reached is skipped, not done', () => {
-    const e = enquiry({ outcome: 'won', bookings: [booking({ attendance: 'attended' })] })
+  it('won with the full history: every step done, the last one "Won", never "Deposit" done', () => {
+    const e = enquiry({
+      outcome: 'won',
+      call_held_at: '2026-11-20T10:00:00Z',
+      bookings: [booking({ attendance: 'attended' })],
+      estimates: [estimate()],
+      quote_amount: 10200,
+    })
+    expect(states(e)).toEqual([
+      'call:done',
+      'visit:done',
+      'estimate:done',
+      'quote:done',
+      'deposit:won',
+    ])
+  })
+
+  it('a quote recorded by hand, then won: the quote stays done; steps never reached are skipped', () => {
+    const e = enquiry({
+      outcome: 'won',
+      quote_amount: 18450,
+      bookings: [booking({ attendance: 'attended' })],
+    })
     expect(states(e)).toEqual([
       'call:skipped',
       'visit:done',
       'estimate:skipped',
-      'quote:skipped',
-      'deposit:done',
+      'quote:done',
+      'deposit:won',
+    ])
+  })
+
+  it('lost after a quote: what happened stays done, no now, the deposit to come', () => {
+    const e = enquiry({
+      outcome: 'lost',
+      bookings: [booking({ attendance: 'attended' })],
+      estimates: [estimate()],
+      quote_amount: 10200,
+    })
+    expect(states(e)).toEqual([
+      'call:skipped',
+      'visit:done',
+      'estimate:done',
+      'quote:done',
+      'deposit:todo',
     ])
   })
 })

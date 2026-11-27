@@ -181,7 +181,7 @@ test('"We already spoke" cancels the call quietly and offers the three next step
   await spoke.click()
 
   // It carries on to the next step: the site visit first (filled), the estimate last.
-  await expect(sheet.getByText('Choose the next step.')).toBeVisible()
+  await expect(sheet.getByRole('heading', { name: 'Choose the next step' })).toBeVisible()
   const choices = sheet
     .getByRole('button', { name: 'Send a booking link' })
     .or(sheet.getByRole('link', { name: /^(Book the site visit|Write the estimate)$/ }))
@@ -256,6 +256,7 @@ test('staff book the site visit, typing the address it needs', async ({ page }) 
   // Its own screen; the bar's action is the booking, naming the time once one is chosen.
   await chooseAction(page, /^Book the site visit/)
   await expect(page).toHaveURL(/#\/enquiries\/e-held01\/visit$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Book the site visit' })).toBeFocused()
   await expect(page.getByText('A site visit needs the address.')).toBeVisible()
   await expect(taskAction(page, 'Book the visit')).toBeVisible()
   await page.getByLabel('House name or number and street').fill('12 Example Road')

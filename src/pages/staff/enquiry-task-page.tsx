@@ -32,7 +32,7 @@ function Unavailable({
   why: string
 }) {
   return (
-    <TaskFrame enquiryId={enquiry.id} name={enquiryName(enquiry)} title={title}>
+    <TaskFrame enquiryId={enquiry.id} name={enquiryName(enquiry)} title={title} focusTitle>
       <p>{why}</p>
     </TaskFrame>
   )
@@ -49,6 +49,7 @@ function BookVisitTask({ enquiry }: { enquiry: EnquiryDetail }) {
       name={enquiryName(enquiry)}
       title={link ? 'Send a booking link' : 'Book the site visit'}
       padded={!link}
+      focusTitle
     >
       {link ? (
         <SendLinkPanel enquiry={enquiry} onClose={() => setLink(false)} />
@@ -70,7 +71,13 @@ function BookVisitTask({ enquiry }: { enquiry: EnquiryDetail }) {
 function BookCallTask({ enquiry }: { enquiry: EnquiryDetail }) {
   const navigate = useNavigate()
   return (
-    <TaskFrame enquiryId={enquiry.id} name={enquiryName(enquiry)} title="Book a call" padded>
+    <TaskFrame
+      enquiryId={enquiry.id}
+      name={enquiryName(enquiry)}
+      title="Book a call"
+      padded
+      focusTitle
+    >
       <BookCallPanel
         enquiry={enquiry}
         onBooked={(start) =>

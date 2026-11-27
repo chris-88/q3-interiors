@@ -9,6 +9,7 @@ import {
   storedSearch,
 } from '@/components/staff/enquiry-text'
 import { DueChip } from '@/components/staff/due-chip'
+import { draftOf } from '@/lib/task-draft'
 import { useLoadedAt } from '@/components/staff/use-loaded-at'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -44,6 +45,8 @@ function EnquiryRow({ enquiry, form }: { enquiry: Row; form: FormDefinition | un
         </span>
         <span className="text-muted-foreground flex items-start justify-between gap-2 text-sm">
           <span className="min-w-0 break-words">
+            {/* An estimate or quote started on this device and not sent yet. */}
+            {draftOf(enquiry, view) && <span className="text-ink font-medium">Draft · </span>}
             {view.news}
             {enquiry.added_after_booking_at && ' · added after booking'}
           </span>

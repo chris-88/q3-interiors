@@ -76,15 +76,24 @@ export function HowDidItGo({
   bookings,
   now,
   close,
+  retitle,
 }: {
   enquiry: EnquiryDetail
   bookings: StaffBooking[]
   now: number
   close: () => void
+  /** Names the step it moved on to in the sheet's title. */
+  retitle?: (title: string | null) => void
 }) {
   const navigate = useNavigate()
   const [target] = useState(() => outcomeTarget(bookings, now))
-  const [step, setStep] = useState<Step>('ask')
+  const [step, setStepState] = useState<Step>('ask')
+  const setStep = (next: Step) => {
+    setStepState(next)
+    retitle?.(
+      next === 'next' ? 'Choose the next step' : next === 'move' ? 'Move to another day' : null,
+    )
+  }
   const attendance = useSetAttendance()
   const spoke = useCallHeldEarly(enquiry.id)
   const status = useSetEnquiryStatus()
@@ -96,7 +105,6 @@ export function HowDidItGo({
   if (step === 'next')
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-sm">Choose the next step.</p>
         <AfterCallChoices enquiry={enquiry} now={now} />
       </div>
     )

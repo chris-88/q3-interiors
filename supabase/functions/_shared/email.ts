@@ -1,7 +1,12 @@
 import { STAFF_URL } from './site.ts'
 import { backoffSeconds } from './calendar-job.ts'
 import type { PdfMaker } from './pdf.ts'
-import { longDate, renderQuoteDocument, type QuoteDocumentInput } from './quote-document.ts'
+import {
+  longDate,
+  quoteFooterHtml,
+  renderQuoteDocument,
+  type QuoteDocumentInput,
+} from './quote-document.ts'
 import type { QuoteFiles } from './storage.ts'
 import { toLocal } from './time.ts'
 import {
@@ -309,7 +314,9 @@ export async function processCommunication(
     let pdf: Uint8Array
     try {
       if (!deps.quotes) throw new Error('PDF service not configured')
-      pdf = await deps.quotes.pdf(renderQuoteDocument(doc))
+      pdf = await deps.quotes.pdf(renderQuoteDocument(doc), {
+        footerHtml: quoteFooterHtml(quote.number),
+      })
       const path = `${quote.enquiry_id}/${quote.id}.pdf`
       await deps.quotes.files.put(path, pdf)
       if (quote.pdf_path !== path) await db.quotePdfStored(quote.id, path)

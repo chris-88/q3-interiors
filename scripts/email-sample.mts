@@ -21,7 +21,11 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import { estimateRange } from '../supabase/functions/_shared/estimate.ts'
 import { createGotenberg } from '../supabase/functions/_shared/pdf.ts'
-import { longDate, renderQuoteDocument } from '../supabase/functions/_shared/quote-document.ts'
+import {
+  longDate,
+  quoteFooterHtml,
+  renderQuoteDocument,
+} from '../supabase/functions/_shared/quote-document.ts'
 import { toLocal } from '../supabase/functions/_shared/time.ts'
 import {
   addWorkingDays,
@@ -71,7 +75,9 @@ if (kind !== 'estimate' && kind !== 'visit-link' && kind !== 'quote')
     'usage: npm run email:sample -- estimate [--after-call] <address> | visit-link <address> (or --html <file> for the address)',
   )
 const afterCall = args.includes('--after-call')
-const rest = args.filter((a) => a !== '--after-call')
+// A quote's size: --long (25 included, 7 not included, a 600-character note) or --minimal.
+const size = args.includes('--long') ? 'long' : args.includes('--minimal') ? 'minimal' : 'normal'
+const rest = args.filter((a) => !['--after-call', '--long', '--minimal'].includes(a))
 const htmlAt = rest.indexOf('--html')
 const htmlFile = htmlAt >= 0 ? rest[htmlAt + 1] : undefined
 const pdfAt = rest.indexOf('--pdf')
@@ -122,7 +128,7 @@ const quoteDoc = {
     'Appliances',
     'Planning or certification fees',
   ],
-  note: 'The existing window stays; the radiator moves to the back wall.',
+  note: 'The existing window stays; the radiator moves to the back wall.' as string | null,
   price: 10_200,
   depositPercent: 10,
   depositEur: 1_020,
@@ -131,6 +137,53 @@ const quoteDoc = {
     WORDING.quote_terms.default
   ).replace('{date}', longDate(until)),
   fontBase: '',
+}
+
+if (size === 'long') {
+  quoteDoc.included = [
+    'Strip out the old kitchen',
+    'Remove old flooring',
+    'Subfloor and joists',
+    'New units and worktop',
+    'Appliances fitted',
+    'Splashback tiling',
+    'Tiled floor',
+    'Plumbing',
+    'New radiator',
+    'Electrics and lighting',
+    'Under-cabinet lights',
+    'Extractor ducting',
+    'Plastering and skim',
+    'New ceiling',
+    'Carpentry and skirting',
+    'Doors',
+    'Window boards',
+    'Utility room units',
+    'Utility room floor',
+    'Boiler move',
+    'Gas safety check',
+    'Painting',
+    'Waste removal',
+    'Site toilet',
+    'Final clean',
+  ]
+  quoteDoc.excluded = [
+    'Extra work found once the job is opened up',
+    'Site toilet',
+    'Waste removal',
+    'Appliances',
+    'Painting and decorating',
+    'Furniture and fittings not listed',
+    'Planning or certification fees',
+  ]
+  // Exactly 600 characters, the most a note may hold.
+  const words =
+    'The existing window stays and the radiator moves to the back wall. The utility room is done in the same visit so the floor runs through without a threshold. We will agree the tile and the worktop with you before ordering, and the boiler move depends on the gas check on the first day. If the joists under the old floor need more than a repair, we ring you before doing anything and price it separately. Access is through the side gate; we keep the driveway clear by eight each morning.'
+  quoteDoc.note = `${words} ${words}`.slice(0, 600)
+} else if (size === 'minimal') {
+  quoteDoc.included = ['Tiled floor']
+  quoteDoc.excluded = []
+  quoteDoc.note = null
 }
 
 function gotenbergUrl(): string {
@@ -164,7 +217,7 @@ async function quotePdf(): Promise<Uint8Array> {
       return fetch(input, init)
     }) as typeof fetch,
   })
-  return make(renderQuoteDocument(quoteDoc))
+  return make(renderQuoteDocument(quoteDoc), { footerHtml: quoteFooterHtml(quoteDoc.number) })
 }
 
 const message =

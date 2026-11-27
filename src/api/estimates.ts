@@ -26,12 +26,17 @@ export const estimateSchema = z.object({
   valid_until: z.string(),
   quote_requested_at: z.string().nullable().default(null),
   created_by_name: z.string().nullable().default(null),
+  // What it followed (absent before 2026-11-29: a site visit). Unknown values read as a visit.
+  after: z
+    .string()
+    .default('visit')
+    .transform((v) => (v === 'call' ? ('call' as const) : ('visit' as const))),
 })
 
 export type Estimate = z.infer<typeof estimateSchema>
 
 export const ESTIMATE_COLUMNS =
-  'estimates (id, booking_id, price_eur, plus_minus_percent, low_eur, high_eur, work_items, work_looked_at, caveats, sent_at, valid_until, quote_requested_at, created_by_name)'
+  'estimates (id, booking_id, price_eur, plus_minus_percent, low_eur, high_eur, work_items, work_looked_at, caveats, sent_at, valid_until, quote_requested_at, created_by_name, after)'
 
 /** "9500", "9,500" and "€9,500" are all 9500; anything else is null. */
 export function parsePrice(text: string): number | null {
@@ -62,12 +67,15 @@ export const estimateFormSchema = z.object({
 
 export type EstimateForm = z.input<typeof estimateFormSchema>
 
-/** Send an estimate on a confirmed site visit (`send_estimate`, active staff). */
+/**
+ * Send an estimate (`send_estimate`, active staff): on a confirmed site visit, on a call that was
+ * attended, or (no booking) on an enquiry whose call was held early.
+ */
 export function useSendEstimate(enquiryId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
-      bookingId: string
+      bookingId: string | null
       price: number
       percent: number
       work: string
@@ -79,6 +87,7 @@ export function useSendEstimate(enquiryId: string) {
         p_percent: input.percent,
         p_work: input.work,
         p_items: input.items,
+        ...(input.bookingId ? {} : { p_enquiry_id: enquiryId }),
       })
       if (error) throw toApiError(error)
       return z.string().parse(data)

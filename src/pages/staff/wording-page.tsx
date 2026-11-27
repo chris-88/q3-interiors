@@ -42,7 +42,7 @@ const GROUPS: { title: string; keys: WordingKey[] }[] = [
   { title: 'Reminder', keys: ['booking_reminder.intro', 'booking_reminder.closing'] },
   { title: 'New time', keys: ['booking_rescheduled.intro', 'booking_rescheduled.closing'] },
   { title: 'Cancellation', keys: ['booking_cancelled.intro', 'booking_cancelled.closing'] },
-  { title: 'Estimate', keys: ['estimate_caveats'] },
+  { title: 'Estimate', keys: ['estimate_caveats', 'estimate_call_caveats'] },
   { title: 'Every customer email', keys: ['sign_off'] },
   {
     title: 'Staff alerts',

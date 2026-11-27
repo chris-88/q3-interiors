@@ -13,6 +13,11 @@ const estimateSchema = z.object({
   // The ticked items and the note; older function responses had only workLookedAt.
   workItems: z.array(z.string()).default([]),
   note: z.string().nullable().default(null),
+  // What it followed; older responses had none (a site visit). Unknown values read as a visit.
+  after: z
+    .string()
+    .default('visit')
+    .transform((v) => (v === 'call' ? ('call' as const) : ('visit' as const))),
   workLookedAt: z.string().nullable().optional(),
   sentAt: z.string(),
   validUntil: z.string(),

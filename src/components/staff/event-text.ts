@@ -23,6 +23,11 @@ const EVENT_TEXT: Record<string, string> = {
   chase_flagged: 'Flagged: had to chase details',
   chase_updated: 'Changed what was missing',
   chase_cleared: 'Chase flag cleared',
+  estimate_sent: 'Estimate sent',
+  quote_requested: 'Customer asked for their quote',
+  call_held_early: 'We already spoke',
+  visit_link_sent: 'Site visit link sent',
+  visit_booked_by_staff: 'Site visit booked for the customer',
 }
 
 /** An `email_sent` event's detail is the message template. */
@@ -33,6 +38,8 @@ const EMAIL_SENT_TEXT: Record<string, string> = {
   booking_cancelled: 'Cancellation email sent',
   staff_new_enquiry: 'Staff alert sent: new enquiry',
   staff_callback_request: 'Staff alert sent: call-back requested',
+  estimate: 'Estimate email sent',
+  visit_link: 'Site visit link email sent',
 }
 
 /** The history line for an event: a title, and the detail to show under it (if any). */

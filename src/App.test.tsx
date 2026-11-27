@@ -50,6 +50,9 @@ describe('App', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Start with a call, a site visit, or both' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText(/our work/i)).not.toBeInTheDocument()
     // No landing photo is configured yet, and no empty slot stands in for one.
     expect(screen.queryAllByRole('img').filter((i) => i.getAttribute('alt'))).toHaveLength(1)

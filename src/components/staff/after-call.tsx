@@ -12,10 +12,10 @@ import {
 import type { EnquiryDetail } from '@/api/enquiries'
 import { SlotPicker } from '@/components/booking/slot-picker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { callHeldAt, visitLinkSentAt } from '@/lib/enquiry-stage'
+import { callHeldAt, telHref, visitLinkSentAt } from '@/lib/enquiry-stage'
 import { formatDayMonth, formatShortWhen } from '@/lib/format'
 
 /** The Estimate section listens for this to open its form (the Next step's "Write the estimate"). */
@@ -452,5 +452,86 @@ function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onDone: ()
         </p>
       )}
     </div>
+  )
+}
+
+type MissedChoice = 'none' | 'call' | 'visit' | 'link'
+
+/**
+ * Next step after a missed call or site visit (marked No-show): ring them (the one filled action),
+ * or book another time: a call, or the site visit and its booking link email. Uses the panels the
+ * after-call card has; no new email.
+ */
+export function MissedAppointment({
+  enquiry,
+  mode,
+  when,
+}: {
+  enquiry: EnquiryDetail
+  /** The missed appointment's mode: `phone` or `on_site`. */
+  mode: string
+  when: string | null
+}) {
+  const [choice, setChoice] = useState<MissedChoice>('none')
+  const ring = telHref(enquiry.answers.phone)
+  const first = text(enquiry.answers.name).split(/\s+/)[0] || 'them'
+  const visit = mode === 'on_site'
+  const toggle = (next: MissedChoice) => setChoice((c) => (c === next ? 'none' : next))
+  return (
+    <>
+      <p className="font-medium">
+        {visit ? 'Missed site visit' : 'Missed call'}
+        {when ? ` ${formatShortWhen(when)}` : ''}
+      </p>
+      <p className="text-sm">Ring them, or book another time.</p>
+      <div className="flex flex-col gap-2">
+        {ring && (
+          <a
+            href={ring}
+            className={buttonVariants({
+              // One filled action at a time: while a panel is open, its own button leads.
+              variant: choice === 'none' ? 'default' : 'outline',
+              className: wide,
+            })}
+          >
+            Ring {first}
+          </a>
+        )}
+        {visit ? (
+          <>
+            <Button
+              variant="outline"
+              aria-expanded={choice === 'visit'}
+              className={wide}
+              onClick={() => toggle('visit')}
+            >
+              Book the site visit
+            </Button>
+            <Button
+              variant="outline"
+              aria-expanded={choice === 'link'}
+              className={wide}
+              onClick={() => toggle('link')}
+            >
+              Send a booking link
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="outline"
+            aria-expanded={choice === 'call'}
+            className={wide}
+            onClick={() => toggle('call')}
+          >
+            Book a call
+          </Button>
+        )}
+      </div>
+      {choice === 'call' && <BookCallPanel enquiry={enquiry} onDone={() => undefined} />}
+      {choice === 'visit' && (
+        <BookVisitPanel enquiry={enquiry} onUseLink={() => setChoice('link')} />
+      )}
+      {choice === 'link' && <SendLinkPanel enquiry={enquiry} onClose={() => setChoice('none')} />}
+    </>
   )
 }

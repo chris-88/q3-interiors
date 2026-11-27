@@ -64,6 +64,8 @@ export const STAGES = [
   'booked',
   'call_held',
   'link_sent',
+  'missed_call',
+  'missed_visit',
   'awaiting_quote',
   'estimate_sent',
   'quote_requested',
@@ -85,6 +87,8 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   booked: 'Booked',
   call_held: 'Call held',
   link_sent: 'Site visit link sent',
+  missed_call: 'Missed call',
+  missed_visit: 'Missed visit',
   // After a site visit the next thing is the estimate (the key is kept for stored chips).
   awaiting_quote: 'Estimate to write',
   estimate_sent: 'Estimate sent',
@@ -103,6 +107,8 @@ export const NEEDS_ACTION: ReadonlySet<StageKey> = new Set([
   'new',
   'contact',
   'call_held',
+  'missed_call',
+  'missed_visit',
   'awaiting_quote',
   'quote_requested',
   'no_answer',
@@ -247,6 +253,24 @@ export function updatedQuoteDueLine(q: StageQuote, now: number): string | null {
   return isPastDate(due, now) ? `Updated quote overdue, was due ${day}` : `Updated quote due ${day}`
 }
 
+/**
+ * The latest finished appointment, when it was marked No-show and nothing has happened since: no
+ * call held after it and no estimate sent after it. (An appointment still to come is checked
+ * first.) Null otherwise.
+ */
+export function missedBooking<T extends StageBooking>(
+  e: Omit<StageInput, 'bookings'> & { bookings: T[] },
+  now: number,
+): T | null {
+  const passed = passedBooking(e.bookings, now)
+  if (!passed || passed.attendance !== 'no_show') return null
+  const after = (iso: string | null | undefined) =>
+    !!iso && Date.parse(iso) > Date.parse(passed.starts_at)
+  if (after(e.call_held_at)) return null
+  if (after(currentEstimate(e.estimates)?.sent_at)) return null
+  return passed
+}
+
 export type Stage = { key: StageKey; label: string }
 
 /**
@@ -256,6 +280,8 @@ export type Stage = { key: StageKey; label: string }
  * 3. outcome quoted -> Quoted; any other outcome (a newer release's) -> its raw value;
  * 4. a live appointment (reserved, confirming or confirmed) not yet started -> Booked (an
  *    appointment still to come is never hidden, even behind an estimate);
+ * 4a. the latest finished appointment marked No-show, nothing held or sent since -> Missed call
+ *    / Missed visit (Needs action: ring or rebook);
  * 4b. an estimate sent: a site visit that has happened since it was sent -> Estimate to write
  *    (the visit is the basis for a new one); quote requested -> Quote requested; past its
  *    10 days with no request -> No answer in 10 days; otherwise -> Estimate sent;
@@ -275,6 +301,8 @@ export function enquiryStage(e: StageInput, now: number): Stage {
     return known(latestQuote(e.quotes)?.change_requested_at ? 'change_requested' : 'quoted')
   if (e.outcome !== null) return { key: 'other', label: e.outcome }
   if (upcomingBooking(e.bookings, now)) return known('booked')
+  const missed = missedBooking(e, now)
+  if (missed) return known(missed.mode === 'on_site' ? 'missed_visit' : 'missed_call')
   const estimate = currentEstimate(e.estimates)
   if (estimate) {
     const passed = passedBooking(e.bookings, now)
@@ -344,6 +372,11 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
     case 'no_answer': {
       const estimate = currentEstimate(e.estimates)
       return estimate ? estimateNews(estimate, now) : stage.label
+    }
+    case 'missed_call':
+    case 'missed_visit': {
+      const b = missedBooking(e, now)
+      return `${stage.label}${b ? ` ${formatShortDay(b.starts_at)}` : ''} · ring or rebook`
     }
     case 'contact':
       return 'Asked to be contacted'
@@ -497,6 +530,8 @@ export type NextStep =
   | 'record'
   /** A call held: write the estimate, book the site visit, or send a booking link. */
   | 'after_call'
+  /** A missed call or visit: ring them, or book another time. */
+  | 'missed'
   /** An estimate is out: where it stands, an updated one, and Record quote. */
   | 'estimate'
   /** Quoted: Mark won or lost, Edit quote. */
@@ -526,6 +561,9 @@ export function nextStep(stage: StageKey): NextStep {
     case 'call_held':
     case 'link_sent':
       return 'after_call'
+    case 'missed_call':
+    case 'missed_visit':
+      return 'missed'
     case 'estimate_sent':
     case 'quote_requested':
     case 'no_answer':

@@ -75,12 +75,19 @@ select pg_temp.booking('visit', pg_temp.id('a'), 'site_visit', 'confirmed', '209
 select pg_temp.booking('call', pg_temp.id('b'), 'phone_consultation', 'confirmed', '2099-02-06');
 
 
--- The seed: each job type's items and the "any job" ones, in order.
-select pg_temp.expect((select count(*) = 9 from public.estimate_work_items where project_type = 'kitchen'), 'kitchen seed');
-select pg_temp.expect((select count(*) = 12 from public.estimate_work_items where project_type is null and kind = 'included'), 'any-job seed');
-select pg_temp.expect((select array_agg(label order by position) from public.estimate_work_items where project_type = 'attic')
-  = array['Structural work', 'Stairs', 'Roof windows', 'Insulation', 'Electrics', 'Plastering', 'Flooring', 'Painting'],
-  'attic seed in order');
+-- The list's shape, not its size: staff add and remove items, so live counts are not checked.
+-- Every row is a known kind and job type (or any job), and labels are unique per type and kind in
+-- any case (what add_estimate_work_item relies on).
+select pg_temp.expect(not exists (select 1 from public.estimate_work_items
+  where kind not in ('included', 'excluded')), 'kinds are included or excluded');
+select pg_temp.expect(not exists (select 1 from public.estimate_work_items
+  where project_type is not null and project_type !~ '^[a-z_]+$'), 'job types are option values');
+select pg_temp.expect(not exists (
+  select 1 from public.estimate_work_items
+  group by coalesce(project_type, ''), kind, lower(label) having count(*) > 1), 'labels unique per type and kind');
+select pg_temp.expect(not exists (select 1 from public.estimate_work_items
+  where char_length(label) not between 2 and 60), 'labels 2 to 60 characters');
+insert into r values ('items', to_jsonb((select count(*) from public.estimate_work_items)));
 
 -- Access: anon nothing; the anon function list is unchanged (five).
 select pg_temp.expect(
@@ -103,7 +110,8 @@ select pg_temp.expect_error('select public.add_estimate_work_item(''kitchen'', '
 
 -- Staff: read; no direct writes.
 select pg_temp.as_user('00000000-0000-4000-8000-000000000fb1');
-select pg_temp.expect((select count(*) >= 57 from public.estimate_work_items), 'staff read the list');
+select pg_temp.expect((select count(*) from public.estimate_work_items)
+  = (select (value #>> '{}')::bigint from r where name = 'items'), 'staff read the whole list');
 select pg_temp.expect_error('insert into public.estimate_work_items (label) values (''Direct'')', '42501');
 select pg_temp.expect_error('update public.estimate_work_items set archived_at = now()', '42501');
 

@@ -22,6 +22,7 @@ import { useEnquiryBookings, type StaffBooking } from '@/api/staff-booking'
 import {
   AfterCallChoices,
   BookACall,
+  MissedAppointment,
   WeAlreadySpoke,
   WRITE_ESTIMATE_EVENT,
 } from '@/components/staff/after-call'
@@ -56,6 +57,7 @@ import { formatAnswer, visibleFields } from '@/forms/logic'
 import type { FormDefinition } from '@/forms/types'
 import { appointmentBadge } from '@/lib/agenda'
 import {
+  missedBooking,
   currentEstimate,
   directionsHref,
   enquiryStage,
@@ -346,7 +348,19 @@ function NextStepCard({
         <OutcomeLater enquiry={enquiry} />
       </>
     )
-  else if (step === 'after_call')
+  else if (step === 'missed') {
+    const missed = missedBooking(enquiry, now)
+    body = (
+      <>
+        <MissedAppointment
+          enquiry={enquiry}
+          mode={stage.key === 'missed_visit' ? 'on_site' : 'phone'}
+          when={missed?.starts_at ?? null}
+        />
+        <OutcomeLater enquiry={enquiry} />
+      </>
+    )
+  } else if (step === 'after_call')
     body = (
       <>
         <AfterCallChoices enquiry={enquiry} now={now} />
@@ -373,10 +387,6 @@ function NextStepCard({
             Write the estimate
           </Button>
         )}
-        {/* A call they missed: book another. */}
-        {featured?.appointment_types.mode === 'phone' &&
-          featured.attendance === 'no_show' &&
-          bookCall}
         {/* Won and lost before anything has gone out stay one tap away, not as buttons. */}
         <OutcomeLater enquiry={enquiry} />
       </>

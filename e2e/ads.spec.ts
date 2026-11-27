@@ -223,6 +223,11 @@ test('ads not in a campaign are listed by set, filtered by chips; staff cannot s
   await page.goto('/#/ads')
   await signIn(page, 'staff@example.com', 'another long password')
   await expect(page.getByRole('heading', { name: 'Ads', level: 1 })).toBeVisible()
+  // Live by default (everything not archived); To review carries its count.
+  await expect(page.getByRole('radio', { name: 'Live' })).toBeChecked()
+  await expect(tiles(page)).toHaveCount(5)
+  await page.getByText('To review (4)', { exact: true }).click()
+  await expect(page).toHaveURL(/show=review/)
   // To review: new, changes requested; not in a campaign, newest set first, in set order.
   await expect(page.getByRole('main').getByRole('heading', { level: 2 })).toHaveText([
     'Not in a campaign',
@@ -243,8 +248,8 @@ test('ads not in a campaign are listed by set, filtered by chips; staff cannot s
   await expect(tiles(page).first()).toContainText('Start with a 20-minute call.')
   await page.getByText('Archived', { exact: true }).click()
   await expect(tiles(page)).toHaveCount(1)
-  await page.getByText('All', { exact: true }).click()
-  await expect(tiles(page)).toHaveCount(6)
+  await page.getByText('Live', { exact: true }).click()
+  await expect(tiles(page)).toHaveCount(5)
   // The nav count still means ads with status "new".
   await expect(
     page.getByRole('navigation', { name: 'Staff' }).getByRole('link', { name: /Ads/ }),
@@ -256,7 +261,7 @@ test('an admin selects several ads and archives them, and can bring them back', 
 }) => {
   const world = await installFakeStaff(page)
   seed(world)
-  await page.goto('/#/ads')
+  await page.goto('/#/ads?show=review')
   await signIn(page, 'admin@example.com', 'correct horse battery staple')
   await page.getByRole('button', { name: 'Select' }).click()
   await page.getByText('Stop chasing trades.').click()
@@ -283,7 +288,7 @@ test('the ad page: walk the list, Reel, Feed and Still with matching downloads, 
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   const world = await installFakeStaff(page)
   seed(world)
-  await page.goto('/#/ads')
+  await page.goto('/#/ads?show=review')
   await signIn(page, 'staff@example.com', 'another long password')
   await tiles(page).nth(1).getByRole('link').click()
   await expect(page.getByRole('heading', { name: 'Stop chasing trades.', level: 1 })).toBeVisible()

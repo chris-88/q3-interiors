@@ -4,26 +4,32 @@
 import { exportFilename, PLACEMENTS, type AdSize } from './spec'
 
 export const AD_FILTERS = [
+  ['live', 'Live'],
   ['review', 'To review'],
   ['approved', 'Approved'],
   ['archived', 'Archived'],
-  ['all', 'All'],
 ] as const
 
 export type AdFilter = (typeof AD_FILTERS)[number][0]
 
-/** The filter in a list or ad page address (?show=...), "To review" when absent or unknown. */
+/**
+ * The filter in a list or ad page address (?show=...): "Live" (every ad not archived) when absent
+ * or unknown, so the default view shows each campaign's ads (UX review 3; the old "all" is Live).
+ */
 export function readAdFilter(search: string): AdFilter {
   const value = new URLSearchParams(search).get('show')
-  return AD_FILTERS.some(([key]) => key === value) ? (value as AdFilter) : 'review'
+  return AD_FILTERS.some(([key]) => key === value) ? (value as AdFilter) : 'live'
 }
 
+/** The list address for a filter: Live is the bare `/ads`. */
+export const adListPath = (filter: AdFilter) => (filter === 'live' ? '/ads' : `/ads?show=${filter}`)
+
 /**
- * "To review" is everything not approved and not archived: new, changes requested, and any
- * status a newer release adds (so nothing silently disappears from the default view).
+ * Live is everything not archived. "To review" is everything not approved and not archived: new,
+ * changes requested, and any status a newer release adds (so nothing silently disappears).
  */
 export function matchesAdFilter(status: string, filter: AdFilter): boolean {
-  if (filter === 'all') return true
+  if (filter === 'live') return status !== 'archived'
   if (filter === 'approved') return status === 'approved'
   if (filter === 'archived') return status === 'archived'
   return status !== 'approved' && status !== 'archived'
@@ -72,6 +78,34 @@ export function adOrder<T extends Groupable & { status: string }>(
 }
 
 export { neighbours } from '../walk'
+
+/**
+ * A version counts as approved when it carries an approval, or when it is the current version of
+ * an ad whose status is approved (approval carried over in the database). Approve is never offered
+ * on an approved version.
+ */
+export function versionApproved(
+  version: { approved_at: string | null },
+  adStatus: string,
+  isCurrent: boolean,
+): boolean {
+  return version.approved_at !== null || (isCurrent && adStatus === 'approved')
+}
+
+/** Whether this person may approve this version now (admins, the current one, not archived). */
+export function canApproveVersion(input: {
+  role: string
+  isCurrent: boolean
+  adStatus: string
+  approvedAt: string | null
+}): boolean {
+  return (
+    input.role === 'admin' &&
+    input.isCurrent &&
+    input.adStatus !== 'archived' &&
+    !versionApproved({ approved_at: input.approvedAt }, input.adStatus, input.isCurrent)
+  )
+}
 
 export type PreviewVariant = {
   size: AdSize

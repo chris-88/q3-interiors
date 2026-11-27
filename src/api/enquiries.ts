@@ -5,6 +5,7 @@ import type { FormDefinition } from '@/forms/types'
 import { supabase } from '@/lib/supabase'
 import { openEnum, parseOne, parseRows, type Open } from '@/lib/tolerant'
 import { toApiError } from './errors'
+import { ESTIMATE_COLUMNS, estimateSchema } from './estimates'
 
 export const ENQUIRY_STATUSES = ['new', 'in_review', 'contacted', 'unsuitable'] as const
 export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number]
@@ -56,6 +57,11 @@ const enquirySummarySchema = z.object({
     .array(z.unknown())
     .default([])
     .transform((rows) => parseRows(summaryBookingSchema, rows, 'appointments')),
+  // Estimates after a site visit (the newest is the current one); absent before 2026-11-29.
+  estimates: z
+    .array(z.unknown())
+    .default([])
+    .transform((rows) => parseRows(estimateSchema, rows, 'estimates')),
 })
 
 export type EnquirySummary = z.infer<typeof enquirySummarySchema>
@@ -119,8 +125,7 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
 
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
 
-const SUMMARY_COLUMNS =
-  'id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, bookings (starts_at, confirmed_at, state, appointment_types (mode))'
+const SUMMARY_COLUMNS = `id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, bookings (starts_at, confirmed_at, state, appointment_types (mode)), ${ESTIMATE_COLUMNS}`
 
 export function useEnquiries() {
   return useQuery({

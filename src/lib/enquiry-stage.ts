@@ -2,7 +2,8 @@
 // contact request, bookings), so one badge per row replaces a pile of pills. Also the list's
 // chips, search and order, and the one next step the enquiry page offers. Pure, so it is tested
 // without a browser.
-import { formatShortDay, formatShortWhen } from './format'
+import { formatRange } from '../../supabase/functions/_shared/estimate.ts'
+import { formatDayMonth, formatShortDay, formatShortWhen } from './format'
 import { reasonLabel } from './outcome'
 
 export type StageBooking = {
@@ -13,11 +14,22 @@ export type StageBooking = {
   mode?: string | null
 }
 
+/** An estimate sent after a site visit (the newest is the current one). */
+export type StageEstimate = {
+  sent_at: string
+  valid_until: string
+  low_eur: number
+  high_eur: number
+  quote_requested_at: string | null
+}
+
 export type StageInput = {
   status: string
   outcome: string | null
   contact_requested_at: string | null
   bookings: StageBooking[]
+  /** Absent from older reads and tests: no estimate. */
+  estimates?: StageEstimate[]
 }
 
 export const STAGES = [
@@ -27,6 +39,9 @@ export const STAGES = [
   'contacted',
   'booked',
   'awaiting_quote',
+  'estimate_sent',
+  'quote_requested',
+  'no_answer',
   'quoted',
   'won',
   'lost',
@@ -42,6 +57,9 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   contacted: 'Contacted',
   booked: 'Booked',
   awaiting_quote: 'Awaiting quote',
+  estimate_sent: 'Estimate sent',
+  quote_requested: 'Quote requested',
+  no_answer: 'No answer in 10 days',
   quoted: 'Quoted',
   won: 'Won',
   lost: 'Lost',
@@ -49,7 +67,13 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
 }
 
 /** Stages where someone at Q3 has to do something next. */
-export const NEEDS_ACTION: ReadonlySet<StageKey> = new Set(['new', 'contact', 'awaiting_quote'])
+export const NEEDS_ACTION: ReadonlySet<StageKey> = new Set([
+  'new',
+  'contact',
+  'awaiting_quote',
+  'quote_requested',
+  'no_answer',
+])
 const FINISHED: ReadonlySet<StageKey> = new Set(['won', 'lost', 'closed'])
 
 const LIVE = new Set(['reserved', 'calendar_pending', 'confirmed'])
@@ -74,6 +98,36 @@ export function passedBooking<T extends StageBooking>(bookings: T[], now: number
   )
 }
 
+/** The current (newest) estimate, if any. */
+export function currentEstimate<T extends StageEstimate>(estimates: T[] | undefined): T | null {
+  return (
+    [...(estimates ?? [])].sort((a, b) => Date.parse(b.sent_at) - Date.parse(a.sent_at))[0] ?? null
+  )
+}
+
+/** Where the current estimate stands: asked for a quote, past its 10 days, or open. */
+export function estimateState(
+  e: StageEstimate,
+  now: number,
+): 'quote_requested' | 'no_answer' | 'estimate_sent' {
+  if (e.quote_requested_at) return 'quote_requested'
+  return Date.parse(e.valid_until) <= now ? 'no_answer' : 'estimate_sent'
+}
+
+/** "Estimate sent 27 Nov: €9,500 to €10,500" */
+export function estimateLine(e: StageEstimate): string {
+  return `Estimate sent ${formatDayMonth(e.sent_at)}: ${formatRange(e.low_eur, e.high_eur)}`
+}
+
+/** "Quote requested 29 Nov", "No answer in 10 days", or null while it is open. */
+export function estimateFollowUp(e: StageEstimate, now: number): string | null {
+  const state = estimateState(e, now)
+  if (state === 'quote_requested' && e.quote_requested_at)
+    return `Quote requested ${formatDayMonth(e.quote_requested_at)}`
+  if (state === 'no_answer') return 'No answer in 10 days'
+  return null
+}
+
 export type Stage = { key: StageKey; label: string }
 
 /**
@@ -81,7 +135,9 @@ export type Stage = { key: StageKey; label: string }
  * 1. outcome won -> Won; outcome lost -> Lost;
  * 2. status unsuitable -> Closed;
  * 3. outcome quoted -> Quoted; any other outcome (a newer release's) -> its raw value;
- * 4. a live appointment (reserved, confirming or confirmed) not yet started -> Booked;
+ * 4. an estimate sent: quote requested -> Quote requested; past its 10 days with no request ->
+ *    No answer in 10 days; otherwise -> Estimate sent;
+ * 4b. a live appointment (reserved, confirming or confirmed) not yet started -> Booked;
  * 5. a confirmed, not cancelled appointment that has started -> Awaiting quote;
  * 6. asked to be contacted and status still new or in review -> Call back;
  * 7. status contacted -> Contacted; in review -> In review; new -> New;
@@ -94,6 +150,8 @@ export function enquiryStage(e: StageInput, now: number): Stage {
   if (e.status === 'unsuitable') return known('closed')
   if (e.outcome === 'quoted') return known('quoted')
   if (e.outcome !== null) return { key: 'other', label: e.outcome }
+  const estimate = currentEstimate(e.estimates)
+  if (estimate) return known(estimateState(estimate, now))
   if (upcomingBooking(e.bookings, now)) return known('booked')
   if (passedBooking(e.bookings, now)) return known('awaiting_quote')
   if (e.contact_requested_at && (e.status === 'new' || e.status === 'in_review'))
@@ -139,6 +197,14 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
       return b
         ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}, no quote yet`
         : 'Awaiting quote'
+    }
+    case 'estimate_sent':
+    case 'quote_requested':
+    case 'no_answer': {
+      const estimate = currentEstimate(e.estimates)
+      if (!estimate) return stage.label
+      const follow = estimateFollowUp(estimate, now)
+      return follow ? `${estimateLine(estimate)} · ${follow}` : estimateLine(estimate)
     }
     case 'contact':
       return 'Asked to be contacted'
@@ -281,6 +347,8 @@ export type NextStep =
   | 'appointment'
   /** The appointment happened, no outcome yet: attendance and Record quote. */
   | 'record'
+  /** An estimate is out: where it stands, an updated one, and Record quote. */
+  | 'estimate'
   /** Quoted: Mark won or lost, Edit quote. */
   | 'quoted'
   /** Won or lost: the result, with Edit. */
@@ -303,6 +371,10 @@ export function nextStep(stage: StageKey): NextStep {
       return 'appointment'
     case 'awaiting_quote':
       return 'record'
+    case 'estimate_sent':
+    case 'quote_requested':
+    case 'no_answer':
+      return 'estimate'
     case 'quoted':
       return 'quoted'
     case 'won':

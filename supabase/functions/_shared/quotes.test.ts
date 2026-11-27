@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { processCommunication, type Mailer, type OutgoingEmail } from './email.ts'
 import { renderQuoteEmail, renderStaffAlert, WORDING } from './messages.ts'
 import { handlePublic, type PublicDeps } from './public-booking.ts'
-import { depositLine, longDate, renderQuoteDocument } from './quote-document.ts'
+import { createGotenberg, pdfPageCount } from './pdf.ts'
+import {
+  depositLine,
+  longDate,
+  pairLists,
+  quoteFooterHtml,
+  renderQuoteDocument,
+} from './quote-document.ts'
 import type { QuoteFiles } from './storage.ts'
 import { FakeCalendar, FakeDb } from './testing/fakes.ts'
 
@@ -325,5 +332,66 @@ describe('the customer quote pages (public-booking)', () => {
       deps(db),
     )
     expect(other.status).toBe(404)
+  })
+})
+
+describe('the quote on paper', () => {
+  it('sets two short lists side by side, a long one in one column', () => {
+    expect(pairLists({ included: Array(8).fill('x'), excluded: ['a', 'b', 'c'] })).toBe(true)
+    expect(pairLists({ included: Array(25).fill('x'), excluded: ['a'] })).toBe(false)
+    expect(pairLists({ included: ['x'], excluded: [] })).toBe(false)
+    const doc = renderQuoteDocument({
+      number: 'Q3-Q-0001',
+      version: 1,
+      sentOn: '2026-11-27',
+      validUntil: '2026-12-18',
+      customerName: 'Mary',
+      jobAddress: null,
+      jobLine: null,
+      business: { legalName: null, phone: null, email: null },
+      included: ['x y'],
+      excluded: ['a b'],
+      note: null,
+      price: 1000,
+      depositPercent: 10,
+      depositEur: 100,
+      terms: 't',
+      fontBase: '',
+    })
+    // Side by side on paper only; one column on screens.
+    expect(doc).toContain('class="lists pair"')
+    expect(doc).toContain('@media print{.lists.pair{display:grid')
+    // The price moves with the terms and the sign-off.
+    expect(doc.indexOf('<div class="end">')).toBeLessThan(doc.indexOf('class="price"'))
+  })
+
+  it('adds the page footer only when the quote runs past one page', async () => {
+    const onePage = new TextEncoder().encode('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+    const twoPages = new TextEncoder().encode('<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>')
+    expect(pdfPageCount(onePage)).toBe(1)
+    expect(pdfPageCount(twoPages)).toBe(2)
+    const footer = quoteFooterHtml('Q3-Q-0001')
+    expect(footer).toContain('Q3-Q-0001 · page <span class="pageNumber"></span> of')
+
+    for (const [first, calls] of [
+      [onePage, 1],
+      [twoPages, 2],
+    ] as const) {
+      const sent: string[][] = []
+      const make = createGotenberg({
+        url: 'http://gotenberg:3000',
+        fontBase: 'https://q3.example/quote/',
+        fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+          if (String(input).endsWith('.woff2')) return new Response(new Uint8Array([0]))
+          const names = [...(init!.body as FormData).getAll('files')].map((f) => (f as File).name)
+          sent.push(names)
+          return new Response(sent.length === 1 ? first : twoPages)
+        }) as typeof fetch,
+      })
+      await make('<html></html>', { footerHtml: footer })
+      expect(sent).toHaveLength(calls)
+      expect(sent[0]).not.toContain('footer.html')
+      if (calls === 2) expect(sent[1]).toContain('footer.html')
+    }
   })
 })

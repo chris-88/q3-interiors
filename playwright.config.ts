@@ -9,7 +9,7 @@ const PORT = Number(process.env.E2E_PORT ?? 4173)
 const PUBLIC_URL = `http://127.0.0.1:${PORT}`
 const STAFF_URL = `http://127.0.0.1:${PORT + 1}`
 const STAFF_SPECS =
-  /(staff-accounts|staff-enquiries|staff-estimates|staff-after-call|staff-pilot|staff-compat|staff-outcomes|staff-redesign|staff-website|staff-stage-rules|campaigns|checklist|staff-host|staff-pwa|ads|ads-review)\.spec\.ts/
+  /(staff-accounts|staff-enquiries|staff-estimates|staff-after-call|staff-pilot|staff-compat|staff-outcomes|staff-redesign|staff-website|staff-stage-rules|staff-book-call|campaigns|checklist|staff-host|staff-pwa|ads|ads-review)\.spec\.ts/
 const phone = { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } }
 
 export default defineConfig({

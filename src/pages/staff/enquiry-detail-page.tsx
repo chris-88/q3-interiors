@@ -21,6 +21,7 @@ import {
 import { useEnquiryBookings, type StaffBooking } from '@/api/staff-booking'
 import {
   AfterCallChoices,
+  BookACall,
   WeAlreadySpoke,
   WRITE_ESTIMATE_EVENT,
 } from '@/components/staff/after-call'
@@ -270,6 +271,9 @@ function NextStepCard({
   const first = enquiryName(enquiry).split(' ')[0]
   const needsBooking = step === 'appointment' || step === 'record'
   const featured = featuredBooking(enquiry, bookings.data ?? [], now)
+  // While the "Book a call" panel is open, its Book button is the one filled action.
+  const [bookingCall, setBookingCall] = useState(false)
+  const bookCall = <BookACall enquiry={enquiry} onOpenChange={setBookingCall} />
 
   let body: ReactNode
   if (needsBooking && bookings.isPending) body = <Skeleton className="h-24 w-full" />
@@ -287,7 +291,10 @@ function NextStepCard({
           {call && (
             <a
               href={call}
-              className={buttonVariants({ className: 'h-12 w-full sm:w-auto sm:px-6' })}
+              className={buttonVariants({
+                variant: bookingCall ? 'outline' : 'default',
+                className: 'h-12 w-full sm:w-auto sm:px-6',
+              })}
             >
               Ring {first}
             </a>
@@ -295,6 +302,7 @@ function NextStepCard({
           <MarkContacted enquiry={enquiry} />
           <WeAlreadySpoke enquiry={enquiry} call={null} />
         </div>
+        {bookCall}
         <OutcomeLater enquiry={enquiry} />
       </>
     )
@@ -306,6 +314,7 @@ function NextStepCard({
           <MarkContacted enquiry={enquiry} />
           <WeAlreadySpoke enquiry={enquiry} call={null} />
         </div>
+        {bookCall}
         <OutcomeLater enquiry={enquiry} />
       </>
     )
@@ -314,6 +323,7 @@ function NextStepCard({
       <>
         <p>Contacted. Nothing booked yet.</p>
         <WeAlreadySpoke enquiry={enquiry} call={null} />
+        {bookCall}
         <OutcomeLater enquiry={enquiry} />
       </>
     )
@@ -355,6 +365,10 @@ function NextStepCard({
             Write the estimate
           </Button>
         )}
+        {/* A call they missed: book another. */}
+        {featured?.appointment_types.mode === 'phone' &&
+          featured.attendance === 'no_show' &&
+          bookCall}
         {/* Won and lost before anything has gone out stay one tap away, not as buttons. */}
         <OutcomeLater enquiry={enquiry} />
       </>

@@ -2,10 +2,11 @@
 // answers, each saying what happens next; it replaces Attended / No-show, "We already spoke" and
 // "Mark as contacted" as separate controls. The server actions behind them are unchanged.
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useCallHeldEarly } from '@/api/after-call'
 import { useSetEnquiryStatus, type EnquiryDetail } from '@/api/enquiries'
 import { useSetAttendance, type StaffBooking } from '@/api/staff-booking'
-import { AfterCallChoices, WRITE_ESTIMATE_EVENT } from '@/components/staff/after-call'
+import { AfterCallChoices, taskPath } from '@/components/staff/after-call'
 import { MovePanel } from '@/components/staff/booking-actions'
 import { Button } from '@/components/ui/button'
 import { formatShortWhen } from '@/lib/format'
@@ -81,6 +82,7 @@ export function HowDidItGo({
   now: number
   close: () => void
 }) {
+  const navigate = useNavigate()
   const [target] = useState(() => outcomeTarget(bookings, now))
   const [step, setStep] = useState<Step>('ask')
   const attendance = useSetAttendance()
@@ -108,7 +110,7 @@ export function HowDidItGo({
     record('attended', () => {
       if (!visit) return setStep('next')
       close()
-      window.dispatchEvent(new Event(WRITE_ESTIMATE_EVENT))
+      navigate(taskPath(enquiry.id, 'estimate'))
     })
 
   return (
@@ -121,7 +123,7 @@ export function HowDidItGo({
           <>
             <Choice
               title="It went ahead"
-              line={visit ? 'Next: the estimate form opens' : 'Next: choose the next step'}
+              line={visit ? 'Next: write the estimate' : 'Next: choose the next step'}
               onClick={wentAhead}
               disabled={busy}
             />

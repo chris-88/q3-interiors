@@ -478,7 +478,7 @@ test('after the appointment: how it went, a quote recorded; then won from the ac
   const sheet = page.getByRole('dialog')
   await expect(sheet.getByRole('heading', { name: 'How did the site visit go?' })).toBeVisible()
   await expect(sheet.getByRole('button', { name: /^It went ahead/ })).toContainText(
-    'Next: the estimate form opens',
+    'Next: write the estimate',
   )
   await expect(sheet.getByRole('button', { name: /^They didn’t show/ })).toContainText(
     'Next: ring them, then rebook',
@@ -486,7 +486,9 @@ test('after the appointment: how it went, a quote recorded; then won from the ac
   await shot(page, 'how-did-it-go-visit-390')
   await sheet.getByRole('button', { name: /^It went ahead/ }).click()
   await expect(sheet).toHaveCount(0)
+  await expect(page).toHaveURL(/#\/enquiries\/e-await1\/estimate$/)
   await expect(page.getByLabel('Price in euro')).toBeFocused()
+  await page.getByRole('link', { name: /^Back to/ }).click()
   await expect(nowCard(page)).toContainText('Write the estimate')
   expect(world.rpcCalls.find((c) => c.name === 'set_booking_attendance')?.body).toEqual({
     p_booking_id: 'b-await',
@@ -520,17 +522,11 @@ test('after the appointment: how it went, a quote recorded; then won from the ac
   await expect(fix.getByRole('button', { name: 'Edit win' })).toBeVisible()
 })
 
-test('WCAG 2.4.11: nothing focused hides under the fixed action bar at 390 x 640', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 640 })
-  await open(page, '/#/enquiries/e-new001')
-  await openFolds(page)
+/** Tab through the whole screen: everything focused outside the bar stays at least partly above it. */
+async function tabAboveTheBar(page: Page) {
   await page.evaluate(() => window.scrollTo(0, 0))
-  const bar = page.getByRole('region', { name: 'Actions' })
-  const barTop = (await bar.boundingBox())?.y ?? 0
+  const barTop = (await page.getByRole('region', { name: 'Actions' }).boundingBox())?.y ?? 0
   expect(barTop).toBeLessThan(640)
-  // Tab through the whole page: every focused thing outside the bar stays at least partly above it.
   let checked = 0
   for (let i = 0; i < 120; i++) {
     await page.keyboard.press('Tab')
@@ -538,19 +534,26 @@ test('WCAG 2.4.11: nothing focused hides under the fixed action bar at 390 x 640
       const el = document.activeElement
       if (!el || el === document.body || el.closest('[data-action-bar]')) return null
       const r = el.getBoundingClientRect()
-      return {
-        top: r.top,
-        bottom: r.bottom,
-        h: r.height,
-        tag: el.tagName,
-        text: el.textContent?.slice(0, 40),
-      }
+      return { top: r.top, h: r.height, tag: el.tagName, text: el.textContent?.slice(0, 40) }
     })
     if (!at || at.h === 0) continue
     checked++
     expect(at.top, `${at.tag} ${at.text}`).toBeLessThan(barTop)
   }
   expect(checked).toBeGreaterThan(10)
+}
+
+test('WCAG 2.4.11: nothing focused hides under the fixed action bar at 390 x 640', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 640 })
+  await open(page, '/#/enquiries/e-new001')
+  await openFolds(page)
+  await tabAboveTheBar(page)
+  // A task screen has the same bar (its own action) and the same padding.
+  await page.goto('/#/enquiries/e-quote1/quote')
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
+  await tabAboveTheBar(page)
 })
 
 test('the actions sheet: focus on its title, Back only from the list, 48px close', async ({

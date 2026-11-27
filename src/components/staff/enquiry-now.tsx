@@ -1,28 +1,23 @@
 // The enquiry page's top (review P3, P7): the five-step strip, the read-only "now" card, the one
 // primary action in a bar, and the other actions in a sheet. Everything reads `stageOf()`; the
 // actions reuse the forms and panels the page already had, so every server action is unchanged.
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { ENQUIRY_STATUSES, type EnquiryDetail } from '@/api/enquiries'
 import { currentQuote } from '@/api/quotes'
 import type { StaffBooking } from '@/api/staff-booking'
-import {
-  AfterCallChoices,
-  BookCallPanel,
-  BookVisitPanel,
-  SendLinkPanel,
-  WRITE_ESTIMATE_EVENT,
-} from '@/components/staff/after-call'
+import { AfterCallChoices, SendLinkPanel } from '@/components/staff/after-call'
 import { BookingActions } from '@/components/staff/booking-actions'
 import { HowDidItGo, outcomeTarget, outcomeTitle } from '@/components/staff/how-did-it-go'
 import { enquiryName } from '@/components/staff/enquiry-text'
 import { OutcomeForm, type CurrentOutcome } from '@/components/staff/outcome-form'
-import { QuoteSummary, WRITE_QUOTE_EVENT } from '@/components/staff/quote-section'
+import { QuoteSummary } from '@/components/staff/quote-section'
 import { StatusForm } from '@/components/staff/status-form'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import {
   appointmentKind,
+  currentEstimate,
   mailHref,
   passedBooking,
   STEP_LABELS,
@@ -34,6 +29,7 @@ import {
   type StageView,
 } from '@/lib/enquiry-stage'
 import { formatShortDay, formatShortWhen } from '@/lib/format'
+import { hasDraft } from '@/lib/task-draft'
 import { isKnown } from '@/lib/tolerant'
 import { OUTCOME_STAGES } from '@/lib/outcome'
 
@@ -92,6 +88,22 @@ const dueLine = (view: StageView): string | null => {
 }
 
 /** One read-only card: whose move it is, and what. */
+/** A task started on this device and not sent yet (its draft is kept here until it is). */
+export function draftLine(enquiry: EnquiryDetail, view: StageView): string | null {
+  const offered = (keys: ActionKey[]) =>
+    keys.some((k) => view.primary === k || view.others.includes(k))
+  const estimate = currentEstimate(enquiry.estimates)
+  if (
+    offered(['write_estimate', 'updated_estimate']) &&
+    hasDraft('estimate', enquiry.id, estimate?.id ?? null)
+  )
+    return 'Estimate started, not sent (saved on this phone)'
+  const quote = currentQuote(enquiry.quotes)
+  if (offered(['write_quote', 'revise_quote']) && hasDraft('quote', enquiry.id, quote?.id ?? null))
+    return 'Quote started, not sent (saved on this phone)'
+  return null
+}
+
 export function NowCard({ enquiry, view }: { enquiry: EnquiryDetail; view: StageView }) {
   const first = firstName(enquiry)
   const kicker =
@@ -112,6 +124,7 @@ export function NowCard({ enquiry, view }: { enquiry: EnquiryDetail; view: Stage
         : view.whose === 'none'
           ? view.news
           : view.label
+  const draft = draftLine(enquiry, view)
   const lines = [view.news, dueLine(view), view.whose === 'customer' ? view.chip : null].filter(
     (x, i, all): x is string => !!x && x !== title && all.indexOf(x) === i,
   )
@@ -129,6 +142,7 @@ export function NowCard({ enquiry, view }: { enquiry: EnquiryDetail; view: Stage
           {l}
         </p>
       ))}
+      {draft && <p className="text-ink text-sm font-medium">{draft}</p>}
       {view.key === 'contact' && enquiry.contact_request_reason && (
         <p className="text-sm break-words">Why: {enquiry.contact_request_reason}</p>
       )}
@@ -160,10 +174,8 @@ type ActionDef = {
   title: (first: string) => string
   line: string
   danger?: boolean
-  /** A link (phone, email): the row and the bar open it. */
+  /** A link: the phone, email, or a task screen (estimate, quote, booking a visit or call). */
   href?: (e: EnquiryDetail) => string | null
-  /** An event the page listens for (the estimate and quote forms). */
-  event?: string
   /** A panel shown in the sheet. */
   panel?: (c: Ctx) => ReactNode
   /** The sheet's title while the panel is open, when it depends on the enquiry. */
@@ -253,14 +265,12 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
   book_call: {
     title: () => 'Book a call',
     line: 'Pick a time; they get the confirmation email',
-    panel: ({ enquiry, close }) => <BookCallPanel enquiry={enquiry} onDone={close} />,
+    href: (e) => `#/enquiries/${e.id}/call`,
   },
   book_visit: {
     title: () => 'Book the site visit',
     line: 'Pick a time; they get the confirmation email',
-    panel: ({ enquiry, goto }) => (
-      <BookVisitPanel enquiry={enquiry} onUseLink={() => goto('send_link')} />
-    ),
+    href: (e) => `#/enquiries/${e.id}/visit`,
   },
   send_link: {
     title: () => 'Send a booking link',
@@ -281,22 +291,22 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
   write_estimate: {
     title: () => 'Write the estimate',
     line: 'A price range and the work; you check the email before it goes',
-    event: WRITE_ESTIMATE_EVENT,
+    href: (e) => `#/enquiries/${e.id}/estimate`,
   },
   updated_estimate: {
     title: () => 'Send an updated estimate',
     line: 'A new range, good for a fresh 10 days',
-    event: WRITE_ESTIMATE_EVENT,
+    href: (e) => `#/enquiries/${e.id}/estimate`,
   },
   write_quote: {
     title: () => 'Write the quote',
     line: 'One price, what is and is not included, with a PDF',
-    event: WRITE_QUOTE_EVENT,
+    href: (e) => `#/enquiries/${e.id}/quote`,
   },
   revise_quote: {
     title: () => 'Send an updated quote',
     line: 'A new version, good for a fresh 15 working days',
-    event: WRITE_QUOTE_EVENT,
+    href: (e) => `#/enquiries/${e.id}/quote`,
   },
   record_quote: {
     title: () => 'Record a quote or result',
@@ -371,16 +381,6 @@ export function ActionBar({
   const [fromList, setFromList] = useState(false)
   // Focus lands on the sheet's title, never on its first (possibly destructive) row.
   const title = useRef<HTMLHeadingElement>(null)
-  // A form that opens on the page (the estimate, the quote) puts the sheet away.
-  useEffect(() => {
-    const away = () => setOpen(false)
-    window.addEventListener(WRITE_ESTIMATE_EVENT, away)
-    window.addEventListener(WRITE_QUOTE_EVENT, away)
-    return () => {
-      window.removeEventListener(WRITE_ESTIMATE_EVENT, away)
-      window.removeEventListener(WRITE_QUOTE_EVENT, away)
-    }
-  }, [])
   const first = firstName(enquiry)
   const primary = barAction(view)
   const others = view.others.filter((k) => k !== primary)
@@ -388,13 +388,6 @@ export function ActionBar({
     setPanel(key)
     setFromList(listed)
     setOpen(true)
-  }
-  const run = (key: ActionKey, listed = false) => {
-    const def = ACTIONS[key]
-    if (def.event) {
-      setOpen(false)
-      window.dispatchEvent(new Event(def.event))
-    } else show(key, listed)
   }
   const ctx: Ctx = {
     enquiry,
@@ -426,7 +419,7 @@ export function ActionBar({
               </a>
             )
           ) : (
-            <Button className="h-12 flex-1" onClick={() => run(primary)}>
+            <Button className="h-12 flex-1" onClick={() => show(primary)}>
               {pdef.title(first)}
             </Button>
           ))}
@@ -509,7 +502,7 @@ export function ActionBar({
                           </a>
                         ) : null
                       ) : (
-                        <button type="button" className={row} onClick={() => run(key, true)}>
+                        <button type="button" className={row} onClick={() => show(key, true)}>
                           {body}
                         </button>
                       )}

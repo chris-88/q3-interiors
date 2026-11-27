@@ -3,8 +3,10 @@ import { publishedForms } from '../src/forms/published.ts'
 import {
   installFakeStaff,
   nowCard,
+  openFold,
   primaryAction,
   signIn,
+  taskAction,
   type StaffWorld,
   staffWorld,
 } from './fake-staff'
@@ -18,7 +20,8 @@ import {
 const NOW = '2026-11-26T12:00:00Z'
 
 const shot = async (page: Page, name: string) => {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  const width = page.viewportSize()?.width ?? 390
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   const dir = process.env.SCREENSHOTS_DIR
   if (dir) await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true })
 }
@@ -176,7 +179,6 @@ function seed(world: StaffWorld) {
 
 const chipLabels = (page: Page) =>
   page
-    .getByRole('region', { name: 'Estimate' })
     .getByRole('group', { name: /Work we looked at/ })
     .getByRole('checkbox')
     .evaluateAll((boxes) => boxes.map((b) => b.closest('label')?.textContent?.trim() ?? ''))
@@ -191,27 +193,30 @@ async function open(page: Page, path: string) {
   return world
 }
 
-test('staff write an estimate on a site visit: live range, email preview, confirm, sent', async ({
+test('staff write an estimate on its own screen: live range, a draft kept, check and send', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-visit1')
-  const section = page.getByRole('region', { name: 'Estimate', exact: true })
-  // How did it go? It went ahead: the estimate form opens.
+  // How did it go? It went ahead: the estimate screen opens, starting in the price.
   await primaryAction(page).click()
   await page
     .getByRole('dialog')
     .getByRole('button', { name: /^It went ahead/ })
     .click()
+  await expect(page).toHaveURL(/#\/enquiries\/e-visit1\/estimate$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Write the estimate' })).toBeVisible()
+  await expect(page.getByText('Step 1 of 2: the estimate')).toBeVisible()
   await expect(page.getByLabel('Price in euro')).toBeFocused()
-  await expect(section).toContainText('No estimate sent yet.')
+  // The bar holds the task's own action, not the stage's.
+  await expect(primaryAction(page)).toHaveText('Check and send')
 
   // Checked like the server: a price is needed, and a ticked item or a note.
-  await section.getByRole('button', { name: 'Send estimate' }).click()
-  await expect(section.getByText('Enter the price in whole euro, at least €100.')).toBeVisible()
+  await taskAction(page, 'Check and send').click()
+  await expect(page.getByText('Enter the price in whole euro, at least €100.')).toBeVisible()
   await expect(
-    section.getByText('Tick what you looked at, or write a note under Anything else.'),
+    page.getByText('Tick what you looked at, or write a note under Anything else.'),
   ).toBeVisible()
-  await expect(section.getByLabel('Price in euro')).toBeFocused()
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
 
   // The kitchen's items, then the "any job" ones without the repeated label.
   expect(await chipLabels(page)).toEqual([
@@ -223,23 +228,47 @@ test('staff write an estimate on a site visit: live range, email preview, confir
     'Waste removal',
   ])
 
-  await section.getByLabel('Price in euro').fill('10,000')
-  await expect(section.getByLabel('Plus or minus')).toHaveValue('10')
-  await expect(section.getByText('€9,000 to €11,000, VAT included')).toBeVisible()
-  await section.getByLabel('Plus or minus').selectOption('5')
-  await expect(section.getByText('€9,500 to €10,500, VAT included')).toBeVisible()
+  // Plus or minus as chips (10% to start); the range on one line.
+  await page.getByLabel('Price in euro').fill('10,000')
+  await expect(page.getByRole('radio', { name: '10%', exact: true })).toBeChecked()
+  await expect(page.getByText('€9,000 to €11,000, VAT included')).toBeVisible()
+  await page.locator('label').filter({ hasText: /^5%$/ }).click()
+  await expect(page.getByText('€9,500 to €10,500, VAT included')).toBeVisible()
+  // Any other allowed value is under Other.
+  await page
+    .locator('label')
+    .filter({ hasText: /^Other$/ })
+    .click()
+  await page.getByLabel('Other plus or minus').selectOption('12.5')
+  await expect(page.getByText('€8,750 to €11,250, VAT included')).toBeVisible()
+  await page.locator('label').filter({ hasText: /^5%$/ }).click()
   // Tick out of order; the email lists them in the order shown.
-  await section.getByText('Tiled floor', { exact: true }).click()
-  await section.getByText('Strip out the old kitchen', { exact: true }).click()
-  await expect(section.getByRole('checkbox', { name: 'Tiled floor' })).toBeChecked()
+  await page.getByText('Tiled floor', { exact: true }).click()
+  await page.getByText('Strip out the old kitchen', { exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: 'Tiled floor' })).toBeChecked()
   // Add another: ticked now, offered next time for kitchens.
-  await section.getByLabel('Add another').fill('  Move the   radiator ')
-  await section.getByRole('button', { name: 'Add', exact: true }).click()
-  await expect(section.getByRole('checkbox', { name: 'Move the radiator' })).toBeChecked()
-  await section.getByLabel('Anything else (optional)').fill('Keep the existing window.')
+  await page.getByLabel('Add another').fill('  Move the   radiator ')
+  await page.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: 'Move the radiator' })).toBeChecked()
+  await page.getByLabel('Anything else (optional)').fill('Keep the existing window.')
+  await expect(page.getByText('Saved on this phone until you send it.')).toBeVisible()
+  await shot(page, 'staff-estimate-form')
 
-  // The email exactly as the customer gets it (same renderer as the worker).
-  const email = section.frameLocator('iframe[title="Estimate email preview"]')
+  // The draft is kept on this phone: back to the enquiry, which says it was started; then on again.
+  await page.getByRole('link', { name: 'Back to Brian Example' }).click()
+  await expect(nowCard(page)).toContainText('Estimate started, not sent (saved on this phone)')
+  await shot(page, 'staff-estimate-draft-now')
+  await primaryAction(page).click()
+  await expect(page.getByLabel('Price in euro')).toHaveValue('10,000')
+  await expect(page.getByRole('radio', { name: '5%', exact: true })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Tiled floor' })).toBeChecked()
+  await expect(page.getByLabel('Anything else (optional)')).toHaveValue('Keep the existing window.')
+
+  // Step 2: the email exactly as the customer gets it (same renderer as the worker).
+  await taskAction(page, 'Check and send').click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Check and send' })).toBeFocused()
+  await expect(page.getByText('Step 2 of 2: the email')).toBeVisible()
+  const email = page.frameLocator('iframe[title="Estimate email"]')
   await expect(email.getByText('Hello Brian,')).toBeVisible()
   await expect(email.getByText('€9,500 to €10,500, VAT included')).toBeVisible()
   await expect(email.getByRole('listitem')).toHaveText([
@@ -250,18 +279,14 @@ test('staff write an estimate on a site visit: live range, email preview, confir
   await expect(email.getByText('Keep the existing window.')).toBeVisible()
   await expect(email.getByRole('link', { name: 'Get my quote' })).toBeVisible()
   await expect(email.getByText('01 555 0100')).toBeVisible()
-  await expect(section).toContainText('Subject: Your estimate from Q3 Interiors')
-  await expect(section.getByText('Enter the price in whole euro, at least €100.')).toHaveCount(0)
-  await section.locator('iframe[title="Estimate email preview"]').scrollIntoViewIfNeeded()
-  await shot(page, 'staff-estimate-form')
-
-  await section.getByRole('button', { name: 'Send estimate' }).click()
-  const confirm = section.getByRole('alertdialog')
-  await expect(confirm).toContainText('Send €9,500 to €10,500 to brian@example.com?')
+  await expect(page.getByText('To: brian@example.com')).toBeVisible()
+  await expect(page.getByText('Subject: Your estimate from Q3 Interiors')).toBeVisible()
   await shot(page, 'staff-estimate-confirm')
-  await confirm.getByRole('button', { name: 'Yes, send it' }).click()
-  await expect(section).toContainText('Estimate sent to brian@example.com.')
-  await expect(section.getByText(/^Estimate sent \d+ \w+: €9,500 to €10,500$/)).toBeVisible()
+
+  // One button that names the person replaces the separate confirm.
+  await taskAction(page, 'Send to Brian').click()
+  await expect(page).toHaveURL(/#\/enquiries\/e-visit1$/)
+  await expect(page.getByText('Estimate sent to brian@example.com.')).toBeVisible()
   const call = world.rpcCalls.find((c) => c.name === 'send_estimate')
   expect(call?.body).toEqual({
     p_booking_id: 'b-visit',
@@ -274,28 +299,37 @@ test('staff write an estimate on a site visit: live range, email preview, confir
     p_project_type: 'kitchen',
     p_label: 'Move the radiator',
   })
+  // Sent: the draft is gone.
+  await expect(nowCard(page)).not.toContainText('Estimate started')
+  await openFold(page, 'Estimate')
+  const section = page.getByRole('region', { name: 'Estimate', exact: true })
+  await expect(section.getByText(/^Estimate sent \d+ \w+: €9,500 to €10,500$/)).toBeVisible()
   await expect(section.getByRole('listitem')).toHaveText([
     'Strip out the old kitchen',
     'Tiled floor',
     'Move the radiator',
   ])
-  await expect(section.getByRole('button', { name: 'Send an updated estimate' })).toBeVisible()
   await shot(page, 'staff-estimate-sent')
 
   // Next time: the added item is offered (not ticked); Edit list removes one for good.
-  await section.getByRole('button', { name: 'Send an updated estimate' }).click()
+  await section.getByRole('link', { name: 'Send an updated estimate' }).click()
+  await expect(page.getByLabel('Price in euro')).toHaveValue('')
   expect(await chipLabels(page)).toContain('Move the radiator')
-  await expect(section.getByRole('checkbox', { name: 'Move the radiator' })).not.toBeChecked()
-  await section.getByRole('button', { name: 'Edit list' }).click()
-  await expect(section.getByRole('list', { name: 'Items offered' })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Move the radiator' })).not.toBeChecked()
+  await page.getByRole('button', { name: 'Edit list' }).click()
+  await expect(page.getByRole('list', { name: 'Items offered' })).toBeVisible()
   await shot(page, 'staff-estimate-edit-list')
-  await section.getByRole('button', { name: 'Remove Waste removal' }).click()
-  await expect(section.getByRole('button', { name: 'Remove Waste removal' })).toHaveCount(0)
-  await section.getByRole('button', { name: 'Done' }).click()
+  await page.getByRole('button', { name: 'Remove Waste removal' }).click()
+  await expect(page.getByRole('button', { name: 'Remove Waste removal' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Done' }).click()
   expect(await chipLabels(page)).not.toContain('Waste removal')
   expect(world.rpcCalls.find((c) => c.name === 'archive_estimate_work_item')?.body).toEqual({
     p_id: 'wi-seed-7',
   })
+  // From 1024px the task screen keeps one column and its action sits in the flow.
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByLabel('Price in euro').fill('12,000')
+  await shot(page, 'staff-estimate-desktop')
 })
 
 test('an enquiry with no project type is offered the "any job" items, and a note alone will do', async ({
@@ -307,8 +341,7 @@ test('an enquiry with no project type is offered the "any job" items, and a note
   )
   if (row) delete row.answers.project_type
   await page.reload()
-  const section = page.getByRole('region', { name: 'Estimate', exact: true })
-  // How did it go? It went ahead: the estimate form opens.
+  // How did it go? It went ahead: the estimate screen opens.
   await primaryAction(page).click()
   await page
     .getByRole('dialog')
@@ -316,11 +349,11 @@ test('an enquiry with no project type is offered the "any job" items, and a note
     .click()
   await expect(page.getByLabel('Price in euro')).toBeFocused()
   expect(await chipLabels(page)).toEqual(['Strip out', 'Painting', 'Waste removal'])
-  await section.getByLabel('Price in euro').fill('2500')
-  await section.getByLabel('Anything else (optional)').fill('Hall floor relaid on new joists.')
-  await section.getByRole('button', { name: 'Send estimate' }).click()
-  await section.getByRole('alertdialog').getByRole('button', { name: 'Yes, send it' }).click()
-  await expect(section).toContainText('Estimate sent to brian@example.com.')
+  await page.getByLabel('Price in euro').fill('2500')
+  await page.getByLabel('Anything else (optional)').fill('Hall floor relaid on new joists.')
+  await taskAction(page, 'Check and send').click()
+  await taskAction(page, 'Send to Brian').click()
+  await expect(page.getByText('Estimate sent to brian@example.com.')).toBeVisible()
   const call = world.rpcCalls.find((c) => c.name === 'send_estimate')
   expect(call?.body).toMatchObject({ p_items: [], p_work: 'Hall floor relaid on new joists.' })
 })

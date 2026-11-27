@@ -1,5 +1,6 @@
 import { StaffArea } from '@/components/staff/staff-layout'
 import { EnquiryDetailPage } from './enquiry-detail-page'
+import { EnquiryTaskPage } from './enquiry-task-page'
 import { EnquiryListPage } from './enquiry-list-page'
 import { AppointmentsPage } from './appointments-page'
 import { ReportPage } from './report-page'
@@ -32,6 +33,14 @@ export function StaffDetailRoute() {
   return (
     <StaffArea>
       <EnquiryDetailPage />
+    </StaffArea>
+  )
+}
+
+export function StaffTaskRoute() {
+  return (
+    <StaffArea>
+      <EnquiryTaskPage />
     </StaffArea>
   )
 }

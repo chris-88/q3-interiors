@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, Mail, MapPin, Phone } from 'lucide-react'
-import { Link, useParams } from 'react-router'
+import { Link, useLocation, useParams } from 'react-router'
 import {
   ENQUIRY_STATUSES,
   NOTE_MAX,
@@ -671,6 +671,9 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
   const siteForm = forms.data?.get(`site_details@${enquiry.site_details_form_version ?? 1}`)
   const view = stageOf(enquiry, now)
   const rows = bookings.data ?? []
+  // What a task screen just did ("Estimate sent to …"), handed over when it came back here.
+  const said = (useLocation().state as { notice?: unknown } | null)?.notice
+  const notice = typeof said === 'string' ? said : null
   const address = siteAddress(enquiry.answers, enquiry.site_details)
   const job = projectType(enquiry, form)
   const latest = [...rows].sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))[0]
@@ -703,6 +706,11 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
           )}
         </div>
         <StageStrip enquiry={enquiry} view={view} now={now} />
+        {notice && (
+          <output className="border-action bg-soft block rounded-md border-l-4 p-3 text-sm">
+            {notice}
+          </output>
+        )}
         <QuickActions enquiry={enquiry} />
         <NowCard enquiry={enquiry} view={view} />
         <ActionBar enquiry={enquiry} view={view} bookings={rows} now={now} />

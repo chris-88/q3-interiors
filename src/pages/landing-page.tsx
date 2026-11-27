@@ -21,8 +21,8 @@ const LANDING_PHOTO: { src: string; alt: string; width: number; height: number }
 
 const steps = [
   {
-    title: 'Choose a call or a site visit',
-    body: 'A call to talk through your plans, or a site visit to see the space and measure up. A few quick questions, then pick a time.',
+    title: 'Start with a call, a site visit, or both',
+    body: 'A free phone call to talk through your plans, a free site visit to see the space and measure up, or both. A few quick questions, then pick a time.',
   },
   {
     title: 'Get an estimate after the site visit',

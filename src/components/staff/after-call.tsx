@@ -1,8 +1,8 @@
 import { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import {
   useBookCall,
   useBookVisit,
-  useCallHeldEarly,
   useCallOptions,
   callTimes,
   useSendVisitLink,
@@ -23,60 +23,9 @@ import { formatDayMonth, formatShortWhen } from '@/lib/format'
 export const WRITE_ESTIMATE_EVENT = 'q3:write-estimate'
 
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+/** An open choice: a heavier edge and the chevron turned, not only a lighter fill. */
+const opened = 'aria-expanded:border-action aria-expanded:border-2 aria-expanded:bg-background'
 const wide = 'h-12 w-full sm:w-auto sm:px-6'
-
-/**
- * "We already spoke": they rang before their booked call (or before booking one). Records the call
- * as held today; a call still to come is cancelled with no email to the customer.
- */
-export function WeAlreadySpoke({
-  enquiry,
-  call,
-  startConfirming = false,
-  onDone,
-}: {
-  enquiry: EnquiryDetail
-  /** The booked call still to come, if any. */
-  call: { starts_at: string } | null
-  /** Open at the question (the actions sheet already asked which action). */
-  startConfirming?: boolean
-  /** Called once it is saved, or when the question is put away. */
-  onDone?: () => void
-}) {
-  const held = useCallHeldEarly(enquiry.id)
-  const [confirming, setConfirming] = useState(startConfirming)
-  const stop = () => {
-    setConfirming(false)
-    onDone?.()
-  }
-  if (!confirming)
-    return (
-      <Button variant="outline" className={wide} onClick={() => setConfirming(true)}>
-        We already spoke
-      </Button>
-    )
-  return (
-    <Confirm
-      question="Record the call as held today?"
-      detail={
-        call
-          ? `The call booked for ${formatShortWhen(call.starts_at)} is cancelled and the time freed. No email goes to the customer and no reminder is sent.`
-          : 'Nothing is sent to the customer.'
-      }
-      confirm="Yes, we spoke"
-      pending={held.isPending}
-      onConfirm={() => held.mutate(undefined, { onSuccess: stop })}
-      onCancel={stop}
-      error={
-        held.isError
-          ? held.error.message.includes('site visit booked')
-            ? 'A site visit is already booked.'
-            : 'Not saved. Try again.'
-          : null
-      }
-    />
-  )
-}
 
 export function SendLinkPanel({
   enquiry,
@@ -297,10 +246,35 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
           </p>
         )}
       </div>
+      {/* Chris: an estimate normally needs the space seen, so the site visit comes first. */}
       <div className="flex flex-col gap-2">
         <Button
           // One filled button at a time: while a choice is open, its own panel holds the action.
           variant={choice === 'none' ? 'default' : 'outline'}
+          aria-expanded={choice === 'visit'}
+          className={`${wide} ${opened}`}
+          onClick={() => setChoice((c) => (c === 'visit' ? 'none' : 'visit'))}
+        >
+          Book the site visit
+          <ChevronDown
+            className={`size-4 transition-transform ${choice === 'visit' ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        </Button>
+        <Button
+          variant="outline"
+          aria-expanded={choice === 'link'}
+          className={`${wide} ${opened}`}
+          onClick={() => setChoice((c) => (c === 'link' ? 'none' : 'link'))}
+        >
+          {linkSent ? 'Send the booking link again' : 'Send a booking link'}
+          <ChevronDown
+            className={`size-4 transition-transform ${choice === 'link' ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        </Button>
+        <Button
+          variant="outline"
           className={wide}
           onClick={() => {
             setChoice('none')
@@ -308,22 +282,6 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
           }}
         >
           Write the estimate
-        </Button>
-        <Button
-          variant="outline"
-          aria-expanded={choice === 'visit'}
-          className={wide}
-          onClick={() => setChoice((c) => (c === 'visit' ? 'none' : 'visit'))}
-        >
-          Book the site visit
-        </Button>
-        <Button
-          variant="outline"
-          aria-expanded={choice === 'link'}
-          className={wide}
-          onClick={() => setChoice((c) => (c === 'link' ? 'none' : 'link'))}
-        >
-          {linkSent ? 'Send the booking link again' : 'Send a booking link'}
         </Button>
       </div>
       {choice === 'visit' && (
@@ -504,28 +462,40 @@ export function MissedAppointment({
             <Button
               variant="outline"
               aria-expanded={choice === 'visit'}
-              className={wide}
+              className={`${wide} ${opened}`}
               onClick={() => toggle('visit')}
             >
               Book the site visit
+              <ChevronDown
+                className={`size-4 transition-transform ${choice === 'visit' ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
             </Button>
             <Button
               variant="outline"
               aria-expanded={choice === 'link'}
-              className={wide}
+              className={`${wide} ${opened}`}
               onClick={() => toggle('link')}
             >
               Send a booking link
+              <ChevronDown
+                className={`size-4 transition-transform ${choice === 'link' ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
             </Button>
           </>
         ) : (
           <Button
             variant="outline"
             aria-expanded={choice === 'call'}
-            className={wide}
+            className={`${wide} ${opened}`}
             onClick={() => toggle('call')}
           >
             Book a call
+            <ChevronDown
+              className={`size-4 transition-transform ${choice === 'call' ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
           </Button>
         )}
       </div>

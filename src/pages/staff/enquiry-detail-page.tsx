@@ -419,7 +419,7 @@ function Appointments({
                 <span className="text-destructive text-sm break-words">{b.failure_reason}</span>
               )}
               {b.id !== featured && b.state === 'confirmed' && (
-                <BookingActions booking={b} moveCancel={false} />
+                <BookingActions booking={b} moveCancel={false} attendance={false} />
               )}
               {b.calendar_event_link && (
                 <a
@@ -500,7 +500,12 @@ function Notes({ enquiry }: { enquiry: EnquiryDetail }) {
             The note was not saved. Try again.
           </p>
         )}
-        <Button type="submit" className="h-12 self-start px-6" disabled={add.isPending}>
+        <Button
+          type="submit"
+          variant="outline"
+          className="h-12 self-start px-6"
+          disabled={add.isPending}
+        >
           {add.isPending ? 'Saving…' : 'Save note'}
         </Button>
       </form>
@@ -676,7 +681,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
   const notes = enquiry.enquiry_events.filter((e) => e.kind === 'note_added').length
   const bar = barAction(view)
   return (
-    <div className="grid grid-cols-1 gap-4 pb-24 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:pb-0">
+    <div className="grid grid-cols-1 gap-4 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:pb-0">
       <div className="flex flex-col gap-3 lg:sticky lg:top-4">
         <div className="flex flex-col gap-0.5">
           <h1 className="text-title text-ink leading-tight font-medium break-words">
@@ -697,7 +702,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
             </p>
           )}
         </div>
-        <StageStrip view={view} />
+        <StageStrip enquiry={enquiry} view={view} now={now} />
         <QuickActions enquiry={enquiry} />
         <NowCard enquiry={enquiry} view={view} />
         <ActionBar enquiry={enquiry} view={view} bookings={rows} now={now} />

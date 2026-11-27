@@ -69,6 +69,42 @@ function Summary({ current, badge }: { current: CurrentOutcome; badge: boolean }
   )
 }
 
+/** A form's starting values for a stage, from what is already recorded. */
+function fieldsFor(next: 'quoted' | 'won' | 'lost', current: CurrentOutcome) {
+  if (next === 'quoted')
+    return {
+      amount: current.quoteAmount !== null ? String(current.quoteAmount) : '',
+      on: current.quoteDate ?? irishToday(),
+      reason: '' as LostReason | '',
+      note: current.stage === 'quoted' ? (current.note ?? '') : '',
+    }
+  if (next === 'won')
+    return {
+      amount:
+        current.wonValue !== null
+          ? String(current.wonValue)
+          : current.quoteAmount !== null
+            ? String(current.quoteAmount)
+            : '',
+      on: current.wonDate ?? irishToday(),
+      reason: '' as LostReason | '',
+      note: current.stage === 'won' ? (current.note ?? '') : '',
+    }
+  return {
+    amount: '',
+    on: irishToday(),
+    reason:
+      current.stage === 'lost' &&
+      isKnown(
+        LOST_REASONS.map(([v]) => v),
+        current.reason,
+      )
+        ? (current.reason as LostReason)
+        : ('' as LostReason | ''),
+    note: current.stage === 'lost' ? (current.note ?? '') : '',
+  }
+}
+
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null
   return (
@@ -88,6 +124,8 @@ export function OutcomeForm({
   current,
   badge = true,
   primary,
+  start,
+  onDone,
 }: {
   enquiryId: string
   current: CurrentOutcome
@@ -95,44 +133,32 @@ export function OutcomeForm({
   badge?: boolean
   /** The one action drawn filled: Record quote after an appointment, Mark won once quoted. */
   primary?: 'quote' | 'won' | 'none'
+  /** Open straight at one small form (the actions sheet already asked which). */
+  start?: 'quoted' | 'won' | 'lost'
+  /** With `start`: called once it is saved or put away. */
+  onDone?: () => void
 }) {
   const save = useRecordOutcome(enquiryId)
-  const [mode, setMode] = useState<Mode>('view')
-  const [amount, setAmount] = useState('')
-  const [on, setOn] = useState(irishToday())
-  const [reason, setReason] = useState<LostReason | ''>('')
-  const [note, setNote] = useState('')
+  const first = start ? fieldsFor(start, current) : null
+  const [mode, setMode] = useState<Mode>(start ?? 'view')
+  const [amount, setAmount] = useState(first?.amount ?? '')
+  const [on, setOn] = useState(first?.on ?? irishToday())
+  const [reason, setReason] = useState<LostReason | ''>(first?.reason ?? '')
+  const [note, setNote] = useState(first?.note ?? '')
+  // Opened at one form: saving or cancelling ends it rather than showing the summary and buttons.
+  const leave = () => (start && onDone ? onDone() : setMode('view'))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const id = (name: string) => `outcome-${enquiryId}-${name}`
 
   const open = (next: Mode) => {
     save.reset()
     setErrors({})
-    if (next === 'quoted') {
-      setAmount(current.quoteAmount !== null ? String(current.quoteAmount) : '')
-      setOn(current.quoteDate ?? irishToday())
-      setNote(current.stage === 'quoted' ? (current.note ?? '') : '')
-    } else if (next === 'won') {
-      setAmount(
-        current.wonValue !== null
-          ? String(current.wonValue)
-          : current.quoteAmount !== null
-            ? String(current.quoteAmount)
-            : '',
-      )
-      setOn(current.wonDate ?? irishToday())
-      setNote(current.stage === 'won' ? (current.note ?? '') : '')
-    } else if (next === 'lost') {
-      setReason(
-        current.stage === 'lost' &&
-          isKnown(
-            LOST_REASONS.map(([v]) => v),
-            current.reason,
-          )
-          ? (current.reason as LostReason)
-          : '',
-      )
-      setNote(current.stage === 'lost' ? (current.note ?? '') : '')
+    if (next === 'quoted' || next === 'won' || next === 'lost') {
+      const f = fieldsFor(next, current)
+      setAmount(f.amount)
+      setOn(f.on)
+      setReason(f.reason)
+      setNote(f.note)
     }
     setMode(next)
   }
@@ -157,7 +183,7 @@ export function OutcomeForm({
       return
     }
     setErrors({})
-    save.mutate(parsed.data, { onSuccess: () => setMode('view') })
+    save.mutate(parsed.data, { onSuccess: leave })
   }
 
   if (mode === 'view') {
@@ -337,7 +363,7 @@ export function OutcomeForm({
           variant="ghost"
           className={big}
           disabled={save.isPending}
-          onClick={() => setMode('view')}
+          onClick={leave}
         >
           Cancel
         </Button>

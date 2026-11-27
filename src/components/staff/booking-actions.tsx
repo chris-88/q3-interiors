@@ -17,7 +17,7 @@ import { formatClock } from '@/lib/format'
 
 const LIVE = new Set(['reserved', 'calendar_pending', 'confirmed'])
 
-function MovePanel({ booking, onDone }: { booking: StaffBooking; onDone: () => void }) {
+export function MovePanel({ booking, onDone }: { booking: StaffBooking; onDone: () => void }) {
   const options = useStaffMoveOptions(booking.id, true)
   const move = useStaffReschedule()
   const [slot, setSlot] = useState<StaffSlot | null>(null)

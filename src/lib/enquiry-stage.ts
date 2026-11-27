@@ -618,6 +618,36 @@ export const STEP_LABELS: Record<Step, string> = {
   deposit: 'Deposit',
 }
 
+export type StepState = 'done' | 'now' | 'skipped' | 'todo'
+
+/**
+ * Each step on the strip from the record, not from the stage alone: a step is done only when it
+ * happened (a call held, a site visit attended, an estimate sent, a quote sent, a win). A step
+ * passed over (an estimate straight from a call: no visit) is skipped, never done; a visit booked
+ * after that estimate is "now", not done. Lost or closed keep what was done and have no "now".
+ */
+export function stripSteps(e: StageInput, view: { key: string; step: Step | null }, now: number) {
+  const attended = (mode: string) =>
+    e.bookings.some(
+      (b) => b.mode === mode && b.attendance === 'attended' && Date.parse(b.starts_at) <= now,
+    )
+  const won = e.outcome === 'won'
+  const done: Record<Step, boolean> = {
+    call: callHeldAt(e, now) !== null || attended('phone'),
+    visit: attended('on_site'),
+    estimate: (e.estimates ?? []).length > 0,
+    quote: (e.quotes ?? []).length > 0 || e.outcome === 'quoted',
+    deposit: won,
+  }
+  const open = !won && e.outcome !== 'lost' && e.status !== 'unsuitable'
+  const at = open && view.step ? STEPS.indexOf(view.step) : -1
+  const furthest = Math.max(at, ...STEPS.map((s, i) => (done[s] ? i : -1)))
+  return STEPS.map((step, i): { step: Step; state: StepState } => ({
+    step,
+    state: done[step] ? 'done' : i === at ? 'now' : i < furthest ? 'skipped' : 'todo',
+  }))
+}
+
 /** Whose move it is: Q3's, the customer's, the diary's (an appointment to come), or nobody's. */
 export type Whose = 'q3' | 'customer' | 'diary' | 'none'
 export type Group = 'your_move' | 'diary' | 'waiting' | 'finished'
@@ -636,8 +666,6 @@ export type ActionKey =
   | 'book_call'
   | 'book_visit'
   | 'send_link'
-  | 'we_spoke'
-  | 'mark_contacted'
   | 'move'
   | 'cancel'
   | 'write_estimate'
@@ -793,7 +821,8 @@ export function stageOf(e: ViewInput, now: number): StageView {
       return {
         ...stage,
         ...base,
-        step: estimate ? 'estimate' : step,
+        // The appointment is what happens next, even after an estimate from a call.
+        step,
         whose: 'diary',
         group: 'diary',
         due: b ? { date: b.starts_at, kind: 'time' } : null,
@@ -807,7 +836,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
             ? `${appointmentKind(b?.mode)} booked`
             : `${appointmentKind(b?.mode)} not confirmed yet`,
         primary: null,
-        others: b?.mode === 'phone' ? ['move', 'cancel', 'we_spoke'] : ['move', 'cancel'],
+        others: b?.mode === 'phone' ? ['move', 'cancel', 'record_outcome'] : ['move', 'cancel'],
       }
     }
     case 'to_record': {
@@ -819,9 +848,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
         () => 'How did it go?',
         b ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}` : stage.label,
         'record_outcome',
-        b?.mode === 'on_site'
-          ? ['write_estimate', 'move', 'record_quote']
-          : ['move', 'record_quote'],
+        ['move', 'record_quote'],
       )
     }
     case 'missed_call':
@@ -973,9 +1000,8 @@ export function stageOf(e: ViewInput, now: number): StageView {
                 ? 'In review'
                 : 'New enquiry'
       return q3('call', due, (u) => ringChip(u, due), news, 'ring', [
+        'record_outcome',
         'book_call',
-        'we_spoke',
-        'mark_contacted',
         'email',
         'record_quote',
         'not_suitable',
@@ -984,7 +1010,7 @@ export function stageOf(e: ViewInput, now: number): StageView {
     case 'contacted':
       return waiting('call', null, 'Contacted', 'Contacted, nothing booked', 'book_call', [
         'ring',
-        'we_spoke',
+        'record_outcome',
         'email',
         'record_quote',
         'not_suitable',

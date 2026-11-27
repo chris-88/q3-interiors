@@ -8,8 +8,8 @@ import {
   openFolds,
   primaryAction,
   signIn,
-  staffWorld,
   type StaffWorld,
+  staffWorld,
 } from './fake-staff'
 
 /*
@@ -217,7 +217,13 @@ test('screens at 390px for the review (before and after)', async ({ page }) => {
   }
   await page.goto('/#/enquiries/e-visit1')
   await h1(page, 'Brian Example')
-  await chooseAction(page, /^Write the estimate/)
+  // How did it go? It went ahead: the estimate form opens.
+  await primaryAction(page).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^It went ahead/ })
+    .click()
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
   await expect(page.getByLabel('Plus or minus')).toBeVisible()
   await shot(page, 'f7-f8-estimate-form')
   await page.goto('/#/appointments')
@@ -270,12 +276,20 @@ test('F3, F7: after a visit the next step is the estimate, with one filled butto
   const filled = page.locator('[data-slot="button"].bg-primary:visible, a.bg-primary:visible')
   await expect(filled).toHaveCount(1)
   await expect(filled).toHaveText('How did it go?')
-  // Won and lost are not offered before anything has gone out; writing the estimate is.
+  // Won and lost are not offered before anything has gone out.
   const sheet = await openActions(page)
   await expect(sheet.getByRole('button', { name: /^Mark won/ })).toHaveCount(0)
   await expect(sheet.getByRole('button', { name: /^Mark lost/ })).toHaveCount(0)
-  // The Estimate section does not repeat it.
-  await sheet.getByRole('button', { name: /^Write the estimate/ }).click()
+  await page.keyboard.press('Escape')
+  // The visit went ahead; then the estimate is the one action (the section does not repeat it).
+  // How did it go? It went ahead: the estimate form opens.
+  await primaryAction(page).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^It went ahead/ })
+    .click()
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
+
   const estimate = page.getByRole('region', { name: 'Estimate', exact: true })
   await expect(estimate).toContainText('No estimate sent yet.')
   await expect(estimate.getByRole('button', { name: /Write (the|an) estimate/ })).toHaveCount(0)

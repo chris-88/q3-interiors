@@ -256,7 +256,7 @@ function EstimateForm({
         </label>
         <NativeSelect
           id="estimate-percent"
-          className="h-12 w-full text-base sm:w-40"
+          className="w-full sm:w-40 [&_select]:h-12 [&_select]:text-base"
           value={percent}
           onChange={(e) => {
             setPercent(e.target.value)
@@ -412,10 +412,13 @@ export function EstimateSection({
   enquiry,
   bookings,
   now,
+  offeredAbove = false,
 }: {
   enquiry: EnquiryDetail
   bookings: StaffBooking[]
   now: number
+  /** Next step already offers "Write the estimate": no second button here. */
+  offeredAbove?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
@@ -453,7 +456,7 @@ export function EstimateSection({
       <output className="block text-sm">
         {sentTo ? `Estimate sent to ${sentTo}. The email goes within a minute.` : ''}
       </output>
-      {visit && !open && (
+      {visit && !open && !(offeredAbove && !current) && (
         <Button
           variant={current ? 'outline' : 'default'}
           className="h-12 w-full sm:w-auto sm:self-start sm:px-6"
@@ -462,7 +465,7 @@ export function EstimateSection({
             setSentTo(null)
           }}
         >
-          {current ? 'Send an updated estimate' : 'Write an estimate'}
+          {current ? 'Send an updated estimate' : 'Write the estimate'}
         </Button>
       )}
       {visit && open && (

@@ -65,7 +65,7 @@ describe('enquiryStage', () => {
     )
     expect(key({ bookings: [{ ...future, state: 'cancelled' }] })).toBe('new')
   })
-  it('a confirmed appointment that has happened, with no outcome, is Awaiting quote', () => {
+  it('a confirmed appointment that has happened, with no outcome, is Estimate to write', () => {
     expect(key({ bookings: [past] })).toBe('awaiting_quote')
     expect(key({ bookings: [{ ...past, state: 'cancelled' }] })).toBe('new')
     expect(key({ bookings: [{ ...past, confirmed_at: null, state: 'failed' }] })).toBe('new')
@@ -104,7 +104,7 @@ describe('stageLine', () => {
       'Site visit Fri 27 Nov, 10:30 (not confirmed yet)',
     )
     expect(line({ contact_requested_at: '2026-11-25T09:00:00Z' })).toBe('Asked to be contacted')
-    expect(line({ bookings: [past] })).toBe('Site visit Fri 20 Nov, no quote yet')
+    expect(line({ bookings: [past] })).toBe('Site visit Fri 20 Nov, no estimate yet')
     expect(line({ outcome: 'quoted', quote_amount: 18450 })).toBe('Quoted €18,450')
     expect(line({ outcome: 'quoted', quote_amount: 18450.5 })).toBe('Quoted €18,450.50')
     expect(line({ outcome: 'won', outcome_value: 18000 })).toBe('Won €18,000')

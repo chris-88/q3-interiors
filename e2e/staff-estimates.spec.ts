@@ -190,7 +190,11 @@ test('staff write an estimate on a site visit: live range, email preview, confir
   const world = await open(page, '/#/enquiries/e-visit1')
   const section = page.getByRole('region', { name: 'Estimate' })
   await expect(section).toContainText('No estimate sent yet.')
-  await section.getByRole('button', { name: 'Write an estimate' }).click()
+  // The Next step offers it once the visit has happened (the section does not repeat it).
+  await page
+    .getByRole('region', { name: 'Next step' })
+    .getByRole('button', { name: 'Write the estimate' })
+    .click()
 
   // Checked like the server: a price is needed, and a ticked item or a note.
   await section.getByRole('button', { name: 'Send estimate' }).click()
@@ -295,7 +299,11 @@ test('an enquiry with no project type is offered the "any job" items, and a note
   if (row) delete row.answers.project_type
   await page.reload()
   const section = page.getByRole('region', { name: 'Estimate' })
-  await section.getByRole('button', { name: 'Write an estimate' }).click()
+  // The Next step offers it once the visit has happened (the section does not repeat it).
+  await page
+    .getByRole('region', { name: 'Next step' })
+    .getByRole('button', { name: 'Write the estimate' })
+    .click()
   expect(await chipLabels(page)).toEqual(['Strip out', 'Painting', 'Waste removal'])
   await section.getByLabel('Price in euro').fill('2500')
   await section.getByLabel('Anything else (optional)').fill('Hall floor relaid on new joists.')
@@ -316,14 +324,11 @@ test('the list and the enquiry page show where each estimate stands', async ({ p
   await open(page, '/#/')
   const rows = page.getByRole('list', { name: 'Enquiries' })
   const quiet = rows.getByRole('listitem').filter({ hasText: 'Ciara Test' })
-  await expect(quiet).toContainText(
-    'Estimate sent 12 Nov: €9,500 to €10,500 · No answer in 10 days',
-  )
+  // News first (review F6).
+  await expect(quiet).toContainText('No answer in 10 days · €9,500 to €10,500')
   await expect(quiet).toContainText('No answer in 10 days')
   const asked = rows.getByRole('listitem').filter({ hasText: 'Declan Sample' })
-  await expect(asked).toContainText(
-    'Estimate sent 23 Nov: €9,500 to €10,500 · Quote requested 25 Nov · Quote due Mon 30 Nov',
-  )
+  await expect(asked).toContainText('Quote requested 25 Nov · €9,500 to €10,500')
   await page.getByRole('radio', { name: /Needs action/ }).check({ force: true })
   await expect(rows.getByRole('listitem').filter({ hasText: 'Ciara Test' })).toHaveCount(1)
   await shot(page, 'staff-estimate-list')

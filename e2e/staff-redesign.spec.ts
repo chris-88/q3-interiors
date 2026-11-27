@@ -271,7 +271,7 @@ test('the list: one line each, chips with counts, action first, search, remember
     'Quoted €18,450',
   )
   await expect(list(page).getByRole('listitem').filter({ hasText: 'Declan' })).toContainText(
-    'Site visit Tue 24 Nov, no quote yet',
+    'Site visit Tue 24 Nov, no estimate yet',
   )
   await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Needs attention' })).toHaveCount(0)
@@ -430,14 +430,15 @@ test('Next step: after the appointment, attendance and the quote; then won from 
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-await1')
-  const next = page.getByRole('region', { name: 'Next step' })
+  const next = page.getByRole('region', { name: /^(Next step|Result)$/ })
   await expect(next).toContainText('Tue 24 Nov, 10:00')
-  await expect(next).toContainText('No quote recorded yet.')
+  await expect(next).toContainText('No estimate sent yet.')
   await next.getByRole('button', { name: 'Attended' }).click()
   await expect(next.getByRole('button', { name: 'Attended' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
+  await next.getByRole('button', { name: 'Record a quote or result' }).click()
   await next.getByRole('button', { name: 'Record quote' }).click()
   await next.getByLabel('Quote amount (€, incl. VAT)').fill('12,300')
   await next.getByLabel('Date quoted').fill('2026-11-25')

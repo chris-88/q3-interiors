@@ -135,14 +135,15 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   await expect(next).toContainText('Asked to be contacted')
   await expect(next).toContainText('No suitable time online')
   const project = page.getByRole('region', { name: 'Project' })
-  await expect(project).toContainText('Appointment preference')
+  // Staff wording for the labels (review F9), the customer's answers as given.
+  await expect(project).toContainText('Wants')
   await expect(project).toContainText('Site visit')
-  await expect(project).toContainText('Are you keeping the layout or changing it?')
+  await expect(project).toContainText('Kitchen layout')
   await expect(project).toContainText('Changing it')
   await expect(project).toContainText('Town or Eircode')
   // Contact answers and the street are part of Project now (one section of their answers).
-  await expect(project).toContainText('Phone number')
-  await expect(project).toContainText('House name or number and street')
+  await expect(project).toContainText('Phone')
+  await expect(project).toContainText('Street')
   await expect(project).toContainText('12 Example Road')
   await shot(page, '11-staff-v2-contact-request')
 
@@ -153,7 +154,10 @@ test('staff see v2 enquiries with the preference, project answers and contact re
   await expect(v1Project).toContainText('What would you like done?')
   await expect(v1Project).toContainText('Full refit of the ground floor.')
   await expect(v1Project).toContainText('Kitchen, Bedrooms')
-  await expect(v1Project).toContainText('Form: enquiry version 1')
+  // The form version is kept under More, not on the visible page (review F9).
+  await expect(v1Project).not.toContainText('Form: enquiry version')
+  await page.getByText('More', { exact: true }).click()
+  await expect(page.getByText('Form: enquiry version 1')).toBeVisible()
   await expect(page.getByText('Asked to be contacted')).toHaveCount(0)
   await shot(page, 's2-staff-v1')
 })

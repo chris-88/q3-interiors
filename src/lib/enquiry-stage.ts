@@ -82,8 +82,9 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   contacted: 'Contacted',
   booked: 'Booked',
   call_held: 'Call held',
-  link_sent: 'Visit link sent',
-  awaiting_quote: 'Awaiting quote',
+  link_sent: 'Site visit link sent',
+  // After a site visit the next thing is the estimate (the key is kept for stored chips).
+  awaiting_quote: 'Estimate to write',
   estimate_sent: 'Estimate sent',
   quote_requested: 'Quote requested',
   no_answer: 'No answer in 10 days',
@@ -178,6 +179,24 @@ export function estimateFollowUp(e: StageEstimate, now: number): string | null {
 }
 
 /**
+ * The list's line for an estimate, news first so the important part survives a narrow screen:
+ * "Quote requested 29 Nov · €9,500 to €10,500" (or "Quote overdue, was due Wed 2 Dec · …"),
+ * "No answer in 10 days · …", "Estimate sent 20 Nov · …".
+ */
+export function estimateNews(e: StageEstimate, now: number): string {
+  const range = formatRange(e.low_eur, e.high_eur)
+  const state = estimateState(e, now)
+  const due = quoteDueDate(e)
+  if (state === 'quote_requested' && e.quote_requested_at) {
+    return due && isPastDate(due, now)
+      ? `Quote overdue, was due ${formatShortDay(`${due}T12:00:00Z`)} · ${range}`
+      : `Quote requested ${formatDayMonth(e.quote_requested_at)} · ${range}`
+  }
+  if (state === 'no_answer') return `No answer in 10 days · ${range}`
+  return `Estimate sent ${formatDayMonth(e.sent_at)} · ${range}`
+}
+
+/**
  * When the call was held, if the next thing is to move them on: "We already spoke", or the latest
  * past appointment was a call marked attended. Null once a later appointment has started.
  */
@@ -216,12 +235,14 @@ export type Stage = { key: StageKey; label: string }
  * 1. outcome won -> Won; outcome lost -> Lost;
  * 2. status unsuitable -> Closed;
  * 3. outcome quoted -> Quoted; any other outcome (a newer release's) -> its raw value;
- * 4. an estimate sent: quote requested -> Quote requested; past its 10 days with no request ->
- *    No answer in 10 days; otherwise -> Estimate sent;
- * 4b. a live appointment (reserved, confirming or confirmed) not yet started -> Booked;
- * 4c. a call held (attended, or "We already spoke"): a site visit link sent since -> Visit link
- *     sent; otherwise -> Call held;
- * 5. a confirmed, not cancelled appointment that has started -> Awaiting quote;
+ * 4. a live appointment (reserved, confirming or confirmed) not yet started -> Booked (an
+ *    appointment still to come is never hidden, even behind an estimate);
+ * 4b. an estimate sent: a site visit that has happened since it was sent -> Estimate to write
+ *    (the visit is the basis for a new one); quote requested -> Quote requested; past its
+ *    10 days with no request -> No answer in 10 days; otherwise -> Estimate sent;
+ * 4c. a call held (attended, or "We already spoke"): a site visit link sent since -> Site visit
+ *     link sent; otherwise -> Call held;
+ * 5. a confirmed, not cancelled appointment that has started -> Estimate to write;
  * 6. asked to be contacted and status still new or in review -> Call back;
  * 7. status contacted -> Contacted; in review -> In review; new -> New;
  *    any other status (a newer release's) -> its raw value.
@@ -234,9 +255,14 @@ export function enquiryStage(e: StageInput, now: number): Stage {
   if (e.outcome === 'quoted')
     return known(latestQuote(e.quotes)?.change_requested_at ? 'change_requested' : 'quoted')
   if (e.outcome !== null) return { key: 'other', label: e.outcome }
-  const estimate = currentEstimate(e.estimates)
-  if (estimate) return known(estimateState(estimate, now))
   if (upcomingBooking(e.bookings, now)) return known('booked')
+  const estimate = currentEstimate(e.estimates)
+  if (estimate) {
+    const passed = passedBooking(e.bookings, now)
+    const visitSince =
+      passed?.mode === 'on_site' && Date.parse(passed.starts_at) > Date.parse(estimate.sent_at)
+    return known(visitSince ? 'awaiting_quote' : estimateState(estimate, now))
+  }
   if (callHeldAt(e, now)) return known(visitLinkSentAt(e, now) ? 'link_sent' : 'call_held')
   if (passedBooking(e.bookings, now)) return known('awaiting_quote')
   if (e.contact_requested_at && (e.status === 'new' || e.status === 'in_review'))
@@ -275,7 +301,10 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
       const b = upcomingBooking(e.bookings, now)
       if (!b) return 'Booked'
       const when = `${appointmentKind(b.mode)} ${formatShortWhen(b.starts_at)}`
-      return b.state === 'confirmed' ? when : `${when} (not confirmed yet)`
+      const line = b.state === 'confirmed' ? when : `${when} (not confirmed yet)`
+      // An estimate already out is secondary news after the appointment.
+      const estimate = currentEstimate(e.estimates)
+      return estimate ? `${line} · Estimate sent ${formatDayMonth(estimate.sent_at)}` : line
     }
     case 'call_held': {
       const held = callHeldAt(e, now)
@@ -288,16 +317,14 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
     case 'awaiting_quote': {
       const b = passedBooking(e.bookings, now)
       return b
-        ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}, no quote yet`
-        : 'Awaiting quote'
+        ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}, no estimate yet`
+        : stage.label
     }
     case 'estimate_sent':
     case 'quote_requested':
     case 'no_answer': {
       const estimate = currentEstimate(e.estimates)
-      if (!estimate) return stage.label
-      const follow = estimateFollowUp(estimate, now)
-      return follow ? `${estimateLine(estimate)} · ${follow}` : estimateLine(estimate)
+      return estimate ? estimateNews(estimate, now) : stage.label
     }
     case 'contact':
       return 'Asked to be contacted'
@@ -447,7 +474,7 @@ export type NextStep =
   | 'waiting'
   /** An appointment to come: when, with Move and Cancel. */
   | 'appointment'
-  /** The appointment happened, no outcome yet: attendance and Record quote. */
+  /** The appointment happened, no estimate yet: attendance and Write the estimate. */
   | 'record'
   /** A call held: write the estimate, book the site visit, or send a booking link. */
   | 'after_call'

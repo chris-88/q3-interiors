@@ -44,7 +44,14 @@ select pg_temp.expect_error($$select private.add_staff('00000000-0000-4000-8000-
 create temp table r (name text primary key, value text);
 grant all on r to authenticated;
 insert into r values ('owner', public.bookable_staff()::text);
-insert into r select 'enquiry', id::text from public.enquiries order by submitted_at limit 1;
+-- One enquiry of its own, so the checks hold on an empty database.
+update public.booking_settings set enquiry_limit_per_hour = 100;
+select public.submit_enquiry_with_access('00000000-0000-4000-8000-0000000005e1'::uuid, 'enquiry', 2,
+  jsonb_build_object('appointment_preference', 'phone', 'project_type', 'kitchen',
+    'location', 'Dublin 8', 'name', 'Roles Test', 'email', 'roles@example.invalid', 'phone', '087 123 4567'));
+insert into r select 'enquiry', id::text from public.enquiries where answers ->> 'email' = 'roles@example.invalid';
+-- Its new-enquiry alerts went to whoever was active then; the checks below queue their own.
+delete from public.communications where enquiry_id = (select value::uuid from r where name = 'enquiry');
 
 -- -------------------------------------------------------------------------------------------
 -- anon: nothing new is reachable

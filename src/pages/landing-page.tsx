@@ -25,8 +25,8 @@ const steps = [
     body: 'A free phone call to talk through your plans, a free site visit to see the space and measure up, or both. A few quick questions, then pick a time.',
   },
   {
-    title: 'Get an estimate after the site visit',
-    body: 'After the visit we send you an estimate: a price range, with VAT included. If you start with a call, the next step for a price is a site visit.',
+    title: 'Get an estimate',
+    body: 'We send you an estimate: a price range, with VAT included. Most jobs need a site visit before we can price them.',
   },
   {
     title: 'Say yes and we send a quote',

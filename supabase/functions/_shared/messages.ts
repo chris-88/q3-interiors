@@ -104,7 +104,7 @@ export const WORDING = {
     label: 'Call: what it is',
     where: 'Confirmation email for a call',
     default:
-      'This call is to talk your project through. It does not commit you to anything. If you want a price, the next step is a site visit.',
+      'This call is to talk your project through. It does not commit you to anything. Most jobs need a site visit before we can price them.',
     max: 400,
     tokens: [],
   },

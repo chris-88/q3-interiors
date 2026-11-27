@@ -3,6 +3,11 @@
 // chips, search and order, and the one next step the enquiry page offers. Pure, so it is tested
 // without a browser.
 import { formatRange } from '../../supabase/functions/_shared/estimate.ts'
+import {
+  addWorkingDays,
+  isPastDate,
+  QUOTE_DUE_WORKING_DAYS,
+} from '../../supabase/functions/_shared/working-days.ts'
 import { formatDayMonth, formatShortDay, formatShortWhen } from './format'
 import { reasonLabel } from './outcome'
 
@@ -130,11 +135,30 @@ export function estimateLine(e: StageEstimate): string {
   return `Estimate sent ${formatDayMonth(e.sent_at)}: ${formatRange(e.low_eur, e.high_eur)}`
 }
 
-/** "Quote requested 29 Nov", "No answer in 10 days", or null while it is open. */
+/** The date the quote is due (3 working days after "Get my quote"), as YYYY-MM-DD. */
+export function quoteDueDate(e: StageEstimate): string | null {
+  return e.quote_requested_at ? addWorkingDays(e.quote_requested_at, QUOTE_DUE_WORKING_DAYS) : null
+}
+
+/** Asked for a quote and the due date has passed. */
+export function quoteOverdue(e: StageEstimate, now: number): boolean {
+  const due = quoteDueDate(e)
+  return due !== null && isPastDate(due, now)
+}
+
+/**
+ * "Quote requested 29 Nov · Quote due Wed 2 Dec" (or "Quote overdue, was due Wed 2 Dec"),
+ * "No answer in 10 days", or null while it is open.
+ */
 export function estimateFollowUp(e: StageEstimate, now: number): string | null {
   const state = estimateState(e, now)
-  if (state === 'quote_requested' && e.quote_requested_at)
-    return `Quote requested ${formatDayMonth(e.quote_requested_at)}`
+  const due = quoteDueDate(e)
+  if (state === 'quote_requested' && e.quote_requested_at && due) {
+    const day = formatShortDay(`${due}T12:00:00Z`)
+    return `Quote requested ${formatDayMonth(e.quote_requested_at)} · ${
+      isPastDate(due, now) ? `Quote overdue, was due ${day}` : `Quote due ${day}`
+    }`
+  }
   if (state === 'no_answer') return 'No answer in 10 days'
   return null
 }

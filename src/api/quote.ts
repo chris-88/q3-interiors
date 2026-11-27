@@ -1,6 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { call, InvalidLinkError } from './booking'
+import { QUOTE_PAGE_KEYS, quotePageText } from '../../supabase/functions/_shared/quote-page.ts'
+
+// The page's text as the function sends it; an older function sent none (the defaults apply).
+const textSchema = z
+  .record(z.string(), z.string())
+  .optional()
+  .transform((saved) =>
+    quotePageText(
+      Object.fromEntries(
+        QUOTE_PAGE_KEYS.flatMap((k) => (saved?.[k] === undefined ? [] : [[k, saved[k]]])),
+      ),
+    ),
+  )
 
 /**
  * "Get my quote" from the estimate email, through the `public-booking` function with the
@@ -22,6 +35,8 @@ const estimateSchema = z.object({
   sentAt: z.string(),
   validUntil: z.string(),
   quoteRequested: z.boolean(),
+  text: textSchema,
+  businessPhone: z.string().nullable().default(null),
 })
 
 export type CustomerEstimate = z.infer<typeof estimateSchema>

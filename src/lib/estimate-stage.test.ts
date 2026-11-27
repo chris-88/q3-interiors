@@ -41,7 +41,7 @@ describe('estimates in the stage', () => {
     const s1 = enquiryStage(asked, now)
     expect(s1.key).toBe('quote_requested')
     expect(stageLine(asked, s1, now)).toBe(
-      'Estimate sent 24 Nov: €9,500 to €10,500 · Quote requested 25 Nov',
+      'Estimate sent 24 Nov: €9,500 to €10,500 · Quote requested 25 Nov · Quote due Mon 30 Nov',
     )
     expect(matchesStage(s1.key, 'action')).toBe(true)
     const quiet = { ...base, estimates: [estimate('2026-11-10T15:00:00Z')] }
@@ -61,5 +61,13 @@ describe('estimates in the stage', () => {
     expect(enquiryStage(two, now).key).toBe('estimate_sent')
     expect(enquiryStage({ ...two, outcome: 'quoted' }, now).key).toBe('quoted')
     expect(enquiryStage({ ...base, estimates: undefined }, now).key).toBe('awaiting_quote')
+  })
+
+  it('flags a quote that is past its due date (3 working days)', () => {
+    const asked = { ...base, estimates: [estimate('2026-11-18T15:00:00Z', '2026-11-20T09:00:00Z')] }
+    const stage = enquiryStage(asked, now)
+    expect(stageLine(asked, stage, now)).toBe(
+      'Estimate sent 18 Nov: €9,500 to €10,500 · Quote requested 20 Nov · Quote overdue, was due Wed 25 Nov',
+    )
   })
 })

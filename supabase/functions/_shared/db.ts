@@ -203,7 +203,7 @@ export function createDb(): Db {
     },
     async estimateById(estimateId) {
       const [row] =
-        await q`select id, enquiry_id, low_eur, high_eur, work_items, work_looked_at, caveats,
+        await q`select id, enquiry_id, low_eur, high_eur, work_items, work_looked_at, caveats, after,
         to_jsonb(sent_at) #>> '{}' as sent_at, to_jsonb(valid_until) #>> '{}' as valid_until,
         to_jsonb(quote_requested_at) #>> '{}' as quote_requested_at
         from public.estimates where id = ${estimateId}`
@@ -238,8 +238,11 @@ export function createDb(): Db {
     async liveBookingFor(enquiryId) {
       const [row] =
         await q`select to_jsonb(b) as b from public.bookings b where enquiry_id = ${enquiryId}
-        and state in ('reserved', 'calendar_pending', 'confirmed') limit 1`
+        and state in ('reserved', 'calendar_pending', 'confirmed') and attendance is null limit 1`
       return (row?.b as BookingRow | undefined) ?? null
+    },
+    async visitBookedByStaff(bookingId, actorUserId, addressAdded) {
+      await q`select private.visit_booked_by_staff(${bookingId}, ${actorUserId}, ${addressAdded})`
     },
     async cancelBooking(id, actor, reason, actorUserId) {
       const [row] =

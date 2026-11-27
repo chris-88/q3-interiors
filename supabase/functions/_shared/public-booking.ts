@@ -373,6 +373,7 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
         high: estimate.high_eur,
         workItems: estimate.work_items ?? [],
         note: estimate.work_looked_at,
+        after: estimate.after === 'call' ? 'call' : 'visit',
         sentAt: estimate.sent_at,
         validUntil: estimate.valid_until,
         quoteRequested: estimate.quote_requested_at !== null,

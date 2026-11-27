@@ -197,3 +197,11 @@
 [tabindex='-1']:focus-visible {
   outline: none;
 }
+
+/* The enquiry page's action bar is fixed to the bottom below 1024px: keep a focused or scrolled-to
+   element clear of it (WCAG 2.4.11), safe area included. */
+@media (width < 64rem) {
+  html:has([data-action-bar]) {
+    scroll-padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+}

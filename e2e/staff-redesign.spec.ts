@@ -385,7 +385,7 @@ test('the now card: a contact request, then marked contacted; empty answers are 
   await expect(primaryAction(page)).toHaveAttribute('href', 'tel:0877654321')
   // The strip says where they are.
   await expect(page.getByRole('list', { name: 'Where they are' }).getByRole('listitem')).toHaveText(
-    ['Call (now)', 'Site visit', 'Estimate', 'Quote', 'Deposit'],
+    [/^Call\s*now$/, 'Site visit', 'Estimate', 'Quote', 'Deposit'],
   )
   // Sections are folded to one line each; empty answers are left out when opened.
   await expect(page.getByRole('region', { name: 'Project' })).toBeHidden()
@@ -399,18 +399,18 @@ test('the now card: a contact request, then marked contacted; empty answers are 
   await expect(page.locator('#fold-appointments')).toHaveCount(0)
   await shot(page, 'enquiry-contact-390')
 
-  // Other actions: each says what it does; Mark as contacted is one of them.
+  // Other actions: each says what it does; "How did it go?" is one of them, after ringing.
   const sheet = await openActions(page)
   await expect(sheet.getByRole('heading', { name: 'Call back: other actions' })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^Mark as contacted/ })).toContainText(
-    'Records that you were in touch',
-  )
+  await expect(sheet.getByRole('button', { name: /^How did it go/ })).toBeVisible()
   for (const row of await sheet.getByRole('listitem').all())
     expect((await row.boundingBox())?.height).toBeGreaterThanOrEqual(56)
   await shot(page, 'enquiry-actions-sheet-390')
-  await sheet.getByRole('button', { name: /^Mark as contacted/ }).click()
-  await sheet.getByRole('button', { name: 'Mark as contacted' }).click()
-  await page.keyboard.press('Escape')
+  await sheet.getByRole('button', { name: /^How did it go/ }).click()
+  await expect(sheet.getByRole('button', { name: /^We spoke/ })).toBeVisible()
+  await shot(page, 'how-did-it-go-ring-390')
+  await sheet.getByRole('button', { name: /^No answer, or I left a message/ }).click()
+  await expect(sheet).toHaveCount(0)
   await expect(nowCard(page)).toContainText('Waiting on Aoife')
   await expect(nowCard(page)).toContainText('Contacted, nothing booked')
   // Focus is back on the button that opened the sheet.
@@ -476,13 +476,22 @@ test('after the appointment: how it went, a quote recorded; then won from the ac
   await expect(primaryAction(page)).toHaveText('How did it go?')
   await primaryAction(page).click()
   const sheet = page.getByRole('dialog')
-  await sheet.getByRole('button', { name: 'Attended' }).click()
-  await expect(sheet.getByRole('button', { name: 'Attended' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
+  await expect(sheet.getByRole('heading', { name: 'How did the site visit go?' })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^It went ahead/ })).toContainText(
+    'Next: the estimate form opens',
   )
-  await page.keyboard.press('Escape')
+  await expect(sheet.getByRole('button', { name: /^They didn’t show/ })).toContainText(
+    'Next: ring them, then rebook',
+  )
+  await shot(page, 'how-did-it-go-visit-390')
+  await sheet.getByRole('button', { name: /^It went ahead/ }).click()
+  await expect(sheet).toHaveCount(0)
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
   await expect(nowCard(page)).toContainText('Write the estimate')
+  expect(world.rpcCalls.find((c) => c.name === 'set_booking_attendance')?.body).toEqual({
+    p_booking_id: 'b-await',
+    p_attendance: 'attended',
+  })
   const quote = await chooseAction(page, /^Record a quote or result/)
   await quote.getByRole('button', { name: 'Record quote' }).click()
   await quote.getByLabel('Quote amount (€, incl. VAT)').fill('12,300')
@@ -498,16 +507,72 @@ test('after the appointment: how it went, a quote recorded; then won from the ac
   await expect(nowCard(page)).toContainText('Waiting on')
   await expect(nowCard(page)).toContainText('Quoted €18,450')
   await shot(page, 'enquiry-quoted-390')
+  // Mark won opens its own small form (no row of other outcome buttons); saving ends it.
   const won = await chooseAction(page, /^Mark won/)
-  await won.getByRole('button', { name: 'Mark won' }).click()
+  await expect(won.getByRole('button', { name: 'Mark lost' })).toHaveCount(0)
   await won.getByLabel('Date won').fill('2026-11-25')
   await won.getByRole('button', { name: 'Save as won' }).click()
-  await page.keyboard.press('Escape')
+  await expect(won).toHaveCount(0)
   // Won: the result only; corrections are in the actions.
   await expect(nowCard(page)).toContainText('Result')
   await expect(nowCard(page)).toContainText('Won €18,450')
   const fix = await chooseAction(page, /^Correct the result/)
   await expect(fix.getByRole('button', { name: 'Edit win' })).toBeVisible()
+})
+
+test('WCAG 2.4.11: nothing focused hides under the fixed action bar at 390 x 640', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 640 })
+  await open(page, '/#/enquiries/e-new001')
+  await openFolds(page)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  const bar = page.getByRole('region', { name: 'Actions' })
+  const barTop = (await bar.boundingBox())?.y ?? 0
+  expect(barTop).toBeLessThan(640)
+  // Tab through the whole page: every focused thing outside the bar stays at least partly above it.
+  let checked = 0
+  for (let i = 0; i < 120; i++) {
+    await page.keyboard.press('Tab')
+    const at = await page.evaluate(() => {
+      const el = document.activeElement
+      if (!el || el === document.body || el.closest('[data-action-bar]')) return null
+      const r = el.getBoundingClientRect()
+      return {
+        top: r.top,
+        bottom: r.bottom,
+        h: r.height,
+        tag: el.tagName,
+        text: el.textContent?.slice(0, 40),
+      }
+    })
+    if (!at || at.h === 0) continue
+    checked++
+    expect(at.top, `${at.tag} ${at.text}`).toBeLessThan(barTop)
+  }
+  expect(checked).toBeGreaterThan(10)
+})
+
+test('the actions sheet: focus on its title, Back only from the list, 48px close', async ({
+  page,
+}) => {
+  await open(page, '/#/enquiries/e-await1')
+  // Opened straight from the bar: the title has focus and there is no list to go back to.
+  await primaryAction(page).click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.getByRole('heading', { name: 'How did the site visit go?' })).toBeFocused()
+  await expect(sheet.getByRole('button', { name: 'Back to the actions' })).toHaveCount(0)
+  const close = sheet.getByRole('button', { name: 'Close' })
+  expect((await close.boundingBox())?.height).toBeGreaterThanOrEqual(48)
+  await page.keyboard.press('Escape')
+  await expect(primaryAction(page)).toBeFocused()
+
+  // From the list: the title has focus (not the first row), and a chosen row has Back.
+  await openActions(page)
+  await expect(sheet.getByRole('heading', { name: /other actions$/ })).toBeFocused()
+  await sheet.getByRole('button', { name: /^Move or cancel/ }).click()
+  await sheet.getByRole('button', { name: 'Back to the actions' }).click()
+  await expect(sheet.getByRole('heading', { name: /other actions$/ })).toBeVisible()
 })
 
 test('Notes, the demoted status, and everything else under More', async ({ page }) => {

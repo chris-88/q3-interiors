@@ -171,19 +171,28 @@ test('"We already spoke" cancels the call quietly and offers the three next step
 }) => {
   const world = await open(page, '/#/enquiries/e-early1')
   await expect(now(page)).toContainText('Call Tue 1 Dec, 11:00')
-  const sheet = await chooseAction(page, /^We already spoke/)
-  const confirm = sheet.getByRole('alertdialog')
-  await expect(confirm).toContainText('No email goes to the customer and no reminder is sent.')
+  // Before the call: How did it go? We spoke earlier (the call is cancelled with no email).
+  const sheet = await chooseAction(page, /^How did it go/)
+  await expect(sheet.getByRole('heading', { name: 'How did the call go?' })).toBeVisible()
+  const spoke = sheet.getByRole('button', { name: /^We spoke earlier/ })
+  await expect(spoke).toContainText('cancelled, with no email to them')
   await shot(page, 'after-call-we-already-spoke')
-  await confirm.getByRole('button', { name: 'Yes, we spoke' }).click()
+  await spoke.click()
 
+  // It carries on to the next step: the site visit first (filled), the estimate last.
+  await expect(sheet.getByText('Choose the next step.')).toBeVisible()
+  const choices = sheet.getByRole('button', {
+    name: /^(Book the site visit|Send a booking link|Write the estimate)$/,
+  })
+  await expect(choices).toHaveText([
+    'Book the site visit',
+    'Send a booking link',
+    'Write the estimate',
+  ])
+  await expect(choices.first()).toHaveClass(/bg-primary/)
+  await page.keyboard.press('Escape')
   await expect(now(page)).toContainText('Choose the next step')
   await expect(now(page)).toContainText('Spoke Fri 27 Nov')
-  await primaryAction(page).click()
-  await expect(sheet.getByText('Call held 27 Nov')).toBeVisible()
-  await expect(sheet.getByRole('button', { name: 'Write the estimate' })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: 'Book the site visit' })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: 'Send a booking link' })).toBeVisible()
   expect(world.rpcCalls.find((c) => c.name === 'record_call_held_early')?.body).toEqual({
     p_enquiry_id: 'e-early1',
   })
@@ -226,11 +235,10 @@ test('an estimate straight from the call: thanks for talking, the work we talked
 
 test('held early with no booking: the estimate goes with the enquiry alone', async ({ page }) => {
   const world = await open(page, '/#/enquiries/e-fresh1')
-  const sheet = await chooseAction(page, /^We already spoke/)
-  await expect(sheet.getByRole('alertdialog')).toContainText('Nothing is sent to the customer.')
-  await sheet.getByRole('button', { name: 'Yes, we spoke' }).click()
-  await primaryAction(page).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Write the estimate' }).click()
+  // They rang before anything was booked: How did it go? We spoke, then the estimate (last).
+  const sheet = await chooseAction(page, /^How did it go/)
+  await sheet.getByRole('button', { name: /^We spoke/ }).click()
+  await sheet.getByRole('button', { name: 'Write the estimate' }).click()
   const section = page.getByRole('region', { name: 'Estimate' })
   await section.getByLabel('Price in euro').fill('3000')
   await section.getByLabel('Anything else (optional)').fill('Hall floor relaid.')

@@ -409,8 +409,15 @@ export function EstimateSection({
       setSentTo(null)
       // The section may be folded on the enquiry page: open it, then bring it into view.
       document.getElementById('fold-estimate')?.setAttribute('open', '')
+      // Then the form's first field takes focus (after the form has rendered).
       window.requestAnimationFrame(() =>
-        document.getElementById('estimate')?.scrollIntoView({ behavior: 'smooth' }),
+        window.requestAnimationFrame(() => {
+          const section = document.getElementById('estimate')
+          section?.scrollIntoView({ behavior: 'smooth' })
+          section
+            ?.querySelector<HTMLElement>('form input, form select, form textarea')
+            ?.focus({ preventScroll: true })
+        }),
       )
     }
     window.addEventListener(WRITE_ESTIMATE_EVENT, show)
@@ -439,7 +446,8 @@ export function EstimateSection({
       </output>
       {visit && !open && !(offeredAbove && !current) && (
         <Button
-          variant={current ? 'outline' : 'default'}
+          // Folded sections never draw a filled button: the bar holds the one primary action.
+          variant="outline"
           className="h-12 w-full sm:w-auto sm:self-start sm:px-6"
           onClick={() => {
             setOpen(true)

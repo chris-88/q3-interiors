@@ -1,8 +1,8 @@
 // The enquiry page's top (review P3, P7): the five-step strip, the read-only "now" card, the one
 // primary action in a bar, and the other actions in a sheet. Everything reads `stageOf()`; the
 // actions reuse the forms and panels the page already had, so every server action is unchanged.
-import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Check, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { ENQUIRY_STATUSES, type EnquiryDetail } from '@/api/enquiries'
 import { currentQuote } from '@/api/quotes'
 import type { StaffBooking } from '@/api/staff-booking'
@@ -11,12 +11,11 @@ import {
   BookCallPanel,
   BookVisitPanel,
   SendLinkPanel,
-  WeAlreadySpoke,
   WRITE_ESTIMATE_EVENT,
 } from '@/components/staff/after-call'
 import { BookingActions } from '@/components/staff/booking-actions'
+import { HowDidItGo, outcomeTarget, outcomeTitle } from '@/components/staff/how-did-it-go'
 import { enquiryName } from '@/components/staff/enquiry-text'
-import { MarkContacted } from '@/components/staff/mark-contacted'
 import { OutcomeForm, type CurrentOutcome } from '@/components/staff/outcome-form'
 import { QuoteSummary, WRITE_QUOTE_EVENT } from '@/components/staff/quote-section'
 import { StatusForm } from '@/components/staff/status-form'
@@ -27,10 +26,11 @@ import {
   mailHref,
   passedBooking,
   STEP_LABELS,
-  STEPS,
+  stripSteps,
   telHref,
   upcomingBooking,
   type ActionKey,
+  type StageInput,
   type StageView,
 } from '@/lib/enquiry-stage'
 import { formatShortDay, formatShortWhen } from '@/lib/format'
@@ -41,29 +41,44 @@ const firstName = (e: EnquiryDetail) => enquiryName(e).split(' ')[0] ?? ''
 /** The customer's words on the change they asked for, on the current quote. */
 const changeText = (e: EnquiryDetail) => currentQuote(e.quotes)?.change_request_text ?? null
 
-/** Where they are: Call, Site visit, Estimate, Quote, Deposit (done, now, to come). */
-export function StageStrip({ view }: { view: StageView }) {
-  const at = view.step ? STEPS.indexOf(view.step) : -1
-  const won = view.key === 'won'
+/**
+ * Where they are: Call, Site visit, Estimate, Quote, Deposit, each done (a tick), now (boxed and
+ * bold), skipped (dashed, "skipped") or to come, from the record (`stripSteps`).
+ */
+export function StageStrip({
+  enquiry,
+  view,
+  now,
+}: {
+  enquiry: StageInput
+  view: StageView
+  now: number
+}) {
   return (
-    <ol aria-label="Where they are" className="flex text-xs">
-      {STEPS.map((step, i) => {
-        const done = won || i < at
-        const now = !won && i === at
-        return (
-          <li
-            key={step}
-            aria-current={now ? 'step' : undefined}
-            className={`flex-1 border-t-4 pt-1.5 text-center ${
-              done || now ? 'border-action text-ink' : 'border-rule text-muted-foreground'
-            } ${now ? 'font-bold' : ''}`}
-          >
+    <ol aria-label="Where they are" className="flex gap-1 text-xs">
+      {stripSteps(enquiry, view, now).map(({ step, state }) => (
+        <li
+          key={step}
+          aria-current={state === 'now' ? 'step' : undefined}
+          className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 pt-1.5 text-center ${
+            state === 'done'
+              ? 'border-action text-ink border-t-4'
+              : state === 'now'
+                ? 'border-action bg-soft text-ink outline-edge rounded-b border-t-4 pb-1 font-bold outline outline-1'
+                : state === 'skipped'
+                  ? 'border-rule text-muted-foreground border-t-4 border-dashed'
+                  : 'border-rule text-muted-foreground border-t-4'
+          }`}
+        >
+          <span className="flex items-center gap-0.5">
+            {state === 'done' && <Check className="size-3 shrink-0" aria-hidden="true" />}
             {STEP_LABELS[step]}
-            {done && <span className="sr-only"> (done)</span>}
-            {now && <span className="sr-only"> (now)</span>}
-          </li>
-        )
-      })}
+          </span>
+          {state === 'skipped' && <span className="text-[0.6875rem]">skipped</span>}
+          {state === 'now' && <span className="text-[0.6875rem] font-medium">now</span>}
+          {state === 'done' && <span className="sr-only"> (done)</span>}
+        </li>
+      ))}
     </ol>
   )
 }
@@ -151,6 +166,8 @@ type ActionDef = {
   event?: string
   /** A panel shown in the sheet. */
   panel?: (c: Ctx) => ReactNode
+  /** The sheet's title while the panel is open, when it depends on the enquiry. */
+  panelTitle?: (c: Ctx) => string
 }
 
 function outcomeOf(e: EnquiryDetail): CurrentOutcome {
@@ -165,14 +182,17 @@ function outcomeOf(e: EnquiryDetail): CurrentOutcome {
   }
 }
 
+/** One small outcome form (quote, won or lost) that ends the panel, or the summary with its corrections. */
 const outcomePanel =
-  (primary: 'quote' | 'won' | 'none') =>
-  ({ enquiry }: Ctx) => (
+  (start: 'quoted' | 'won' | 'lost' | null) =>
+  ({ enquiry, close }: Ctx) => (
     <OutcomeForm
       enquiryId={enquiry.id}
       current={outcomeOf(enquiry)}
       badge={false}
-      primary={primary}
+      primary="none"
+      start={start ?? undefined}
+      onDone={close}
     />
   )
 
@@ -219,8 +239,11 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
   },
   record_outcome: {
     title: () => 'How did it go?',
-    line: 'Say whether it went ahead',
-    panel: bookingPanel('attendance'),
+    line: 'It went ahead, you spoke earlier, they didn’t show, or it moved',
+    panelTitle: ({ bookings, now }) => outcomeTitle(outcomeTarget(bookings, now)),
+    panel: ({ enquiry, bookings, now, close }) => (
+      <HowDidItGo enquiry={enquiry} bookings={bookings} now={now} close={close} />
+    ),
   },
   choose_next: {
     title: () => 'Choose the next step',
@@ -243,23 +266,6 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
     title: () => 'Send a booking link',
     line: 'Emails a link to pick their own visit time',
     panel: ({ enquiry, close }) => <SendLinkPanel enquiry={enquiry} onClose={close} />,
-  },
-  we_spoke: {
-    title: () => 'We already spoke',
-    line: 'Records the call as held today',
-    panel: ({ enquiry, view, close }) => (
-      <WeAlreadySpoke
-        enquiry={enquiry}
-        call={view.next && view.next.mode === 'phone' ? view.next : null}
-        startConfirming
-        onDone={close}
-      />
-    ),
-  },
-  mark_contacted: {
-    title: () => 'Mark as contacted',
-    line: 'Records that you were in touch',
-    panel: ({ enquiry }) => <MarkContacted enquiry={enquiry} />,
   },
   move: {
     title: () => 'Move or cancel',
@@ -295,7 +301,7 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
   record_quote: {
     title: () => 'Record a quote or result',
     line: 'A quote sent another way, or a win or loss',
-    panel: outcomePanel('quote'),
+    panel: outcomePanel(null),
   },
   view_quote: {
     title: () => 'View or download the quote',
@@ -318,7 +324,7 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
     title: () => 'Mark lost',
     line: 'Note why',
     danger: true,
-    panel: outcomePanel('none'),
+    panel: outcomePanel('lost'),
   },
   not_suitable: {
     title: () => 'Not suitable',
@@ -334,7 +340,7 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
   edit_result: {
     title: () => 'Correct the result',
     line: 'Change or clear the outcome',
-    panel: outcomePanel('none'),
+    panel: outcomePanel(null),
   },
 }
 
@@ -361,6 +367,10 @@ export function ActionBar({
 }) {
   const [open, setOpen] = useState(false)
   const [panel, setPanel] = useState<ActionKey | null>(null)
+  // Opened straight from the bar there is no list to go back to.
+  const [fromList, setFromList] = useState(false)
+  // Focus lands on the sheet's title, never on its first (possibly destructive) row.
+  const title = useRef<HTMLHeadingElement>(null)
   // A form that opens on the page (the estimate, the quote) puts the sheet away.
   useEffect(() => {
     const away = () => setOpen(false)
@@ -374,16 +384,17 @@ export function ActionBar({
   const first = firstName(enquiry)
   const primary = barAction(view)
   const others = view.others.filter((k) => k !== primary)
-  const show = (key: ActionKey | null) => {
+  const show = (key: ActionKey | null, listed = false) => {
     setPanel(key)
+    setFromList(listed)
     setOpen(true)
   }
-  const run = (key: ActionKey) => {
+  const run = (key: ActionKey, listed = false) => {
     const def = ACTIONS[key]
     if (def.event) {
       setOpen(false)
       window.dispatchEvent(new Event(def.event))
-    } else show(key)
+    } else show(key, listed)
   }
   const ctx: Ctx = {
     enquiry,
@@ -391,7 +402,10 @@ export function ActionBar({
     bookings,
     now,
     close: () => setOpen(false),
-    goto: (key) => setPanel(key),
+    goto: (key) => {
+      setPanel(key)
+      setFromList(true)
+    },
   }
   const pdef = primary ? ACTIONS[primary] : null
   const href = pdef?.href?.(enquiry) ?? null
@@ -400,6 +414,7 @@ export function ActionBar({
     <>
       <section
         aria-label="Actions"
+        data-action-bar=""
         className="bg-background fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t px-4 pt-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] lg:static lg:border-0 lg:p-0"
       >
         {pdef &&
@@ -428,27 +443,38 @@ export function ActionBar({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="bottom"
+          initialFocus={title}
           className="bg-background max-h-[85dvh] gap-3 overflow-y-auto rounded-t-xl px-4 pt-4 pb-6 lg:mx-auto lg:max-w-xl"
         >
           {panel ? (
             <>
-              <div className="flex items-center gap-1 pr-10">
-                <Button
-                  variant="ghost"
-                  className="h-12 px-2"
-                  onClick={() => setPanel(null)}
-                  aria-label="Back to the actions"
-                >
-                  <ChevronLeft className="size-5" aria-hidden="true" />
-                </Button>
-                <SheetTitle className="text-lg">{ACTIONS[panel].title(first)}</SheetTitle>
+              <div className="flex min-h-12 items-center gap-1 pr-12">
+                {fromList && (
+                  <Button
+                    variant="ghost"
+                    className="h-12 px-2"
+                    onClick={() => setPanel(null)}
+                    aria-label="Back to the actions"
+                  >
+                    <ChevronLeft className="size-5" aria-hidden="true" />
+                  </Button>
+                )}
+                <SheetTitle ref={title} tabIndex={-1} className="text-lg outline-none">
+                  {ACTIONS[panel].panelTitle?.(ctx) ?? ACTIONS[panel].title(first)}
+                </SheetTitle>
               </div>
               <SheetDescription className="sr-only">{ACTIONS[panel].line}</SheetDescription>
               {ACTIONS[panel].panel?.(ctx)}
             </>
           ) : (
             <>
-              <SheetTitle className="pr-10 text-lg">{view.label}: other actions</SheetTitle>
+              <SheetTitle
+                ref={title}
+                tabIndex={-1}
+                className="flex min-h-12 items-center pr-12 text-lg outline-none"
+              >
+                {view.label}: other actions
+              </SheetTitle>
               <SheetDescription className="sr-only">
                 Each action says what it does. Ones that change or close something ask first.
               </SheetDescription>
@@ -483,7 +509,7 @@ export function ActionBar({
                           </a>
                         ) : null
                       ) : (
-                        <button type="button" className={row} onClick={() => run(key)}>
+                        <button type="button" className={row} onClick={() => run(key, true)}>
                           {body}
                         </button>
                       )}

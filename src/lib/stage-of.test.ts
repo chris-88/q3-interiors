@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { diaryWhen, groupStages, stageOf, type StageBooking, type ViewInput } from './enquiry-stage'
+import {
+  diaryWhen,
+  groupStages,
+  stageOf,
+  stripSteps,
+  type StageBooking,
+  type ViewInput,
+} from './enquiry-stage'
 
 // Friday 27 Nov 2026, noon in Dublin.
 const now = Date.parse('2026-11-27T12:00:00Z')
@@ -218,5 +225,80 @@ describe('the list grouped by whose move it is', () => {
     expect(diaryWhen('2026-11-28T10:00:00Z', now)).toBe('Tomorrow 10:00')
     expect(diaryWhen('2026-12-01T10:00:00Z', now)).toBe('Tue 10:00')
     expect(diaryWhen('2026-12-08T10:00:00Z', now)).toBe('Tue 8 Dec, 10:00')
+  })
+})
+
+describe('stripSteps (the strip from the record)', () => {
+  const states = (e: ReturnType<typeof enquiry>) =>
+    stripSteps(e, stageOf(e, now), now).map((s) => `${s.step}:${s.state}`)
+
+  it('an estimate straight from a call skips the visit; a visit booked after it is now, not done', () => {
+    const fromCall = enquiry({ call_held_at: '2026-11-23T10:00:00Z', estimates: [estimate()] })
+    expect(states(fromCall)).toEqual([
+      'call:done',
+      'visit:skipped',
+      'estimate:done',
+      'quote:todo',
+      'deposit:todo',
+    ])
+    const visitBooked = enquiry({
+      call_held_at: '2026-11-23T10:00:00Z',
+      estimates: [estimate()],
+      bookings: [booking({ starts_at: '2026-12-01T10:00:00Z' })],
+    })
+    expect(states(visitBooked)).toEqual([
+      'call:done',
+      'visit:now',
+      'estimate:done',
+      'quote:todo',
+      'deposit:todo',
+    ])
+  })
+
+  it('a site visit booked with no call: the call is skipped, the visit is now', () => {
+    const e = enquiry({ bookings: [booking({ starts_at: '2026-12-01T10:00:00Z' })] })
+    expect(states(e)).toEqual([
+      'call:skipped',
+      'visit:now',
+      'estimate:todo',
+      'quote:todo',
+      'deposit:todo',
+    ])
+  })
+
+  it('a new enquiry: the call is now and nothing is done', () => {
+    expect(states(enquiry())).toEqual([
+      'call:now',
+      'visit:todo',
+      'estimate:todo',
+      'quote:todo',
+      'deposit:todo',
+    ])
+  })
+
+  it('lost keeps how far it got and has no now', () => {
+    const e = enquiry({
+      outcome: 'lost',
+      bookings: [booking({ attendance: 'attended' })],
+      estimates: [estimate()],
+    })
+    expect(states(e)).toEqual([
+      'call:skipped',
+      'visit:done',
+      'estimate:done',
+      'quote:todo',
+      'deposit:todo',
+    ])
+  })
+
+  it('won: the deposit is done; a step never reached is skipped, not done', () => {
+    const e = enquiry({ outcome: 'won', bookings: [booking({ attendance: 'attended' })] })
+    expect(states(e)).toEqual([
+      'call:skipped',
+      'visit:done',
+      'estimate:skipped',
+      'quote:skipped',
+      'deposit:done',
+    ])
   })
 })

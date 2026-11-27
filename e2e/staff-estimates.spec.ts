@@ -1,7 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
 import {
-  chooseAction,
   installFakeStaff,
   nowCard,
   primaryAction,
@@ -197,8 +196,13 @@ test('staff write an estimate on a site visit: live range, email preview, confir
 }) => {
   const world = await open(page, '/#/enquiries/e-visit1')
   const section = page.getByRole('region', { name: 'Estimate', exact: true })
-  // Once the visit's time has passed it is one of the actions (the section does not repeat it).
-  await chooseAction(page, /^Write the estimate/)
+  // How did it go? It went ahead: the estimate form opens.
+  await primaryAction(page).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^It went ahead/ })
+    .click()
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
   await expect(section).toContainText('No estimate sent yet.')
 
   // Checked like the server: a price is needed, and a ticked item or a note.
@@ -304,7 +308,13 @@ test('an enquiry with no project type is offered the "any job" items, and a note
   if (row) delete row.answers.project_type
   await page.reload()
   const section = page.getByRole('region', { name: 'Estimate', exact: true })
-  await chooseAction(page, /^Write the estimate/)
+  // How did it go? It went ahead: the estimate form opens.
+  await primaryAction(page).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^It went ahead/ })
+    .click()
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
   expect(await chipLabels(page)).toEqual(['Strip out', 'Painting', 'Waste removal'])
   await section.getByLabel('Price in euro').fill('2500')
   await section.getByLabel('Anything else (optional)').fill('Hall floor relaid on new joists.')

@@ -116,18 +116,19 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await expect(outcome).toContainText('Quoted €18,450.50 on 21 Nov 2026')
   await shot(page, 'enquiry-quoted-390')
 
-  // Mark won: the amount starts from the quote.
+  // Mark won: its own small form at once, the amount starting from the quote; saving ends it.
   await page.keyboard.press('Escape')
   await chooseAction(page, /^Mark won/)
-  await outcome.getByRole('button', { name: 'Mark won' }).click()
   await expect(outcome.getByLabel('Agreed value (€, incl. VAT)')).toHaveValue('18450.5')
   await outcome.getByLabel('Agreed value (€, incl. VAT)').fill('17900')
   await outcome.getByLabel('Date won').fill('2026-11-24')
   await outcome.getByRole('button', { name: 'Save as won' }).click()
-  await expect(outcome).toContainText('Won €17,900.00 on 24 Nov 2026')
-  await expect(outcome).toContainText('Quoted €18,450.50 on 21 Nov 2026')
+  await expect(outcome).toHaveCount(0)
+  await expect(nowCard(page)).toContainText('Won €17,900')
 
   // Correct the win.
+  await chooseAction(page, /^Correct the result/)
+  await expect(outcome).toContainText('Quoted €18,450.50 on 21 Nov 2026')
   await outcome.getByRole('button', { name: 'Edit win' }).click()
   await outcome.getByLabel('Agreed value (€, incl. VAT)').fill('18000')
   await outcome.getByRole('button', { name: 'Save as won' }).click()

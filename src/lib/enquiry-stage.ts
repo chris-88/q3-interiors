@@ -52,6 +52,8 @@ export type StageInput = {
   quotes?: StageQuote[]
   /** "We already spoke" (the call held early or without a booking). */
   call_held_at?: string | null
+  /** A quote's amount, sent from here or recorded by hand (kept after a win or loss). */
+  quote_amount?: number | null
   /** The latest "Book your site visit" link emailed. */
   visit_link_sent_at?: string | null
 }
@@ -618,13 +620,15 @@ export const STEP_LABELS: Record<Step, string> = {
   deposit: 'Deposit',
 }
 
-export type StepState = 'done' | 'now' | 'skipped' | 'todo'
+export type StepState = 'done' | 'now' | 'skipped' | 'todo' | 'won'
 
 /**
  * Each step on the strip from the record, not from the stage alone: a step is done only when it
- * happened (a call held, a site visit attended, an estimate sent, a quote sent, a win). A step
- * passed over (an estimate straight from a call: no visit) is skipped, never done; a visit booked
- * after that estimate is "now", not done. Lost or closed keep what was done and have no "now".
+ * happened (a call held, a site visit attended, an estimate sent, a quote sent or recorded by
+ * hand). A step passed over (an estimate straight from a call: no visit) is skipped, never done; a
+ * visit booked after that estimate is "now", not done. Nothing records a deposit yet, so Deposit
+ * is never done: a win shows the last step as "Won" instead. Won, lost and closed keep every step
+ * that really happened and have no "now".
  */
 export function stripSteps(e: StageInput, view: { key: string; step: Step | null }, now: number) {
   const attended = (mode: string) =>
@@ -633,18 +637,30 @@ export function stripSteps(e: StageInput, view: { key: string; step: Step | null
     )
   const won = e.outcome === 'won'
   const done: Record<Step, boolean> = {
-    call: callHeldAt(e, now) !== null || attended('phone'),
+    // Held at any time, even if a visit since has moved the stage on.
+    call: !!e.call_held_at || callHeldAt(e, now) !== null || attended('phone'),
     visit: attended('on_site'),
     estimate: (e.estimates ?? []).length > 0,
-    quote: (e.quotes ?? []).length > 0 || e.outcome === 'quoted',
-    deposit: won,
+    // Sent from here, or recorded by hand, whatever the outcome is now.
+    quote: (e.quotes ?? []).length > 0 || e.quote_amount != null || e.outcome === 'quoted',
+    deposit: false,
   }
   const open = !won && e.outcome !== 'lost' && e.status !== 'unsuitable'
   const at = open && view.step ? STEPS.indexOf(view.step) : -1
-  const furthest = Math.max(at, ...STEPS.map((s, i) => (done[s] ? i : -1)))
+  const last = STEPS.length - 1
+  const furthest = Math.max(at, won ? last : -1, ...STEPS.map((s, i) => (done[s] ? i : -1)))
   return STEPS.map((step, i): { step: Step; state: StepState } => ({
     step,
-    state: done[step] ? 'done' : i === at ? 'now' : i < furthest ? 'skipped' : 'todo',
+    state:
+      won && i === last
+        ? 'won'
+        : done[step]
+          ? 'done'
+          : i === at
+            ? 'now'
+            : i < furthest
+              ? 'skipped'
+              : 'todo',
   }))
 }
 

@@ -125,6 +125,12 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await outcome.getByRole('button', { name: 'Save as won' }).click()
   await expect(outcome).toHaveCount(0)
   await expect(nowCard(page)).toContainText('Won €17,900')
+  // The strip keeps the quote recorded by hand as done, and ends on "Won", not "Deposit" done.
+  const strip = page.getByRole('list', { name: 'Where they are' }).getByRole('listitem')
+  await expect(strip.nth(3)).toContainText('Quote (done)')
+  await expect(strip.last()).toHaveText('Won')
+  // The Quote fold agrees with the now card.
+  await expect(page.locator('#fold-quote summary')).toContainText('Recorded €18,450.50')
 
   // Correct the win.
   await chooseAction(page, /^Correct the result/)

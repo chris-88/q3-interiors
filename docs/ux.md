@@ -34,7 +34,7 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
 | `change_requested`              | Change asked for           | Quote                                           | Your move          | 3 working days after the change request    | Send an updated quote | View or download the quote, Mark won, Mark lost                                                                                                         |
 | `quoted`                        | Quote sent / Quoted        | Quote                                           | Waiting on them    | good until (15 working days after sending) | Ring                  | Send an updated quote, View or download the quote, Mark won, Mark lost (Record a quote or result instead of the first two for a quote recorded by hand) |
 | `quote_no_answer`               | No answer to the quote     | Quote                                           | Your move          | the quote's good-until date                | Ring                  | Send an updated quote, View or download the quote, Mark won, Mark lost                                                                                  |
-| `won`                           | Won                        | Deposit                                         | Finished           | none                                       | none                  | Correct the result                                                                                                                                      |
+| `won`                           | Won                        | Deposit (drawn as "Won")                        | Finished           | none                                       | none                  | Correct the result                                                                                                                                      |
 | `lost`                          | Lost                       | none                                            | Finished           | none                                       | none                  | Correct the result                                                                                                                                      |
 | `closed`                        | Closed (not suitable)      | none                                            | Finished           | none                                       | none                  | Correct the result                                                                                                                                      |
 | any value a newer release wrote | its raw label              | none                                            | Your move          | none                                       | Ring                  | Email                                                                                                                                                   |
@@ -44,26 +44,28 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
 - **First match wins**, in the order `enquiryStage` checks: outcome, then an appointment still to come, then a missed appointment, then the estimate and quote, then a held call, then status. An appointment still to come is never hidden.
 - **Working days** are Monday to Friday in Europe/Dublin, counted from the next day. One function computes them: `addWorkingDays` in TypeScript, mirrored by `private.add_working_days` in SQL. Public holidays are not modelled yet.
 - **Urgency:** overdue once the due day has passed; today on the day; later before it; neutral for a diary time or a good-until date.
-- **Not built yet:**
+- **Known limits (not built yet):**
   - A chase schedule (Visit link sent and Contacted wait with no date).
   - The estimate's 10-day clock pausing once a visit is booked (decision Q4).
-  - Deposit received.
+  - Deposit received: nothing records a deposit, so the Deposit step is never done.
+  - The Report page is not on `stageOf()`: its funnel counts come from the database functions.
+  - Drafts are per device: a draft started on the phone is not on the laptop.
 
 ## 2. The strip is the record, not the stage
 
 `stripSteps()` draws the five steps from what actually happened:
 
-| Step       | Done when                                                    |
-| ---------- | ------------------------------------------------------------ |
-| Call       | a call was held (marked attended, or recorded as held early) |
-| Site visit | a site visit was marked attended                             |
-| Estimate   | an estimate was sent                                         |
-| Quote      | a quote was sent or recorded                                 |
-| Deposit    | won                                                          |
+| Step       | Done when                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| Call       | a call was held (marked attended, or recorded as held early), even if a visit has come since   |
+| Site visit | a site visit was marked attended                                                               |
+| Estimate   | an estimate was sent                                                                           |
+| Quote      | a quote was sent from here or recorded by hand (`quote_amount`), whatever the outcome is now   |
+| Deposit    | a deposit is recorded; nothing records one yet, so never. On a win this step is drawn as "Won" |
 
 - **"Now"** is the stage's step while the enquiry is open. It is boxed, bold and labelled "now".
 - **"Skipped"** is a step before the furthest step reached that never happened. It is drawn dashed and labelled "skipped". A skipped step never shows as done.
-- **Lost or closed** keep what was done and have no "now".
+- **Won, lost and closed** keep every step that really happened and have no "now". A win ends on "Won", never on "Deposit" done; a step a won job never went through (no visit, no estimate) shows as skipped.
 
 ## 3. Patterns
 
@@ -72,7 +74,7 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
 - **Groups:** Your move (overdue first, then oldest due), In the diary (next first), Waiting on them (soonest good-until first, undated last). Each group shows its count. Finished sits behind a link.
 - **Rows** are two lines and at least 64px tall:
   - Line 1: the name and the due chip.
-  - Line 2: the news and the job type.
+  - Line 2: the news and the job type; "Draft ·" first when an estimate or quote was started on this device and not sent.
 - Nothing that matters is cut off at 390px.
 - **Due chip:** filled when overdue or due today, outlined when later, grey for a diary time or a good-until date. Overdue is said in words ("Overdue · Ring, due Tue 24 Nov"), never by colour alone.
 
@@ -84,10 +86,12 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
   - what, as the primary action's title or the appointment
   - when, as a due line
   - the call-back reason or the customer's words on a change, when there are some
-  - "Estimate started, not sent (saved on this phone)" when a draft is waiting on this device
+  - "Estimate started, not sent (saved on this device)" when a draft is waiting on this device
 - **One primary action.** Exactly one filled button on screen: the bar's.
   - Buttons inside folds are outlined.
   - A form opened from a sheet row leads with its own filled button.
+  - The exception: a selected choice (a ticked work item, the chosen plus-or-minus chip, a chosen time) is drawn filled to show it is selected. It is a state, not an action, and it carries `aria-checked` or `aria-pressed`.
+  - While a draft waits, the bar's primary reads "Carry on with the estimate" (or the quote).
 - **Action bar:**
   - Below 1024px it is fixed to the bottom, in thumb reach, safe area included.
   - From 1024px it sits under the now card, in the sticky left column.
@@ -125,23 +129,34 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
 ### Task screens
 
 - **Routes:** `#/enquiries/:id/estimate`, `/quote`, `/visit`, `/call`.
-- **Frame:** `TaskFrame` gives "Back to {name}", "Step 1 of 2: the estimate", the title, one line on what the task is for and, for a draft, "Saved on this phone until you send it."
+- **Frame:** `TaskFrame` gives "Back to {name}", "Step 1 of 2: the estimate", the title, one line on what the task is for and, for a draft, "Saved on this device until you send it." From 1024px these and the bar are a sticky left column, so the task's action is always on the first screen.
 - **Bar:** the task's own action sits in the bar (`TaskBar`). The stage's bar is never shown during a task.
+- **Focus on open:** the first field (the estimate's and the quote's price), else the title (booking a visit or a call).
 - **Two steps for anything sent:**
   1. The form. The first field takes focus. The estimate's plus or minus are chips (5, 10, 15, 20 %, Other), and its range sits on one line.
   2. "Check and send": the email or document exactly as it goes (To, Subject or good-until), and one button that names the person ("Send to Brian"). That button is the confirmation; there is no separate dialog.
+- **Bookings are deliberately one step.** Booking a visit or a call has no Check and send: picking a time puts it in the bar's button ("Book Wed 2 Dec, 14:00"), so the button itself says what will happen.
 - **Afterwards:** a send or a booking returns to the enquiry page with a line on what happened ("Estimate sent to … The email goes within a minute.").
 - **Drafts:**
-  - Kept per enquiry in this browser only (`src/lib/task-draft.ts`) until sent, and never sent to the server.
+  - Kept per enquiry in this browser only (`src/lib/task-draft.ts`) until sent, and never sent to the server. The words say "this device", never "this phone".
   - Each draft records the estimate or quote it was started on, so one started before another went out is dropped.
-- **One document viewer:** `DocumentViewer` shows the estimate email, the quote and its PDF in a sandboxed frame, with the lines on who it goes to and Download PDF when stored.
+  - While one waits: the task screen says "Saved on this device until you send it.", the now card "Estimate started, not sent (saved on this device)", the bar "Carry on with the estimate", and the list row "Draft ·".
+- **One document viewer:** `DocumentViewer` shows the estimate email, the quote and its PDF in a sandboxed frame (scripts off), with the lines on who it goes to and Download PDF when stored. The frame takes the document's own height, so the page scrolls, never a box inside it.
 
 ### Confirming
 
 - `Confirm` is the one confirm component for actions with no Check-and-send step (a booking link, We already spoke, a destructive row).
 - It names the action, says what will happen, takes focus and keeps its error beside it.
 
-## 4. The floor every screen keeps
+## 4. Rules for any new list or detail screen
+
+- **The default view answers the screen's main question** (for the list: what do I do next; for an enquiry: where are they and what is my move) without a tap or a scroll at 390px.
+- **One filled action** per screen, in the bar on phones; everything else outlined, in a sheet, or a link.
+- **Disclosures use the Fold look:** one line with a title, a short summary on the right and a chevron, opening in place (`Fold` on the enquiry page). No bespoke accordions.
+- **Read the stage model**, never a private copy of the rules; a new stage goes into `stageOf()` and the table above.
+- **Focused work gets a task screen** (`TaskFrame`) rather than a form expanding inside a long page.
+
+## 5. The floor every screen keeps
 
 - **Width:** phone-first at 390px with no horizontal scroll, checked by the e2e screenshot helper. 1280 is checked too.
 - **Accessibility:** WCAG 2.2 AA:
@@ -153,12 +168,14 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
 - **Data:** tolerant reads. An unknown stage, value or kind renders plainly ("This was set by a newer version of the console. Reload to change it here.") instead of failing.
 - **No new server action for a screen change.** Every redesign PR reused the existing ones.
 
-## 5. Taps, as measured at 390 x 844
+## 6. Taps, as measured at 390 x 844
 
-| Flow                             | Before the review | After PR B | After PR C | After the task screens |
-| -------------------------------- | ----------------- | ---------- | ---------- | ---------------------- |
-| Site visit over to estimate sent | see the review    | 6          | 4          | 4                      |
-| Quote requested to quote sent    | see the review    | 3          | 3          | 3                      |
+| Flow                             | UX review 1 (before) | After PR B | After PR C | After the task screens |
+| -------------------------------- | -------------------- | ---------- | ---------- | ---------------------- |
+| Site visit over to estimate sent | 5                    | 6          | 4          | 4                      |
+| Quote requested to quote sent    | 3                    | 3          | 3          | 3                      |
+
+The tap counts held, but scrolling went: before, both forms opened in long sections that had to be scrolled past to reach Send.
 
 Taps exclude typing and ticks in the form itself.
 

@@ -84,3 +84,37 @@ export function draftHasContent(
 ) {
   return JSON.stringify(values) !== JSON.stringify(start)
 }
+
+const ESTIMATE_ACTIONS = ['write_estimate', 'updated_estimate']
+const QUOTE_ACTIONS = ['write_quote', 'revise_quote']
+
+/**
+ * The task with a draft waiting on this device, when the stage still offers it: the list says
+ * "Draft", the now card "Estimate started, not sent", and the bar "Carry on with the estimate".
+ */
+export function draftOf(
+  e: {
+    id: string
+    estimates?: { id: string; sent_at: string }[]
+    quotes?: { id: string; version: number }[]
+  },
+  view: { primary: string | null; others: string[] },
+): DraftKind | null {
+  const offered = (keys: string[]) =>
+    keys.some((k) => view.primary === k || view.others.includes(k))
+  const estimate = [...(e.estimates ?? [])].sort(
+    (a, b) => Date.parse(b.sent_at) - Date.parse(a.sent_at),
+  )[0]
+  if (offered(ESTIMATE_ACTIONS) && hasDraft('estimate', e.id, estimate?.id ?? null))
+    return 'estimate'
+  const quote = [...(e.quotes ?? [])].sort((a, b) => b.version - a.version)[0]
+  if (offered(QUOTE_ACTIONS) && hasDraft('quote', e.id, quote?.id ?? null)) return 'quote'
+  return null
+}
+
+/** The action's title while its draft waits: "Carry on with the estimate". */
+export function draftTitle(key: string, draft: DraftKind | null): string | null {
+  if (draft === 'estimate' && ESTIMATE_ACTIONS.includes(key)) return 'Carry on with the estimate'
+  if (draft === 'quote' && QUOTE_ACTIONS.includes(key)) return 'Carry on with the quote'
+  return null
+}

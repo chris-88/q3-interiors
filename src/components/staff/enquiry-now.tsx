@@ -17,7 +17,6 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import {
   appointmentKind,
-  currentEstimate,
   mailHref,
   passedBooking,
   STEP_LABELS,
@@ -29,7 +28,7 @@ import {
   type StageView,
 } from '@/lib/enquiry-stage'
 import { formatShortDay, formatShortWhen } from '@/lib/format'
-import { hasDraft } from '@/lib/task-draft'
+import { draftOf, draftTitle, type DraftKind } from '@/lib/task-draft'
 import { isKnown } from '@/lib/tolerant'
 import { OUTCOME_STAGES } from '@/lib/outcome'
 
@@ -59,16 +58,19 @@ export function StageStrip({
           className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 pt-1.5 text-center ${
             state === 'done'
               ? 'border-action text-ink border-t-4'
-              : state === 'now'
-                ? 'border-action bg-soft text-ink outline-edge rounded-b border-t-4 pb-1 font-bold outline outline-1'
-                : state === 'skipped'
-                  ? 'border-rule text-muted-foreground border-t-4 border-dashed'
-                  : 'border-rule text-muted-foreground border-t-4'
+              : state === 'won'
+                ? 'border-action text-ink border-t-4 font-bold'
+                : state === 'now'
+                  ? 'border-action bg-soft text-ink outline-edge rounded-b border-t-4 pb-1 font-bold outline outline-1'
+                  : state === 'skipped'
+                    ? 'border-rule text-muted-foreground border-t-4 border-dashed'
+                    : 'border-rule text-muted-foreground border-t-4'
           }`}
         >
           <span className="flex items-center gap-0.5">
             {state === 'done' && <Check className="size-3 shrink-0" aria-hidden="true" />}
-            {STEP_LABELS[step]}
+            {/* Nothing records a deposit yet: a win is shown as itself, not as "Deposit" done. */}
+            {state === 'won' ? 'Won' : STEP_LABELS[step]}
           </span>
           {state === 'skipped' && <span className="text-[0.6875rem]">skipped</span>}
           {state === 'now' && <span className="text-[0.6875rem] font-medium">now</span>}
@@ -90,19 +92,17 @@ const dueLine = (view: StageView): string | null => {
 /** One read-only card: whose move it is, and what. */
 /** A task started on this device and not sent yet (its draft is kept here until it is). */
 export function draftLine(enquiry: EnquiryDetail, view: StageView): string | null {
-  const offered = (keys: ActionKey[]) =>
-    keys.some((k) => view.primary === k || view.others.includes(k))
-  const estimate = currentEstimate(enquiry.estimates)
-  if (
-    offered(['write_estimate', 'updated_estimate']) &&
-    hasDraft('estimate', enquiry.id, estimate?.id ?? null)
-  )
-    return 'Estimate started, not sent (saved on this phone)'
-  const quote = currentQuote(enquiry.quotes)
-  if (offered(['write_quote', 'revise_quote']) && hasDraft('quote', enquiry.id, quote?.id ?? null))
-    return 'Quote started, not sent (saved on this phone)'
-  return null
+  const draft = draftOf(enquiry, view)
+  return draft === 'estimate'
+    ? 'Estimate started, not sent (saved on this device)'
+    : draft === 'quote'
+      ? 'Quote started, not sent (saved on this device)'
+      : null
 }
+
+/** An action's title, or "Carry on with …" while its draft waits on this device. */
+const titleOf = (key: ActionKey, first: string, draft: DraftKind | null) =>
+  draftTitle(key, draft) ?? ACTIONS[key].title(first)
 
 export function NowCard({ enquiry, view }: { enquiry: EnquiryDetail; view: StageView }) {
   const first = firstName(enquiry)
@@ -118,7 +118,7 @@ export function NowCard({ enquiry, view }: { enquiry: EnquiryDetail; view: Stage
             : 'Result'
   const title =
     view.whose === 'q3' && view.primary
-      ? (ACTIONS[view.primary]?.title(first) ?? view.label)
+      ? titleOf(view.primary, first, draftOf(enquiry, view))
       : view.whose === 'diary' && view.next
         ? `${appointmentKind(view.next.mode)} ${formatShortWhen(view.next.starts_at)}`
         : view.whose === 'none'
@@ -168,6 +168,8 @@ type Ctx = {
   close: () => void
   /** Show another action's panel in the sheet. */
   goto: (key: ActionKey) => void
+  /** A panel that moves on to another step names it in the sheet's title. */
+  retitle: (title: string | null) => void
 }
 
 type ActionDef = {
@@ -253,8 +255,8 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
     title: () => 'How did it go?',
     line: 'It went ahead, you spoke earlier, they didn’t show, or it moved',
     panelTitle: ({ bookings, now }) => outcomeTitle(outcomeTarget(bookings, now)),
-    panel: ({ enquiry, bookings, now, close }) => (
-      <HowDidItGo enquiry={enquiry} bookings={bookings} now={now} close={close} />
+    panel: ({ enquiry, bookings, now, close, retitle }) => (
+      <HowDidItGo enquiry={enquiry} bookings={bookings} now={now} close={close} retitle={retitle} />
     ),
   },
   choose_next: {
@@ -379,13 +381,16 @@ export function ActionBar({
   const [panel, setPanel] = useState<ActionKey | null>(null)
   // Opened straight from the bar there is no list to go back to.
   const [fromList, setFromList] = useState(false)
+  const [retitled, setRetitled] = useState<string | null>(null)
   // Focus lands on the sheet's title, never on its first (possibly destructive) row.
   const title = useRef<HTMLHeadingElement>(null)
   const first = firstName(enquiry)
+  const draft = draftOf(enquiry, view)
   const primary = barAction(view)
   const others = view.others.filter((k) => k !== primary)
   const show = (key: ActionKey | null, listed = false) => {
     setPanel(key)
+    setRetitled(null)
     setFromList(listed)
     setOpen(true)
   }
@@ -395,8 +400,10 @@ export function ActionBar({
     bookings,
     now,
     close: () => setOpen(false),
+    retitle: setRetitled,
     goto: (key) => {
       setPanel(key)
+      setRetitled(null)
       setFromList(true)
     },
   }
@@ -415,12 +422,12 @@ export function ActionBar({
           (pdef.href ? (
             href && (
               <a href={href} className={buttonVariants({ className: 'h-12 flex-1' })}>
-                {pdef.title(first)}
+                {titleOf(primary, first, draft)}
               </a>
             )
           ) : (
             <Button className="h-12 flex-1" onClick={() => show(primary)}>
-              {pdef.title(first)}
+              {titleOf(primary, first, draft)}
             </Button>
           ))}
         <Button
@@ -453,7 +460,7 @@ export function ActionBar({
                   </Button>
                 )}
                 <SheetTitle ref={title} tabIndex={-1} className="text-lg outline-none">
-                  {ACTIONS[panel].panelTitle?.(ctx) ?? ACTIONS[panel].title(first)}
+                  {retitled ?? ACTIONS[panel].panelTitle?.(ctx) ?? ACTIONS[panel].title(first)}
                 </SheetTitle>
               </div>
               <SheetDescription className="sr-only">{ACTIONS[panel].line}</SheetDescription>
@@ -479,7 +486,7 @@ export function ActionBar({
                     <>
                       <span className="flex flex-col text-left">
                         <span className={`font-medium ${def.danger ? 'text-destructive' : ''}`}>
-                          {def.title(first)}
+                          {titleOf(key, first, draft)}
                         </span>
                         <span className="text-muted-foreground text-sm font-normal">
                           {def.line}

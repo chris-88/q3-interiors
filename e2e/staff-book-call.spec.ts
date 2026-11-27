@@ -208,6 +208,7 @@ test('book a call for a new enquiry: the customer’s free times, then Booked wi
   await chooseAction(page, /^Book a call/)
   await expect(page).toHaveURL(/#\/enquiries\/e-new001\/call$/)
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Book a call')
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused()
   await expect(
     page.getByText('Pick a time for the call. Aoife gets the usual confirmation email.'),
   ).toBeVisible()

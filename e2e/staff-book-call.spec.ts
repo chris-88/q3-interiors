@@ -185,10 +185,9 @@ async function open(page: Page, path: string) {
   return world
 }
 
-const sheet = (page: Page) => page.getByRole('dialog')
 const filled = (page: Page) =>
-  // Filled actions in the sheet; a chosen time (pressed) is a selection, not an action.
-  sheet(page).locator('[data-slot="button"].bg-primary:not([aria-pressed="true"]), a.bg-primary')
+  // Filled actions on the screen; a chosen time (pressed) is a selection, not an action.
+  page.locator('[data-slot="button"].bg-primary:not([aria-pressed="true"]), a.bg-primary')
 const offered = async (page: Page) => {
   const s = await openActions(page)
   const names = await s
@@ -205,19 +204,23 @@ test('book a call for a new enquiry: the customer’s free times, then Booked wi
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
   // Ring is the primary; Book a call is in the other actions with what it does.
   await expect(primaryAction(page)).toHaveText('Ring Aoife')
-  const s = await chooseAction(page, /^Book a call/)
+  // Its own screen, with the booking as the bar's one action.
+  await chooseAction(page, /^Book a call/)
+  await expect(page).toHaveURL(/#\/enquiries\/e-new001\/call$/)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Book a call')
   await expect(
-    s.getByText('Pick a time for the call. Aoife gets the usual confirmation email.'),
+    page.getByText('Pick a time for the call. Aoife gets the usual confirmation email.'),
   ).toBeVisible()
-  await s.getByRole('button', { name: /^Wed/ }).click()
-  await s.getByRole('button', { name: '14:00' }).click()
-  // One filled button: the panel's Book.
+  await page.getByRole('button', { name: /^Wed/ }).click()
+  await page.getByRole('button', { name: '14:00' }).click()
+  // One filled button: the bar's Book.
   await expect(filled(page)).toHaveCount(1)
   await expect(filled(page)).toHaveText('Book Wed 2 Dec, 14:00')
   await shot(page, 'book-call-panel')
   await filled(page).click()
 
-  // Now in the diary: the call, with Move and Cancel under the actions.
+  // Back on the enquiry, now in the diary: the call, with Move and Cancel under the actions.
+  await expect(page.getByText(/Call booked for Wed 2 Dec, 14:00/)).toBeVisible()
   await expect(nowCard(page)).toContainText('Wed 2 Dec, 14:00')
   await expect(nowCard(page)).toContainText('In the diary')
   expect(await offered(page)).not.toContain('Book a call')
@@ -241,9 +244,9 @@ test('a call-back request: Ring is the main action; Book a call is one of the ot
 }) => {
   await open(page, '/#/enquiries/e-ask001')
   await expect(primaryAction(page)).toHaveText('Ring Brian')
-  const s = await chooseAction(page, /^Book a call/)
-  await s.getByRole('button', { name: /^Thu/ }).click()
-  await s.getByRole('button', { name: '10:00' }).click()
+  await chooseAction(page, /^Book a call/)
+  await page.getByRole('button', { name: /^Thu/ }).click()
+  await page.getByRole('button', { name: '10:00' }).click()
   await expect(filled(page)).toHaveCount(1)
   await expect(filled(page)).toHaveText('Book Thu 3 Dec, 10:00')
   await shot(page, 'book-call-callback')

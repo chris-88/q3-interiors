@@ -5,6 +5,7 @@ import {
   installFakeStaff,
   nowCard,
   openActions,
+  openFold,
   openFolds,
   primaryAction,
   signIn,
@@ -224,7 +225,7 @@ test('screens at 390px for the review (before and after)', async ({ page }) => {
     .getByRole('button', { name: /^It went ahead/ })
     .click()
   await expect(page.getByLabel('Price in euro')).toBeFocused()
-  await expect(page.getByLabel('Plus or minus')).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Plus or minus' })).toBeVisible()
   await shot(page, 'f7-f8-estimate-form')
   await page.goto('/#/appointments')
   await expect(page.getByRole('heading', { name: 'Appointments' })).toBeVisible()
@@ -290,13 +291,17 @@ test('F3, F7: after a visit the next step is the estimate, with one filled butto
     .click()
   await expect(page.getByLabel('Price in euro')).toBeFocused()
 
+  // The plus-or-minus chips are 48px targets.
+  const chips = page.getByRole('group', { name: 'Plus or minus' }).locator('label')
+  await expect(chips).toHaveCount(5)
+  for (const chip of await chips.all())
+    expect((await chip.boundingBox())?.height).toBeGreaterThanOrEqual(48)
+  // Back on the enquiry, the Estimate section does not repeat the bar's action.
+  await page.getByRole('link', { name: /^Back to/ }).click()
+  await openFold(page, 'Estimate')
   const estimate = page.getByRole('region', { name: 'Estimate', exact: true })
   await expect(estimate).toContainText('No estimate sent yet.')
-  await expect(estimate.getByRole('button', { name: /Write (the|an) estimate/ })).toHaveCount(0)
-  // The percentage select is a 48px target.
-  const select = estimate.getByLabel('Plus or minus')
-  await expect(select).toBeVisible()
-  expect((await select.boundingBox())?.height).toBeGreaterThanOrEqual(48)
+  await expect(estimate.getByRole('link', { name: /Write (the|an) estimate/ })).toHaveCount(0)
 })
 
 test('F4: list lines lead with the news', async ({ page }) => {

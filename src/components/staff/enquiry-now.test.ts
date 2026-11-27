@@ -24,9 +24,9 @@ const view = (over: Partial<StageView>): StageView =>
   }) as StageView
 
 describe('the enquiry page actions', () => {
-  it('every action does something: a link, a form on the page, or a panel in the sheet', () => {
+  it('every action does something: a link (phone, email or a task screen) or a panel', () => {
     for (const [key, def] of Object.entries(ACTIONS)) {
-      const ways = [def.href, def.event, def.panel].filter(Boolean)
+      const ways = [def.href, def.panel].filter(Boolean)
       expect(ways, key).toHaveLength(1)
       expect(def.title('Mary').length, key).toBeGreaterThan(0)
       expect(def.line.length, key).toBeGreaterThan(0)

@@ -7,6 +7,7 @@ import {
   openActions,
   primaryAction,
   signIn,
+  taskAction,
   type StaffWorld,
   staffWorld,
 } from './fake-staff'
@@ -164,7 +165,7 @@ const checked = (section: ReturnType<Page['getByRole']>, legend: RegExp) =>
     .getByRole('checkbox', { checked: true })
     .evaluateAll((boxes) => boxes.map((b) => b.closest('label')?.textContent?.trim() ?? ''))
 
-test('write the quote from a quote request: pre-ticked, previewed, confirmed, sent', async ({
+test('write the quote on its own screen from a quote request: pre-ticked, checked, sent', async ({
   page,
 }) => {
   const world = await open(page, '/#/enquiries/e-asked1')
@@ -175,8 +176,10 @@ test('write the quote from a quote request: pre-ticked, previewed, confirmed, se
   await expect(primaryAction(page)).toHaveText('Write the quote')
   await primaryAction(page).click()
 
-  const section = page.getByRole('region', { name: 'Quote', exact: true })
-  await expect(section.getByText('Pre-ticked from the estimate.')).toBeVisible()
+  await expect(page).toHaveURL(/#\/enquiries\/e-asked1\/quote$/)
+  await expect(page.getByLabel('Price in euro')).toBeFocused()
+  const section = page.locator('main')
+  await expect(section.getByText(/Pre-ticked from the estimate\./)).toBeVisible()
   expect(await checked(section, /What’s included/)).toEqual([
     'Strip out the old kitchen',
     'New units and worktop',
@@ -188,18 +191,20 @@ test('write the quote from a quote request: pre-ticked, previewed, confirmed, se
     .click()
   await section.getByLabel('Price in euro').fill('10,200')
   await expect(section.getByText('Deposit: €1,020 (10% of the price)')).toBeVisible()
-  const doc = page.frameLocator('iframe[title="Quote preview"]')
+  await shot(page, 'staff-quote-form')
+
+  // Check and send: the document exactly as it goes out, then one button naming the person.
+  await taskAction(page, 'Check and send').click()
+  await expect(page.getByText('Step 2 of 2: the quote')).toBeVisible()
+  const doc = page.frameLocator('iframe[title="Quote"]')
   await expect(doc.getByText('€10,200')).toBeVisible()
   await expect(doc.getByText('What’s not included')).toBeVisible()
   await expect(doc.getByText(/A 10% deposit of €1,020 books your start date/)).toBeVisible()
   await expect(doc.getByText(/It’s good until Fri 18 Dec 2026/)).toBeVisible()
-  await shot(page, 'staff-quote-form')
-
-  await section.getByRole('button', { name: 'Send quote' }).click()
-  const confirm = section.getByRole('alertdialog')
-  await expect(confirm).toContainText('Send the quote for €10,200 to declan@example.com?')
-  await confirm.getByRole('button', { name: 'Yes, send it' }).click()
-  await expect(section).toContainText('Quote sent to declan@example.com.')
+  await expect(page.getByText('To: declan@example.com, with this as a PDF')).toBeVisible()
+  await shot(page, 'staff-quote-check')
+  await taskAction(page, 'Send to Declan').click()
+  await expect(page.getByText('Quote sent to declan@example.com.')).toBeVisible()
   expect(world.rpcCalls.find((c) => c.name === 'send_quote')?.body).toEqual({
     p_enquiry_id: 'e-asked1',
     p_price: 10200,
@@ -231,7 +236,7 @@ test('a change asked for: needs action, the words, View, PDF, and an updated ver
   await expect(nowCard(page)).toContainText('Can you add the utility room floor?')
   const next = await chooseAction(page, /^View or download the quote/)
   await expect(next).toContainText('Quote Q3-Q-0007 sent 26 Nov: €10,200')
-  await next.getByRole('button', { name: 'View' }).click()
+  await next.getByRole('button', { name: 'View the quote and PDF' }).click()
   await expect(
     next.frameLocator('iframe[title="Quote Q3-Q-0007"]').getByText('Q3-Q-0007', { exact: true }),
   ).toBeVisible()
@@ -243,16 +248,16 @@ test('a change asked for: needs action, the words, View, PDF, and an updated ver
   await page.keyboard.press('Escape')
   await expect(primaryAction(page)).toHaveText('Send an updated quote')
   await primaryAction(page).click()
-  const section = page.getByRole('region', { name: 'Quote', exact: true })
-  await expect(section.getByText('This replaces Q3-Q-0007 version 1.')).toBeVisible()
+  const section = page.locator('main')
+  await expect(section.getByText(/This replaces Q3-Q-0007 version 1\./)).toBeVisible()
   await expect(section.getByLabel('Price in euro')).toHaveValue('10200')
   await section
     .getByRole('group', { name: /What’s included/ })
     .getByText('Tiled floor', { exact: true })
     .click()
   await section.getByLabel('Price in euro').fill('11000')
-  await section.getByRole('button', { name: 'Send the updated quote' }).click()
-  await section.getByRole('alertdialog').getByRole('button', { name: 'Yes, send it' }).click()
+  await taskAction(page, 'Check and send').click()
+  await taskAction(page, 'Send to Eimear').click()
   await expect(nowCard(page)).toContainText('Quote €11,000')
   expect(world.rpcCalls.find((c) => c.name === 'send_quote')?.body).toMatchObject({
     p_price: 11000,

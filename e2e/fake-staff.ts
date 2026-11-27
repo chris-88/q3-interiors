@@ -1185,9 +1185,13 @@ export async function openActions(page: Page) {
 /** Open the sheet and choose an action by its title; returns the sheet showing its panel. */
 export async function chooseAction(page: Page, name: string | RegExp) {
   const sheet = await openActions(page)
-  await sheet.getByRole('button', { name }).click()
+  // A row is a button (a panel in the sheet) or a link (the phone, email or a task screen).
+  await sheet.getByRole('button', { name }).or(sheet.getByRole('link', { name })).click()
   return sheet
 }
+/** The task screen's own action bar (step 1 "Check and send", step 2 "Send to …", "Book …"). */
+export const taskAction = (page: Page, name: string | RegExp) =>
+  page.getByRole('region', { name: 'Actions' }).getByRole('button', { name })
 /** The bar's primary action. */
 export const primaryAction = (page: Page) =>
   page.getByRole('region', { name: 'Actions' }).locator('a, button').first()

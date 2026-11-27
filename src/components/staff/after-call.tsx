@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { ChevronDown } from 'lucide-react'
 import {
   useBookCall,
@@ -11,16 +12,18 @@ import {
 } from '@/api/after-call'
 import type { EnquiryDetail } from '@/api/enquiries'
 import { Confirm } from '@/components/staff/confirm'
+import { TaskBar } from '@/components/staff/task-frame'
 import { SlotPicker } from '@/components/booking/slot-picker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { callHeldAt, telHref, visitLinkSentAt } from '@/lib/enquiry-stage'
+import { callHeldAt, visitLinkSentAt } from '@/lib/enquiry-stage'
 import { formatDayMonth, formatShortWhen } from '@/lib/format'
 
-/** The Estimate section listens for this to open its form (the Next step's "Write the estimate"). */
-export const WRITE_ESTIMATE_EVENT = 'q3:write-estimate'
+/** The task screens for this enquiry (review P5). */
+export const taskPath = (enquiryId: string, task: 'estimate' | 'quote' | 'visit' | 'call') =>
+  `/enquiries/${enquiryId}/${task}`
 
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
 /** An open choice: a heavier edge and the chevron turned, not only a lighter fill. */
@@ -72,9 +75,12 @@ export function SendLinkPanel({
 export function BookVisitPanel({
   enquiry,
   onUseLink,
+  onBooked,
 }: {
   enquiry: EnquiryDetail
   onUseLink: () => void
+  /** Called once the visit is booked, with its start. */
+  onBooked?: (start: string) => void
 }) {
   const options = useVisitOptions(enquiry.id, true)
   const book = useBookVisit(enquiry.id)
@@ -137,7 +143,10 @@ export function BookVisitPanel({
       },
       {
         onSuccess: (r) => {
-          if (r.status === 'booked') return setBooked(slot.start)
+          if (r.status === 'booked') {
+            setBooked(slot.start)
+            return onBooked?.(slot.start)
+          }
           setKey(crypto.randomUUID())
           if (r.status === 'slot_unavailable') {
             setSlot(null)
@@ -152,7 +161,7 @@ export function BookVisitPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-md border p-3">
+    <div className="flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">
         The same free times the customer sees (Irish time). They get the normal confirmation email.
       </p>
@@ -210,16 +219,16 @@ export function BookVisitPanel({
           {problem}
         </p>
       )}
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button className={wide} disabled={book.isPending} onClick={submit}>
+      {needsAddress && linkInstead}
+      <TaskBar>
+        <Button className="h-12 flex-1" disabled={book.isPending} onClick={submit}>
           {book.isPending
             ? 'Booking…'
             : slot
               ? `Book ${formatShortWhen(slot.start)}`
               : 'Book the visit'}
         </Button>
-        {needsAddress && linkInstead}
-      </div>
+      </TaskBar>
       {book.isError && (
         <p role="alert" className="text-destructive text-sm">
           The visit was not booked: {book.error.message}
@@ -229,7 +238,7 @@ export function BookVisitPanel({
   )
 }
 
-type Choice = 'none' | 'visit' | 'link'
+type Choice = 'none' | 'link'
 
 /** Next step once the call is held: the estimate, the site visit, or a booking link. */
 export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) {
@@ -248,19 +257,16 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
       </div>
       {/* Chris: an estimate normally needs the space seen, so the site visit comes first. */}
       <div className="flex flex-col gap-2">
-        <Button
-          // One filled button at a time: while a choice is open, its own panel holds the action.
-          variant={choice === 'none' ? 'default' : 'outline'}
-          aria-expanded={choice === 'visit'}
-          className={`${wide} ${opened}`}
-          onClick={() => setChoice((c) => (c === 'visit' ? 'none' : 'visit'))}
+        <Link
+          to={taskPath(enquiry.id, 'visit')}
+          // One filled action at a time: while the link panel is open, its own button leads.
+          className={buttonVariants({
+            variant: choice === 'none' ? 'default' : 'outline',
+            className: wide,
+          })}
         >
           Book the site visit
-          <ChevronDown
-            className={`size-4 transition-transform ${choice === 'visit' ? 'rotate-180' : ''}`}
-            aria-hidden="true"
-          />
-        </Button>
+        </Link>
         <Button
           variant="outline"
           aria-expanded={choice === 'link'}
@@ -273,54 +279,26 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
             aria-hidden="true"
           />
         </Button>
-        <Button
-          variant="outline"
-          className={wide}
-          onClick={() => {
-            setChoice('none')
-            window.dispatchEvent(new Event(WRITE_ESTIMATE_EVENT))
-          }}
+        <Link
+          to={taskPath(enquiry.id, 'estimate')}
+          className={buttonVariants({ variant: 'outline', className: wide })}
         >
           Write the estimate
-        </Button>
+        </Link>
       </div>
-      {choice === 'visit' && (
-        <BookVisitPanel enquiry={enquiry} onUseLink={() => setChoice('link')} />
-      )}
       {choice === 'link' && <SendLinkPanel enquiry={enquiry} onClose={() => setChoice('none')} />}
     </>
   )
 }
 
-/**
- * "Book a call" before any call is held: staff put a call in the diary for the customer, from the
- * same free call times the customer sees; the customer gets the usual confirmation email. The
- * button is outlined; while the panel is open its Book button is the one filled action, so the
- * caller passes `onOpenChange` to step its own main button down.
- */
-export function BookACall({
+export function BookCallPanel({
   enquiry,
-  onOpenChange,
+  onBooked,
 }: {
   enquiry: EnquiryDetail
-  onOpenChange?: (open: boolean) => void
+  /** Called once the call is booked, with its start. */
+  onBooked: (start: string) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const toggle = (next: boolean) => {
-    setOpen(next)
-    onOpenChange?.(next)
-  }
-  return (
-    <>
-      <Button variant="outline" aria-expanded={open} className={wide} onClick={() => toggle(!open)}>
-        Book a call
-      </Button>
-      {open && <BookCallPanel enquiry={enquiry} onDone={() => onOpenChange?.(false)} />}
-    </>
-  )
-}
-
-export function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onDone: () => void }) {
   const options = useCallOptions(enquiry.id, true)
   const book = useBookCall(enquiry.id)
   const [slot, setSlot] = useState<VisitSlot | null>(null)
@@ -364,7 +342,7 @@ export function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onD
         onSuccess: (r) => {
           if (r.status === 'booked') {
             setBooked(slot.start)
-            return onDone()
+            return onBooked(slot.start)
           }
           setKey(crypto.randomUUID())
           if (r.status === 'slot_unavailable') {
@@ -378,7 +356,7 @@ export function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onD
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-md border p-3">
+    <div className="flex flex-col gap-4">
       <p className="text-sm">
         Pick a time for the call. {first} gets the usual confirmation email.
       </p>
@@ -399,111 +377,20 @@ export function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onD
           {problem}
         </p>
       )}
-      <Button className={wide} disabled={book.isPending} onClick={submit}>
-        {book.isPending
-          ? 'Booking…'
-          : slot
-            ? `Book ${formatShortWhen(slot.start)}`
-            : 'Book the call'}
-      </Button>
+      <TaskBar>
+        <Button className="h-12 flex-1" disabled={book.isPending} onClick={submit}>
+          {book.isPending
+            ? 'Booking…'
+            : slot
+              ? `Book ${formatShortWhen(slot.start)}`
+              : 'Book the call'}
+        </Button>
+      </TaskBar>
       {book.isError && (
         <p role="alert" className="text-destructive text-sm">
           The call was not booked: {book.error.message}
         </p>
       )}
     </div>
-  )
-}
-
-type MissedChoice = 'none' | 'call' | 'visit' | 'link'
-
-/**
- * Next step after a missed call or site visit (marked No-show): ring them (the one filled action),
- * or book another time: a call, or the site visit and its booking link email. Uses the panels the
- * after-call card has; no new email.
- */
-export function MissedAppointment({
-  enquiry,
-  mode,
-  when,
-}: {
-  enquiry: EnquiryDetail
-  /** The missed appointment's mode: `phone` or `on_site`. */
-  mode: string
-  when: string | null
-}) {
-  const [choice, setChoice] = useState<MissedChoice>('none')
-  const ring = telHref(enquiry.answers.phone)
-  const first = text(enquiry.answers.name).split(/\s+/)[0] || 'them'
-  const visit = mode === 'on_site'
-  const toggle = (next: MissedChoice) => setChoice((c) => (c === next ? 'none' : next))
-  return (
-    <>
-      <p className="font-medium">
-        {visit ? 'Missed site visit' : 'Missed call'}
-        {when ? ` ${formatShortWhen(when)}` : ''}
-      </p>
-      <p className="text-sm">Ring them, or book another time.</p>
-      <div className="flex flex-col gap-2">
-        {ring && (
-          <a
-            href={ring}
-            className={buttonVariants({
-              // One filled action at a time: while a panel is open, its own button leads.
-              variant: choice === 'none' ? 'default' : 'outline',
-              className: wide,
-            })}
-          >
-            Ring {first}
-          </a>
-        )}
-        {visit ? (
-          <>
-            <Button
-              variant="outline"
-              aria-expanded={choice === 'visit'}
-              className={`${wide} ${opened}`}
-              onClick={() => toggle('visit')}
-            >
-              Book the site visit
-              <ChevronDown
-                className={`size-4 transition-transform ${choice === 'visit' ? 'rotate-180' : ''}`}
-                aria-hidden="true"
-              />
-            </Button>
-            <Button
-              variant="outline"
-              aria-expanded={choice === 'link'}
-              className={`${wide} ${opened}`}
-              onClick={() => toggle('link')}
-            >
-              Send a booking link
-              <ChevronDown
-                className={`size-4 transition-transform ${choice === 'link' ? 'rotate-180' : ''}`}
-                aria-hidden="true"
-              />
-            </Button>
-          </>
-        ) : (
-          <Button
-            variant="outline"
-            aria-expanded={choice === 'call'}
-            className={`${wide} ${opened}`}
-            onClick={() => toggle('call')}
-          >
-            Book a call
-            <ChevronDown
-              className={`size-4 transition-transform ${choice === 'call' ? 'rotate-180' : ''}`}
-              aria-hidden="true"
-            />
-          </Button>
-        )}
-      </div>
-      {choice === 'call' && <BookCallPanel enquiry={enquiry} onDone={() => undefined} />}
-      {choice === 'visit' && (
-        <BookVisitPanel enquiry={enquiry} onUseLink={() => setChoice('link')} />
-      )}
-      {choice === 'link' && <SendLinkPanel enquiry={enquiry} onClose={() => setChoice('none')} />}
-    </>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ChevronRight } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router'
 import { adStatusLabel, useAdFileUrl, useAds, useArchiveAd, type AdListItem } from '@/api/ads'
 import { useCampaigns, useSpend, type Campaign } from '@/api/campaigns'
@@ -19,12 +19,14 @@ import {
   numbersOf,
   rankAds,
   spendSoFar,
+  WALK_KEY,
   NO_NUMBERS,
   type AdNumbers,
   type Placed,
 } from '@/lib/ads/by-campaign'
 import {
   AD_FILTERS,
+  adListPath,
   groupAds,
   matchesAdFilter,
   readAdFilter,
@@ -43,6 +45,10 @@ type Selection = {
   selecting: boolean
   selected: Set<string>
   toggle: (id: string) => void
+  /** Each group tells the page the order it shows, so the ad page can walk it. */
+  register: (group: string, ids: string[]) => void
+  /** Store the order on screen before an ad is opened. */
+  remember: () => void
 }
 
 function AdRow({
@@ -120,7 +126,11 @@ function AdRow({
       </label>
     )
   return (
-    <Link to={`/ads/${ad.id}?show=${filter}`} className={`${row} hover:bg-soft`}>
+    <Link
+      to={`/ads/${ad.id}?show=${filter}`}
+      onClick={selection.remember}
+      className={`${row} hover:bg-soft`}
+    >
       {body}
     </Link>
   )
@@ -179,6 +189,12 @@ function CampaignSection({
     byContent.data ? numbersOf(slug ? rows.get(slug) : undefined) : NO_NUMBERS,
   )
   const shown = ranked.filter((p) => matchesAdFilter(p.ad.status, filter))
+  const order = shown.map((p) => p.ad.id).join(',')
+  const { register } = selection
+  useEffect(
+    () => register(campaign.id, order ? order.split(',') : []),
+    [register, campaign.id, order],
+  )
   const running = placed.filter((p) => p.running && p.ad.status !== 'archived').length
   const live = placed.filter((p) => p.ad.status !== 'archived').length
   const totals = numbersOf(total)
@@ -221,11 +237,6 @@ function CampaignSection({
             }
           />
         )}
-        {spend && (
-          <div className="col-span-3">
-            <Stat label="Spend" value={spend.pending ? '…' : spendSoFar(spend.cents)} />
-          </div>
-        )}
       </dl>
       <p className="text-muted-foreground text-xs">
         Best first: most enquiries, then most booked. Numbers are from the ad links, since the first
@@ -235,10 +246,15 @@ function CampaignSection({
         <p className="text-muted-foreground text-sm">No ads in this campaign yet.</p>
       ) : shown.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          None of its ads are here.{' '}
-          <Link to="/ads?show=all" className="text-action underline">
-            Show all
-          </Link>
+          None of its ads are here.
+          {filter !== 'live' && (
+            <>
+              {' '}
+              <Link to={adListPath('live')} className="text-action underline">
+                Show live ads
+              </Link>
+            </>
+          )}
         </p>
       ) : (
         <ul className="-mx-1.5 flex flex-col">
@@ -256,11 +272,24 @@ function CampaignSection({
         </ul>
       )}
       {isAdmin && (
-        <details open={focused} className="group border-t pt-2">
-          <summary className="flex min-h-12 cursor-pointer items-center text-base font-medium">
-            Enter spend
+        <details open={focused} className="group -mx-3 -mb-3 border-t">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
+            <span className="font-medium">Spend</span>
+            <span className="text-muted-foreground flex min-w-0 items-center gap-1 text-right text-sm">
+              <span className="min-w-0 break-words">
+                {spend?.pending
+                  ? '…'
+                  : spend?.cents == null
+                    ? 'None entered'
+                    : spendSoFar(spend.cents)}
+              </span>
+              <ChevronRight
+                className="size-4 shrink-0 transition-transform group-open:rotate-90"
+                aria-hidden="true"
+              />
+            </span>
           </summary>
-          <div className="pt-2">
+          <div className="border-t p-3">
             <CampaignSpend campaignId={campaign.id} />
           </div>
         </details>
@@ -362,11 +391,29 @@ export function AdsPage() {
       .flatMap(([, list]) => list.map((p) => p.ad))
       .filter((ad) => matchesAdFilter(ad.status, filter)),
   )
+  // The order on screen, by group, for Previous / Next on the ad page (kept per tab).
+  const orders = useRef(new Map<string, string[]>())
+  const [register] = useState(() => (group: string, ids: string[]) => {
+    orders.current.set(group, ids)
+  })
+  const looseIds = loose.flatMap((g) => g.ads.map((a) => a.id)).join(',')
+  useEffect(() => register('', looseIds ? looseIds.split(',') : []), [register, looseIds])
+  const remember = () => {
+    const ids = [...listed.map((c) => c.id), ''].flatMap((key) => orders.current.get(key) ?? [])
+    try {
+      sessionStorage.setItem(WALK_KEY, JSON.stringify({ filter, ids }))
+    } catch {
+      // No storage: the ad page walks the default order.
+    }
+  }
+  const reviewCount = all.filter((ad) => matchesAdFilter(ad.status, 'review')).length
   const stopSelecting = () => {
     setSelecting(false)
     setSelected(new Set())
   }
   const selection: Selection = {
+    register,
+    remember,
     selecting,
     selected,
     toggle: (id) =>
@@ -405,11 +452,12 @@ export function AdsPage() {
                 className="sr-only"
                 checked={filter === key}
                 onChange={() => {
-                  setParams(key === 'review' ? {} : { show: key }, { replace: true })
+                  setParams(key === 'live' ? {} : { show: key }, { replace: true })
                   stopSelecting()
                 }}
               />
               {label}
+              {key === 'review' && ads.data && ` (${reviewCount})`}
             </label>
           ))}
         </div>

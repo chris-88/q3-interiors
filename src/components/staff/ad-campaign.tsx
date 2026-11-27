@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { latestVersion, useSetRunning, type Ad } from '@/api/ads'
 import { useEnquiriesFromAd } from '@/api/enquiries'
+import { DueChip } from '@/components/staff/due-chip'
 import { enquiryName } from '@/components/staff/enquiry-text'
 import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { useLoadedAt } from '@/components/staff/use-loaded-at'
@@ -82,22 +83,26 @@ export function EnquiriesFromAd({ ad }: { ad: Ad }) {
         <p className="text-muted-foreground text-sm">None yet.</p>
       ) : (
         <ul className="-mx-1 flex flex-col">
-          {enquiries.data.map((e) => (
-            <li key={e.id} className="border-t first:border-t-0">
-              <Link
-                to={`/enquiries/${e.id}`}
-                className="hover:bg-soft flex min-h-12 items-center justify-between gap-3 px-1 py-2"
-              >
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate font-medium">{enquiryName(e)}</span>
-                  <span className="text-muted-foreground text-sm">
-                    {formatDayMonth(e.submitted_at)}
+          {enquiries.data.map((e) => {
+            const view = stageOf(e, now)
+            return (
+              <li key={e.id} className="border-t first:border-t-0">
+                <Link
+                  to={`/enquiries/${e.id}`}
+                  className="hover:bg-soft flex min-h-16 flex-col justify-center gap-0.5 px-1 py-2"
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 font-medium break-words">{enquiryName(e)}</span>
+                    <DueChip view={view} />
                   </span>
-                </span>
-                <span className="shrink-0 text-sm">{stageOf(e, now).label}</span>
-              </Link>
-            </li>
-          ))}
+                  <span className="text-muted-foreground flex items-start justify-between gap-2 text-sm">
+                    <span>{formatDayMonth(e.submitted_at)}</span>
+                    <span className="shrink-0">{view.label}</span>
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>

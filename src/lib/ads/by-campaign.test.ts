@@ -5,7 +5,9 @@ import {
   costPerEnquiry,
   countText,
   numbersOf,
+  parseWalk,
   rankAds,
+  walkIds,
   spendSoFar,
   tagsFromLink,
   NO_NUMBERS,
@@ -91,6 +93,18 @@ describe('campaignDates', () => {
     expect(campaignDates('2026-11-27T10:00:00Z', ['2026-12-01'], dm)).toBe(
       'Set up 2026-11-27 · Spend on 2026-12-01',
     )
+  })
+})
+
+describe('walking the list', () => {
+  it('walks the stored order for the same filter when it holds the ad, else the default', () => {
+    const stored = parseWalk(JSON.stringify({ filter: 'live', ids: ['k2', 'k1', 'x'] }))
+    expect(walkIds(stored, 'live', 'k1', ['k1', 'k2', 'x'])).toEqual(['k2', 'k1', 'x'])
+    expect(walkIds(stored, 'review', 'k1', ['k1'])).toEqual(['k1'])
+    expect(walkIds(stored, 'live', 'new-ad', ['new-ad'])).toEqual(['new-ad'])
+    expect(parseWalk('not json')).toBeNull()
+    expect(parseWalk(JSON.stringify({ filter: 'live', ids: [1] }))).toBeNull()
+    expect(parseWalk(null)).toBeNull()
   })
 })
 

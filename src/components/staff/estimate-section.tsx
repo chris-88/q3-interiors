@@ -24,6 +24,7 @@ import {
   estimateFollowUp,
   estimateLine,
   estimateState,
+  quoteOverdue,
 } from '@/lib/enquiry-stage'
 import { formatDayMonth, formatShortWhen } from '@/lib/format'
 import {
@@ -100,7 +101,11 @@ export function EstimateSummary({ estimate, now }: { estimate: Estimate; now: nu
         <div>
           <Badge
             variant={state === 'quote_requested' ? 'default' : 'outline'}
-            className={state === 'no_answer' ? 'border-amber-400 bg-amber-50 text-amber-950' : ''}
+            className={
+              state === 'no_answer' || quoteOverdue(estimate, now)
+                ? 'border-amber-400 bg-amber-50 text-amber-950'
+                : ''
+            }
           >
             {follow}
           </Badge>

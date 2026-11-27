@@ -127,6 +127,82 @@ describe('staff book the site visit after a call', () => {
   })
 })
 
+describe('staff book a call for the customer', () => {
+  it('offers the free call times and books one through the reserve path', async () => {
+    const { db, mailer, deps } = setup()
+    const id = db.addEnquiry(answers(), 'token-a-0123456789abcdefghij')
+    const options = await staff(deps, { action: 'call_options', enquiryId: id })
+    expect(options.body.status).toBe('ok')
+    expect(options.body.eligibility).toBe('eligible')
+    const slot = options.body.slots?.[0]?.start
+    if (!slot) throw new Error('no slot')
+
+    const booked = await staff(deps, {
+      action: 'book_call',
+      enquiryId: id,
+      start: slot,
+      idempotencyKey: key(20),
+    })
+    expect(booked.body.status).toBe('booked')
+    const call = db.bookings.find((b) => b.id === booked.body.bookingId)!
+    expect(call.appointment_type_id).toBe('phone_consultation')
+    expect(call.state).toBe('confirmed')
+    expect(db.events.filter((e) => e.kind === 'call_booked_by_staff')).toHaveLength(1)
+    // The normal confirmation email with its manage link.
+    const confirmation = mailer.sent.find((m) => m.to === 'mary@customer.ie')
+    expect(confirmation?.subject).toMatch(/^Booked: your call on /)
+    expect(confirmation?.text).toContain('/#/book/minted-')
+
+    // The same key is the same booking; another call while this one is to come is refused.
+    const again = await staff(deps, {
+      action: 'book_call',
+      enquiryId: id,
+      start: slot,
+      idempotencyKey: key(20),
+    })
+    expect(again.body).toEqual({ status: 'booked', bookingId: call.id })
+    const second = await staff(deps, {
+      action: 'book_call',
+      enquiryId: id,
+      start: options.body.slots?.[1]?.start ?? slot,
+      idempotencyKey: key(21),
+    })
+    expect(second.body).toEqual({ status: 'already_booked' })
+    expect((await staff(deps, { action: 'call_options', enquiryId: id })).body).toEqual({
+      status: 'already_booked',
+    })
+  })
+
+  it('refuses a time that is not free, and an enquiry without a phone number', async () => {
+    const { db, deps } = setup()
+    const id = db.addEnquiry(answers(), 'token-a-0123456789abcdefghij')
+    const taken = await staff(deps, {
+      action: 'book_call',
+      enquiryId: id,
+      start: '2027-03-01T03:00:00Z',
+      idempotencyKey: key(22),
+    })
+    expect(taken.body.status).toBe('slot_unavailable')
+    const noPhone = db.addEnquiry(answers({ phone: '' }), 'token-b-0123456789abcdefghij')
+    const options = await staff(deps, { action: 'call_options', enquiryId: noPhone })
+    expect(options.body.eligibility).toBe('phone_required')
+    const slot = options.body.slots?.[0]?.start ?? '2027-03-02T10:00:00Z'
+    const refused = await staff(deps, {
+      action: 'book_call',
+      enquiryId: noPhone,
+      start: slot,
+      idempotencyKey: key(23),
+    })
+    expect(refused.body).toEqual({ status: 'ineligible', reason: 'phone_required' })
+  })
+
+  it('needs an enquiry that exists and a well-formed request', async () => {
+    const { deps } = setup()
+    expect((await staff(deps, { action: 'call_options', enquiryId: key(99) })).status).toBe(404)
+    expect((await staff(deps, { action: 'book_call', enquiryId: 'x' })).status).toBe(400)
+  })
+})
+
 describe('the site visit link', () => {
   const queue = (db: FakeDb, enquiryId: string) => {
     const comm = {

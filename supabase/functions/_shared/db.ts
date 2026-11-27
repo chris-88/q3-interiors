@@ -244,6 +244,9 @@ export function createDb(): Db {
     async visitBookedByStaff(bookingId, actorUserId, addressAdded) {
       await q`select private.visit_booked_by_staff(${bookingId}, ${actorUserId}, ${addressAdded})`
     },
+    async callBookedByStaff(bookingId, actorUserId) {
+      await q`select private.call_booked_by_staff(${bookingId}, ${actorUserId})`
+    },
     async cancelBooking(id, actor, reason, actorUserId) {
       const [row] =
         await q`select private.cancel_booking(${id}, ${actor}, ${reason}, ${actorUserId ?? null}) as r`

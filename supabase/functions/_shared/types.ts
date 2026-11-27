@@ -262,6 +262,8 @@ export interface Db {
   estimateById(estimateId: string): Promise<EstimateRow | null>
   /** After a call: the history line for a site visit staff booked for the customer. */
   visitBookedByStaff(bookingId: string, actorUserId: string, addressAdded: boolean): Promise<void>
+  /** The call_booked_by_staff history line, after staff reserved a call for the customer. */
+  callBookedByStaff(bookingId: string, actorUserId: string): Promise<void>
   /** Records "Get my quote" once (alerting staff); repeats change nothing. */
   requestQuote(
     enquiryId: string,

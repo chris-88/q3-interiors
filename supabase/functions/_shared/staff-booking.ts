@@ -23,6 +23,14 @@ const requestSchema = z.discriminatedUnion('action', [
     siteStreet: z.string().max(200).optional(),
     siteUnit: z.string().max(200).optional(),
   }),
+  // Before any call is held: book a call for the customer (to put it in the diary and speak).
+  z.object({ action: z.literal('call_options'), enquiryId: z.uuid() }),
+  z.object({
+    action: z.literal('book_call'),
+    enquiryId: z.uuid(),
+    start: z.iso.datetime(),
+    idempotencyKey: z.uuid(),
+  }),
 ])
 
 const near = (slots: Slot[], start: string) => {
@@ -40,6 +48,8 @@ export async function handleStaff(
   const req = parsed.data
   if (req.action === 'visit_options' || req.action === 'book_visit')
     return visitAction(req, staffUserId, deps)
+  if (req.action === 'call_options' || req.action === 'book_call')
+    return callAction(req, staffUserId, deps)
   const booking = await deps.db.bookingById(req.bookingId)
   if (!booking) return { status: 404, body: { error: 'not_found' } }
   switch (req.action) {
@@ -128,6 +138,67 @@ async function visitAction(
   if (result.status === 'no_staff') return ok({ status: 'unavailable', reason: 'no_staff' })
   if (result.status === 'already_booked') return ok({ status: 'already_booked' })
   await db.visitBookedByStaff(result.booking_id, staffUserId, addressAdded)
+  await runDueFor(deps, result.booking_id)
+  return ok({ status: 'booked', bookingId: result.booking_id })
+}
+
+type CallRequest = Extract<z.infer<typeof requestSchema>, { action: 'call_options' | 'book_call' }>
+
+/**
+ * A call staff book for a customer: the same free call times the customer sees and the same
+ * reserve path, so the calendar event is made and the customer gets the normal confirmation email
+ * with its manage link. Refused while an appointment is still to come.
+ */
+async function callAction(
+  req: CallRequest,
+  staffUserId: string,
+  deps: ChangeDeps,
+): Promise<{ status: number; body: unknown }> {
+  const { db } = deps
+  const ok = (body: unknown) => ({ status: 200, body })
+  const enquiry = await db.getEnquiry(req.enquiryId)
+  if (!enquiry) return { status: 404, body: { error: 'not_found' } }
+  const type = (await db.listTypes()).find((t) => t.active && t.mode === 'phone')
+  if (!type) return ok({ status: 'unavailable', reason: 'no_type' })
+
+  if (req.action === 'book_call') {
+    const existing = await db.bookingByKey(req.idempotencyKey)
+    if (existing) {
+      if (existing.enquiry_id !== enquiry.id) return { status: 403, body: { error: 'forbidden' } }
+      return ok({ status: 'booked', bookingId: existing.id })
+    }
+  }
+  // One appointment at a time: a call or visit still to come is moved, not doubled.
+  if (await db.liveBookingFor(enquiry.id)) return ok({ status: 'already_booked' })
+
+  if (req.action === 'call_options') {
+    return ok({
+      ...(await availability(deps, type)),
+      typeLabel: type.label,
+      eligibility: await db.eligibility(enquiry.id, type.id),
+    })
+  }
+
+  const eligibility = await db.eligibility(enquiry.id, type.id)
+  if (eligibility !== 'eligible') return ok({ status: 'ineligible', reason: eligibility })
+  const start = new Date(req.start).toISOString()
+  const before = await availability(deps, type)
+  if (before.status !== 'ok') return ok(before)
+  if (!before.slots.some((s) => s.start === start))
+    return ok({ status: 'slot_unavailable', alternatives: near(before.slots, start) })
+
+  const result = await db.reserve(enquiry.id, type.id, start, req.idempotencyKey)
+  if (result.status === 'slot_unavailable') {
+    const fresh = await availability(deps, type)
+    return ok({
+      status: 'slot_unavailable',
+      alternatives: fresh.status === 'ok' ? near(fresh.slots, start) : [],
+    })
+  }
+  if (result.status === 'ineligible') return ok({ status: 'ineligible', reason: result.reason })
+  if (result.status === 'no_staff') return ok({ status: 'unavailable', reason: 'no_staff' })
+  if (result.status === 'already_booked') return ok({ status: 'already_booked' })
+  await db.callBookedByStaff(result.booking_id, staffUserId)
   await runDueFor(deps, result.booking_id)
   return ok({ status: 'booked', bookingId: result.booking_id })
 }

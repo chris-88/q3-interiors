@@ -66,7 +66,7 @@ export const QUOTE_FONT_FILES = FONT_WEIGHTS.map((w) => `roboto-${w}.woff2`)
 export function renderQuoteDocument(q: QuoteDocumentInput): string {
   const fonts = FONT_WEIGHTS.map(
     (w) =>
-      `@font-face{font-family:'Roboto';font-style:normal;font-weight:${w};src:url('${esc(q.fontBase)}roboto-${w}.woff2') format('woff2')}`,
+      `@font-face{font-family:'Roboto';font-style:normal;font-weight:${w};font-display:swap;src:url('${esc(q.fontBase)}roboto-${w}.woff2') format('woff2')}`,
   ).join('')
   const list = (items: string[]) => `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`
   const business = [q.business.legalName, q.business.phone, q.business.email].filter(

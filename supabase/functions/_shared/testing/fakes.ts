@@ -489,6 +489,15 @@ export class FakeDb implements Db {
         detail: `${actorUserId}${addressAdded ? '; address entered by staff' : ''}`,
       })
   }
+  async callBookedByStaff(bookingId: string, actorUserId: string) {
+    const b = this.bookings.find((x) => x.id === bookingId)
+    if (b)
+      this.events.push({
+        enquiryId: b.enquiry_id,
+        kind: 'call_booked_by_staff',
+        detail: actorUserId,
+      })
+  }
   async requestQuote(enquiryId: string, estimateId: string) {
     const estimate = this.estimates.get(estimateId)
     if (!estimate || estimate.enquiry_id !== enquiryId) return 'not_found' as const

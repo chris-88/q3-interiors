@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import {
+  useBookCall,
   useBookVisit,
   useCallHeldEarly,
+  useCallOptions,
+  callTimes,
   useSendVisitLink,
   useVisitOptions,
   type VisitSlot,
@@ -326,5 +329,128 @@ export function AfterCallChoices({ enquiry, now }: { enquiry: EnquiryDetail; now
       )}
       {choice === 'link' && <SendLinkPanel enquiry={enquiry} onClose={() => setChoice('none')} />}
     </>
+  )
+}
+
+/**
+ * "Book a call" before any call is held: staff put a call in the diary for the customer, from the
+ * same free call times the customer sees; the customer gets the usual confirmation email. The
+ * button is outlined; while the panel is open its Book button is the one filled action, so the
+ * caller passes `onOpenChange` to step its own main button down.
+ */
+export function BookACall({
+  enquiry,
+  onOpenChange,
+}: {
+  enquiry: EnquiryDetail
+  onOpenChange?: (open: boolean) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const toggle = (next: boolean) => {
+    setOpen(next)
+    onOpenChange?.(next)
+  }
+  return (
+    <>
+      <Button variant="outline" aria-expanded={open} className={wide} onClick={() => toggle(!open)}>
+        Book a call
+      </Button>
+      {open && <BookCallPanel enquiry={enquiry} onDone={() => onOpenChange?.(false)} />}
+    </>
+  )
+}
+
+function BookCallPanel({ enquiry, onDone }: { enquiry: EnquiryDetail; onDone: () => void }) {
+  const options = useCallOptions(enquiry.id, true)
+  const book = useBookCall(enquiry.id)
+  const [slot, setSlot] = useState<VisitSlot | null>(null)
+  const [key, setKey] = useState(() => crypto.randomUUID())
+  const [problem, setProblem] = useState<string | null>(null)
+  const [booked, setBooked] = useState<string | null>(null)
+  const first = text(enquiry.answers.name).split(/\s+/)[0] || 'The customer'
+  const data = options.data
+
+  if (booked)
+    return (
+      <output className="block text-sm">
+        Call booked for {formatShortWhen(booked)}. {first} gets the usual confirmation email.
+      </output>
+    )
+  if (options.isPending) return <Skeleton className="h-40 w-full" />
+  if (options.isError || !data)
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>Could not load free times.</AlertDescription>
+      </Alert>
+    )
+  if (data.status === 'already_booked')
+    return <p className="text-sm">An appointment is already booked. Move it instead.</p>
+  const times = callTimes(data)
+  if (!times)
+    return <p className="text-sm">The calendar is not available, so times cannot be checked.</p>
+  if (times.eligibility === 'phone_required')
+    return (
+      <p className="text-sm">
+        There is no phone number on this enquiry, so a call cannot be booked.
+      </p>
+    )
+
+  const submit = () => {
+    if (!slot) return setProblem('Choose a time.')
+    setProblem(null)
+    book.mutate(
+      { start: slot.start, idempotencyKey: key },
+      {
+        onSuccess: (r) => {
+          if (r.status === 'booked') {
+            setBooked(slot.start)
+            return onDone()
+          }
+          setKey(crypto.randomUUID())
+          if (r.status === 'slot_unavailable') {
+            setSlot(null)
+            setProblem('That time has just gone. Choose another.')
+          } else if (r.status === 'already_booked') setProblem('An appointment is already booked.')
+          else setProblem('The call was not booked. Try again.')
+        },
+      },
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-md border p-3">
+      <p className="text-sm">
+        Pick a time for the call. {first} gets the usual confirmation email.
+      </p>
+      {times.slots.length === 0 ? (
+        <p className="text-sm">No free call times in the booking window.</p>
+      ) : (
+        <SlotPicker
+          slots={times.slots}
+          selected={slot}
+          onSelect={(s) => {
+            setSlot(s)
+            setProblem(null)
+          }}
+        />
+      )}
+      {problem && (
+        <p role="alert" className="text-destructive text-sm">
+          {problem}
+        </p>
+      )}
+      <Button className={wide} disabled={book.isPending} onClick={submit}>
+        {book.isPending
+          ? 'Booking…'
+          : slot
+            ? `Book ${formatShortWhen(slot.start)}`
+            : 'Book the call'}
+      </Button>
+      {book.isError && (
+        <p role="alert" className="text-destructive text-sm">
+          The call was not booked: {book.error.message}
+        </p>
+      )}
+    </div>
   )
 }

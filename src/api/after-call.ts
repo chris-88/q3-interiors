@@ -13,6 +13,7 @@ function useInvalidateEnquiry(enquiryId: string) {
       queryClient.invalidateQueries({ queryKey: ['enquiries'] }),
       queryClient.invalidateQueries({ queryKey: ['appointments'] }),
       queryClient.invalidateQueries({ queryKey: ['visit-options', enquiryId] }),
+      queryClient.invalidateQueries({ queryKey: ['call-options', enquiryId] }),
     ])
 }
 
@@ -98,6 +99,47 @@ export function useBookVisit(enquiryId: string) {
       siteStreet?: string
       siteUnit?: string
     }) => staffBooking({ action: 'book_visit', enquiryId, ...input }, bookVisitSchema),
+    onSettled: invalidate,
+  })
+}
+
+const callTimesSchema = z.object({
+  status: z.literal('ok'),
+  slots: z.array(slotSchema),
+  timezone: z.string(),
+  typeLabel: z.string().default('Phone call'),
+  eligibility: z.string(),
+})
+export type CallTimes = z.infer<typeof callTimesSchema>
+const callOptionsSchema = z.union([
+  callTimesSchema,
+  // An appointment still to come, the calendar unreadable, or a status a newer release adds.
+  z.object({ status: z.string() }).loose(),
+])
+export type CallOptions = z.infer<typeof callOptionsSchema>
+
+/** The free times, when the reply has them. */
+export function callTimes(options: CallOptions): CallTimes | null {
+  const parsed = callTimesSchema.safeParse(options)
+  return parsed.success ? parsed.data : null
+}
+
+/** The free call times the customer would see, and whether the enquiry can have one. */
+export function useCallOptions(enquiryId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['call-options', enquiryId],
+    enabled,
+    staleTime: 30_000,
+    queryFn: () => staffBooking({ action: 'call_options', enquiryId }, callOptionsSchema),
+  })
+}
+
+/** Book a call for the customer: the same reserve path, their usual confirmation email. */
+export function useBookCall(enquiryId: string) {
+  const invalidate = useInvalidateEnquiry(enquiryId)
+  return useMutation({
+    mutationFn: (input: { start: string; idempotencyKey: string }) =>
+      staffBooking({ action: 'book_call', enquiryId, ...input }, bookVisitSchema),
     onSettled: invalidate,
   })
 }

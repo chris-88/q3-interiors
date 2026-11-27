@@ -62,6 +62,8 @@ export type StaffWorld = {
   moveOptions: unknown
   /** What staff-booking's visit_options returns (after a call: book the site visit). */
   visitOptions?: unknown
+  /** What staff-booking's call_options returns (before a call: book a call for them). */
+  callOptions?: unknown
   /** staff-booking request bodies, in order. */
   staffBookingCalls?: Record<string, unknown>[]
 }
@@ -1037,6 +1039,53 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
     }
     world.staffBookingCalls = [...(world.staffBookingCalls ?? []), input]
     if (input.action === 'visit_options') return json(route, 200, world.visitOptions)
+    if (input.action === 'call_options' || input.action === 'book_call') {
+      // Like the real function: one appointment still to come at a time, then the reserve.
+      const e = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(
+        (x) => x.id === input.enquiryId,
+      )
+      if (!e) return json(route, 404, { error: 'not_found' })
+      const toCome = ((world.tables.bookings ?? []) as Record<string, unknown>[]).some(
+        (b) =>
+          b.enquiry_id === e.id &&
+          ['reserved', 'calendar_pending', 'confirmed'].includes(String(b.state)) &&
+          Date.parse(String(b.starts_at)) > Date.now(),
+      )
+      if (toCome) return json(route, 200, { status: 'already_booked' })
+      if (input.action === 'call_options') return json(route, 200, world.callOptions)
+      if (!input.start) return json(route, 400, { error: 'bad_request' })
+      const id = `b-call-${(world.tables.bookings ?? []).length + 1}`
+      world.tables.bookings = [
+        ...(world.tables.bookings ?? []),
+        {
+          id,
+          enquiry_id: e.id,
+          state: 'confirmed',
+          starts_at: input.start,
+          ends_at: new Date(Date.parse(input.start) + 20 * 60_000).toISOString(),
+          confirmed_at: new Date().toISOString(),
+          failure_reason: null,
+          calendar_event_id: `q3${id}`,
+          calendar_event_link: null,
+          created_at: new Date().toISOString(),
+          attendance: null,
+          cancelled_at: null,
+          cancelled_by: null,
+          cancel_reason: null,
+          calendar_mismatch: null,
+          appointment_types: { label: 'Phone consultation', mode: 'phone' },
+          enquiries: {
+            reference: e.reference,
+            answers: e.answers,
+            outcome: null,
+            site_details: e.site_details,
+          },
+        },
+      ]
+      syncEnquiryBookings(world, String(e.id))
+      pushEvent(e, { kind: 'call_booked_by_staff', actor_name: caller.display_name })
+      return json(route, 200, { status: 'booked', bookingId: id })
+    }
     if (input.action === 'book_visit' && input.start) {
       // Like the real function: the address typed goes into the site details, then the visit.
       const e = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).find(

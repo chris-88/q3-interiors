@@ -153,6 +153,28 @@ export function useEnquiries() {
   })
 }
 
+/**
+ * Enquiries whose attribution carries this campaign and content tag (one ad), newest first. Staff
+ * only, by RLS on enquiries and enquiry_attribution; the inner join filters on the tags.
+ */
+export function useEnquiriesFromAd(tags: { campaign: string; content: string } | null) {
+  return useQuery({
+    queryKey: ['enquiries', 'from-ad', tags?.campaign, tags?.content],
+    enabled: tags !== null,
+    queryFn: async (): Promise<EnquirySummary[]> => {
+      const { data, error } = await supabase
+        .from('enquiries')
+        .select(`${SUMMARY_COLUMNS}, enquiry_attribution!inner(utm_campaign, utm_content)`)
+        .eq('enquiry_attribution.utm_campaign', tags?.campaign ?? '')
+        .eq('enquiry_attribution.utm_content', tags?.content ?? '')
+        .order('submitted_at', { ascending: false })
+        .limit(100)
+      if (error) throw toApiError(error)
+      return parseRows(enquirySummarySchema, data, 'enquiries from this ad')
+    },
+  })
+}
+
 export function useEnquiry(id: string) {
   return useQuery({
     queryKey: ['enquiries', id],

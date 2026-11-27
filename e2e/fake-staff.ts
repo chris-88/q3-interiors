@@ -156,14 +156,21 @@ const json = (route: Route, status: number, body: unknown, headers: Record<strin
 /** Filters PostgREST-style `col=eq.value` query parameters over rows. */
 function select(rows: Record<string, unknown>[], url: URL) {
   let out = rows
+  // "enquiry_attribution.utm_content" filters on an embedded row (an !inner join drops the rest).
+  const at = (r: Record<string, unknown>, key: string): unknown =>
+    key
+      .split('.')
+      .reduce<unknown>((o, k) => (o as Record<string, unknown> | null | undefined)?.[k], r)
   for (const [key, value] of url.searchParams) {
     if (['select', 'order', 'limit', 'offset'].includes(key)) continue
-    if (value.startsWith('eq.')) out = out.filter((r) => String(r[key]) === value.slice(3))
-    if (value === 'is.null') out = out.filter((r) => r[key] === null || r[key] === undefined)
-    if (value === 'not.is.null') out = out.filter((r) => r[key] !== null && r[key] !== undefined)
+    if (value.startsWith('eq.')) out = out.filter((r) => String(at(r, key)) === value.slice(3))
+    if (value === 'is.null')
+      out = out.filter((r) => at(r, key) === null || at(r, key) === undefined)
+    if (value === 'not.is.null')
+      out = out.filter((r) => at(r, key) !== null && at(r, key) !== undefined)
     if (value.startsWith('in.(')) {
       const set = value.slice(4, -1).split(',')
-      out = out.filter((r) => set.includes(String(r[key])))
+      out = out.filter((r) => set.includes(String(at(r, key))))
     }
   }
   return out
@@ -933,6 +940,23 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
           (world.tables.campaign_creatives ?? []) as Record<string, unknown>[]
         ).filter((x) => x.campaign_id === c.id),
       }))
+    } else if (table === 'ads') {
+      // The ad's creative (and its campaign), embedded from the tables as PostgREST would.
+      const creatives = (world.tables.campaign_creatives ?? []) as Record<string, unknown>[]
+      const campaigns = (world.tables.campaigns ?? []) as Record<string, unknown>[]
+      rows = ((world.tables.ads ?? []) as Record<string, unknown>[]).map((a) => {
+        const c = creatives.find((x) => x.id === a.campaign_creative_id)
+        return {
+          ...a,
+          campaign_creatives: c
+            ? {
+                running: false,
+                ...c,
+                campaigns: campaigns.find((k) => k.id === c.campaign_id) ?? null,
+              }
+            : (a.campaign_creatives ?? null),
+        }
+      })
     } else if (table === 'campaign_spend' && !admin) {
       rows = []
     } else {

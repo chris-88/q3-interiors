@@ -1,21 +1,18 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Link } from 'react-router'
 import {
   campaignFormSchema,
   useAddCreative,
-  useAddSpend,
   useArchiveCreative,
   useCampaigns,
-  useDeleteSpend,
   useMarkLinkUsed,
   useSaveCampaign,
-  useSpend,
   type Campaign,
   type CampaignFormInput,
   type CampaignFormValues,
 } from '@/api/campaigns'
-import { useCurrentStaff } from '@/components/staff/staff-layout'
 import { AdminOnly, BackToSettings, SettingsCard } from '@/components/staff/settings-ui'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -25,12 +22,8 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { campaignLink, formatEuroCents, parseEuro, slugify } from '@/lib/campaigns'
+import { campaignLink, slugify } from '@/lib/campaigns'
 import { SITE_URL } from '../../../supabase/functions/_shared/site.ts'
-
-function todayDublin(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Dublin' }).format(new Date())
-}
 
 function CampaignForm({ campaign, onDone }: { campaign?: Campaign; onDone?: () => void }) {
   const save = useSaveCampaign()
@@ -302,139 +295,6 @@ function Creatives({ campaign }: { campaign: Campaign }) {
   )
 }
 
-function Spend({ campaign }: { campaign: Campaign }) {
-  const me = useCurrentStaff()
-  const spend = useSpend(campaign.id)
-  const add = useAddSpend()
-  const remove = useDeleteSpend()
-  const [day, setDay] = useState(todayDublin)
-  const [amount, setAmount] = useState('')
-  const [note, setNote] = useState('')
-  const [problem, setProblem] = useState<string | null>(null)
-  const id = `spend-${campaign.id.slice(0, 8)}`
-  const total = (spend.data ?? []).reduce((sum, s) => sum + s.amount_cents, 0)
-  return (
-    <div className="flex flex-col gap-2">
-      {spend.isPending ? (
-        <Skeleton className="h-12 w-full" />
-      ) : spend.isError ? (
-        <p role="alert" className="text-destructive text-sm">
-          Could not load spend.
-        </p>
-      ) : spend.data.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No spend entered yet. The report shows “No spend entered” until you add some.
-        </p>
-      ) : (
-        <>
-          <p className="text-sm">
-            Total so far: <span className="font-medium tabular-nums">{formatEuroCents(total)}</span>
-          </p>
-          <ul className="flex flex-col gap-1">
-            {spend.data.map((s) => (
-              <li
-                key={s.id}
-                className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-1 text-sm"
-              >
-                <span className="tabular-nums">
-                  {s.spent_on} · {formatEuroCents(s.amount_cents)}
-                  {s.note ? ` · ${s.note}` : ''}
-                </span>
-                <Button
-                  variant="ghost"
-                  className="h-12"
-                  onClick={() => remove.mutate(s)}
-                  aria-label={`Remove spend of ${formatEuroCents(s.amount_cents)} on ${s.spent_on}`}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <form
-        noValidate
-        className="grid grid-cols-1 gap-2 sm:grid-cols-3"
-        onSubmit={(e) => {
-          e.preventDefault()
-          const cents = parseEuro(amount)
-          if (!day) return setProblem('Choose the day.')
-          if (cents === null) return setProblem('Enter an amount in euro, like 125 or 125.50.')
-          setProblem(null)
-          add.mutate(
-            {
-              campaign_id: campaign.id,
-              spent_on: day,
-              amount_cents: cents,
-              note: note.trim() || null,
-              created_by_name: me.display_name,
-            },
-            {
-              onSuccess: () => {
-                setAmount('')
-                setNote('')
-              },
-            },
-          )
-        }}
-      >
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`${id}-day`} className="text-sm font-medium">
-            Day
-          </label>
-          <Input
-            id={`${id}-day`}
-            type="date"
-            className="h-12 min-w-0 text-base"
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`${id}-amount`} className="text-sm font-medium">
-            Amount (€)
-          </label>
-          <Input
-            id={`${id}-amount`}
-            inputMode="decimal"
-            className="h-12 min-w-0 text-base"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            aria-invalid={problem ? true : undefined}
-            aria-describedby={problem ? `${id}-error` : undefined}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`${id}-note`} className="text-sm font-medium">
-            Note (optional)
-          </label>
-          <Input
-            id={`${id}-note`}
-            className="h-12 min-w-0 text-base"
-            maxLength={200}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-        </div>
-        {(problem ?? add.isError) && (
-          <p id={`${id}-error`} role="alert" className="text-destructive text-sm sm:col-span-3">
-            {problem ?? 'Not saved. Please try again.'}
-          </p>
-        )}
-        <Button
-          type="submit"
-          variant="outline"
-          className="h-12 sm:col-span-3"
-          disabled={add.isPending}
-        >
-          {add.isPending ? 'Adding…' : 'Add spend'}
-        </Button>
-      </form>
-    </div>
-  )
-}
-
 function CampaignCard({ campaign }: { campaign: Campaign }) {
   const [editing, setEditing] = useState(false)
   const save = useSaveCampaign()
@@ -463,7 +323,12 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
           <h3 className="font-medium">Creatives</h3>
           <Creatives campaign={campaign} />
           <h3 className="font-medium">Spend</h3>
-          <Spend campaign={campaign} />
+          <p className="text-sm">
+            Spend is entered on the Ads page, under the campaign.{' '}
+            <Link to={`/ads?campaign=${campaign.id}`} className="text-action underline">
+              Enter spend
+            </Link>
+          </p>
         </>
       )}
       <div className="flex flex-wrap gap-2 border-t pt-3">

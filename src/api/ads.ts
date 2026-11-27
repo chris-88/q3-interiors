@@ -95,8 +95,11 @@ export const adEventLabel = (kind: string) => EVENT_LABELS[kind] ?? 'Update reco
 
 const creativeSchema = z
   .object({
+    id: z.string(),
     label: z.string(),
     slug: z.string(),
+    // Ticked by an admin when the ad is running in its campaign; absent before 2026-11-30.
+    running: z.boolean().default(false),
     campaigns: z
       .object({
         name: z.string(),
@@ -161,6 +164,17 @@ const listItemSchema = z.object({
     }),
   ),
   ad_requests: z.array(z.object({ state: z.string() })).default([]),
+  // The campaign the ad is in, through its creative (null: not in a campaign).
+  campaign_creatives: z
+    .object({
+      id: z.string(),
+      slug: z.string(),
+      campaign_id: z.string(),
+      running: z.boolean().default(false),
+    })
+    .nullable()
+    .default(null)
+    .catch(null),
 })
 
 export type AdListItem = z.infer<typeof listItemSchema>
@@ -172,7 +186,7 @@ export function useAds() {
       const { data, error } = await supabase
         .from('ads')
         .select(
-          'id, name, status, created_at, set_name, set_position, ad_versions(version, ad_variants(size, export_type, export_path, poster_path)), ad_requests(state)',
+          'id, name, status, created_at, set_name, set_position, ad_versions(version, ad_variants(size, export_type, export_path, poster_path)), ad_requests(state), campaign_creatives(id, slug, campaign_id, running)',
         )
         .order('created_at', { ascending: false })
       if (error) throw toApiError(error)
@@ -188,7 +202,7 @@ export function useAd(id: string) {
       const { data, error } = await supabase
         .from('ads')
         .select(
-          'id, name, status, created_at, created_by_name, set_name, set_position, campaign_creatives(label, slug, campaigns(name, slug, utm_source, utm_medium, landing_route)), ad_versions(id, version, caption, headline, button_label, notes, link_url, created_at, approved_at, approved_by_name, ad_variants(id, size, width, height, html_path, export_path, export_bytes, export_type, duration_ms, poster_path)), ad_requests(id, version_id, size, body, state, done_in_version, created_by, created_by_name, created_at), ad_events(kind, version, detail, actor_name, created_at)',
+          'id, name, status, created_at, created_by_name, set_name, set_position, campaign_creatives(id, label, slug, running, campaigns(name, slug, utm_source, utm_medium, landing_route)), ad_versions(id, version, caption, headline, button_label, notes, link_url, created_at, approved_at, approved_by_name, ad_variants(id, size, width, height, html_path, export_path, export_bytes, export_type, duration_ms, poster_path)), ad_requests(id, version_id, size, body, state, done_in_version, created_by, created_by_name, created_at), ad_events(kind, version, detail, actor_name, created_at)',
         )
         .eq('id', id)
         .maybeSingle()
@@ -336,5 +350,19 @@ export function useArchiveAd() {
       p_archived: input.archived,
     })
     if (error) throw toApiError(error)
+  })
+}
+
+/** Running in its campaign or not (admins only, by RLS; a staff change matches no row). */
+export function useSetRunning() {
+  return useAdMutation(async (input: { creativeId: string; running: boolean }) => {
+    const { data, error } = await supabase
+      .from('campaign_creatives')
+      .update({ running: input.running })
+      .eq('id', input.creativeId)
+      .select('id')
+    if (error) throw toApiError(error)
+    if (!data || data.length === 0)
+      throw toApiError({ message: 'Only an admin can change this.', code: '42501' })
   })
 }

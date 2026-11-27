@@ -123,6 +123,7 @@ function stillAd(world: StaffWorld, hostile = false) {
     created_at: '2026-11-25T10:00:00Z',
     created_by_name: 'Ad studio (Claude session)',
     campaign_creatives: {
+      id: 'creative-reel-1',
       label: 'Reel 1',
       slug: 'reel-1',
       campaigns: {
@@ -214,7 +215,7 @@ function seed(world: StaffWorld, opts: { hostile?: boolean } = {}) {
 
 const tiles = (page: Page) => page.getByRole('main').getByRole('listitem')
 
-test('the list is a poster grid grouped by set, filtered by chips; staff cannot select', async ({
+test('ads not in a campaign are listed by set, filtered by chips; staff cannot select', async ({
   page,
 }) => {
   const world = await installFakeStaff(page)
@@ -222,17 +223,17 @@ test('the list is a poster grid grouped by set, filtered by chips; staff cannot 
   await page.goto('/#/ads')
   await signIn(page, 'staff@example.com', 'another long password')
   await expect(page.getByRole('heading', { name: 'Ads', level: 1 })).toBeVisible()
-  // To review: new, changes requested; newest set first, in set order.
-  const sets = page.getByRole('main').getByRole('heading', { level: 2 })
+  // To review: new, changes requested; not in a campaign, newest set first, in set order.
+  await expect(page.getByRole('main').getByRole('heading', { level: 2 })).toHaveText([
+    'Not in a campaign',
+  ])
+  const sets = page.getByRole('main').getByRole('heading', { level: 3 })
   await expect(sets).toHaveText(['Type test 1', 'Samples'])
   await expect(tiles(page)).toHaveCount(4)
   await expect(tiles(page).nth(0)).toContainText('Good builders shouldn’t be hard to find.')
   await expect(tiles(page).nth(1)).toContainText('Stop chasing trades.')
   await expect(tiles(page).nth(2)).toContainText('Changes requested')
   await expect(page.getByRole('main')).not.toContainText(/\((animated|still)\)|Animated,|Version 1/)
-  // Posters, two columns at 390px.
-  const boxes = await Promise.all([0, 1].map((i) => tiles(page).nth(i).boundingBox()))
-  expect(boxes[0]?.y).toBe(boxes[1]?.y)
   await expect(tiles(page).first().locator('img')).toHaveAttribute('src', /^blob:/)
   await expect(page.getByRole('button', { name: 'Select' })).toHaveCount(0)
   await shot(page, 'list')

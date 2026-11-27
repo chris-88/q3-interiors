@@ -45,14 +45,21 @@ test('an admin builds a tagged link, enters spend, and the report shows what it 
   await expect(card.getByText('Links with this name are already out')).toBeVisible()
   await card.getByRole('button', { name: 'Close without saving' }).click()
 
-  await card.getByLabel('Amount (€)').fill('12.345')
-  await card.getByRole('button', { name: 'Add spend' }).click()
-  await expect(card.getByText('Enter an amount in euro')).toBeVisible()
-  await card.getByLabel('Amount (€)').fill('125.50')
-  await card.getByLabel('Note (optional)').fill('Week 1')
-  await card.getByRole('button', { name: 'Add spend' }).click()
-  await expect(card.getByText('Total so far: €125.50')).toBeVisible()
   await shot(page, 'c1-campaign')
+
+  // Spend has one place: the campaign on the Ads page.
+  await card.getByRole('link', { name: 'Enter spend' }).click()
+  const onAds = page.getByRole('region', { name: 'Spring Kitchens 2027' })
+  await expect(onAds.getByText('No ads in this campaign yet.')).toBeVisible()
+  await expect(onAds.getByText('Enter spend', { exact: true })).toBeVisible()
+  await onAds.getByLabel('Amount (€)').fill('12.345')
+  await onAds.getByRole('button', { name: 'Add spend' }).click()
+  await expect(onAds.getByText('Enter an amount in euro')).toBeVisible()
+  await onAds.getByLabel('Amount (€)').fill('125.50')
+  await onAds.getByLabel('Note (optional)').fill('Week 1')
+  await onAds.getByRole('button', { name: 'Add spend' }).click()
+  await expect(onAds.getByText('Total so far: €125.50')).toBeVisible()
+  await expect(onAds).toContainText('€125.50 so far')
 
   // The report: costs per stage for the campaign, raw tags kept, no spend shown as such.
   world.funnel = [

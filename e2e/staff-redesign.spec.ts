@@ -227,84 +227,86 @@ async function open(page: Page, path = '/#/') {
   return world
 }
 
-const list = (page: Page) => page.getByRole('list', { name: 'Enquiries' })
+const list = (page: Page) => page.getByRole('region', { name: 'Enquiries' })
 const names = (page: Page) =>
   list(page)
     .getByRole('listitem')
     .evaluateAll((items) =>
       items.map((li) => li.querySelector('.font-medium')?.textContent?.trim() ?? ''),
     )
-const chip = (page: Page, name: RegExp) => page.getByRole('radio', { name })
+const YOUR_MOVE = ['Declan Sample', 'Ciara Test', 'Aoife Sample']
+const WAITING = ['Eimear Example']
+const SEARCH_SAMPLE = ['Declan Sample', 'Aoife Sample', 'Ian Sample']
 
-test('the list: one line each, chips with counts, action first, search, remembered chip', async ({
+const group = (page: Page, name: RegExp) => page.getByRole('region', { name })
+const groupNames = (page: Page, name: RegExp) =>
+  group(page, name)
+    .getByRole('listitem')
+    .evaluateAll((items) =>
+      items.map((li) => li.querySelector('.font-medium')?.textContent?.trim() ?? ''),
+    )
+
+test('the list: grouped by whose move it is, two lines with a due chip, search, Finished', async ({
   page,
 }) => {
   await open(page)
   await expect(list(page).getByRole('listitem')).toHaveCount(7)
-  await expect(chip(page, /^Open/)).toBeChecked()
-  await expect(chip(page, /^Open/)).toHaveAccessibleName('Open 7')
-  await expect(chip(page, /^Needs action/)).toHaveAccessibleName('Needs action 3')
-  await expect(chip(page, /^All/)).toHaveAccessibleName('All 9')
-
-  // Needs action first (new, call back, awaiting quote), then the rest in the order received.
-  expect(await names(page)).toEqual([
-    'Aoife Sample',
-    'Ciara Test',
-    'Declan Sample',
-    'Brian Example',
+  // No chips, no dot, no age: three groups say whose move it is.
+  await expect(page.getByRole('radio')).toHaveCount(0)
+  await expect(list(page).locator('time')).toHaveCount(0)
+  await expect(group(page, /^Your move/)).toBeVisible()
+  expect(await groupNames(page, /^Your move/)).toEqual(YOUR_MOVE)
+  expect(await groupNames(page, /^In the diary/)).toEqual([
     'Helen Example',
+    'Brian Example',
     'Ian Sample',
-    'Eimear Example',
   ])
+  expect(await groupNames(page, /^Waiting on them/)).toEqual(WAITING)
+
   const first = list(page).getByRole('listitem').first()
-  await expect(first).toContainText('Kitchen · Dublin 8')
-  await expect(first).toContainText('Asked to be contacted')
-  await expect(first).toContainText('Call back')
-  await expect(first).toContainText('Needs action')
   await expect(first).not.toContainText('Q3-')
-  await expect(first.locator('time')).toHaveText(/3 h/)
   const visit = list(page).getByRole('listitem').filter({ hasText: 'Brian Example' })
-  await expect(visit).toContainText('Site visit Fri 27 Nov, 10:30')
-  await expect(visit).toContainText('Booked')
-  await expect(visit).not.toContainText('Needs action')
+  await expect(visit).toContainText('Visit tomorrow 10:30')
+  await expect(visit).toContainText('Site visit booked')
   await expect(list(page).getByRole('listitem').filter({ hasText: 'Eimear' })).toContainText(
     'Quoted €18,450',
   )
   await expect(list(page).getByRole('listitem').filter({ hasText: 'Declan' })).toContainText(
-    'Site visit Tue 24 Nov, no estimate yet',
+    'How did it go?',
   )
+  // Rows are two lines of at least 64px and nothing is cut off at 390px.
+  for (const box of await list(page)
+    .getByRole('link')
+    .evaluateAll((links) => links.map((l) => l.getBoundingClientRect().height)))
+    expect(box).toBeGreaterThanOrEqual(64)
   await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Needs attention' })).toHaveCount(0)
   await shot(page, 'list-open-390')
 
-  await chip(page, /^Won/).check({ force: true })
+  // Won, lost and closed are behind Finished.
+  await page.getByRole('link', { name: 'Finished (2)' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Finished')
   await expect(list(page)).toContainText('Won €18,000')
-  await chip(page, /^Lost/).check({ force: true })
   await expect(list(page)).toContainText('Lost: Price')
+  await page.getByRole('link', { name: 'Back to open enquiries' }).click()
 
-  // Search: by name, phone and reference, as you type, on top of the chip.
-  await chip(page, /^All/).check({ force: true })
+  // Search: by name, phone and reference, as you type, across the groups.
   const search = page.getByRole('searchbox', { name: 'Search enquiries' })
   await search.fill('Sample')
-  expect(await names(page)).toEqual(['Aoife Sample', 'Declan Sample', 'Ian Sample', 'Gerry Sample'])
-  await expect(chip(page, /^All/)).toHaveAccessibleName('All 4')
-  await expect(chip(page, /^Open/)).toHaveAccessibleName('Open 3')
-  await search.fill('q3-won')
-  expect(await names(page)).toEqual(['Fiona Test'])
+  expect(await names(page)).toEqual(SEARCH_SAMPLE)
   await search.fill('cork')
   expect(await names(page)).toEqual(['Declan Sample'])
-  await search.fill('nobody')
-  await expect(page.getByText('Nothing under “All” matches “nobody”.')).toBeVisible()
+  await search.fill('q3-won')
+  await expect(
+    page.getByText('No open enquiry matches “q3-won”. 1 finished one does.'),
+  ).toBeVisible()
   await search.fill('sample')
-  await chip(page, /^Needs action/).check({ force: true })
-  expect(await names(page)).toEqual(['Aoife Sample', 'Declan Sample'])
   await shot(page, 'list-search-390')
 
-  // The chip and search are kept in this tab.
+  // The search is kept in this tab.
   await page.reload()
-  await expect(chip(page, /^Needs action/)).toBeChecked()
   await expect(search).toHaveValue('sample')
-  expect(await names(page)).toEqual(['Aoife Sample', 'Declan Sample'])
+  expect(await names(page)).toEqual(SEARCH_SAMPLE)
 })
 
 test('a single system problem is one compact line; contact requests are not in it', async ({
@@ -325,15 +327,18 @@ test('a single system problem is one compact line; contact requests are not in i
 
 test('the enquiry page walks the list and offers call, email and directions', async ({ page }) => {
   await open(page)
-  await list(page).getByRole('link').first().click()
+  // The walk follows the list as shown: Your move (Declan, Ciara, Aoife), then the diary.
+  await list(page)
+    .getByRole('link', { name: /Aoife Sample/ })
+    .click()
   const walk = page.getByRole('navigation', { name: 'Enquiries in this list' })
-  await expect(walk).toContainText('1 of 7')
+  await expect(walk).toContainText('3 of 7')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
   await expect(page.getByText('Kitchen · Dublin 8').first()).toBeVisible()
   await expect(page.getByText('Q3-CALL01')).toBeVisible()
   await walk.getByRole('link', { name: 'Next' }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ciara Test')
-  await expect(walk).toContainText('2 of 7')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Helen Example')
+  await expect(walk).toContainText('4 of 7')
   await walk.getByRole('link', { name: 'Previous' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
 
@@ -500,17 +505,17 @@ test('Notes, the demoted status, and everything else under More', async ({ page 
   await shot(page, 'enquiry-more-390')
 })
 
-test('Appointments: an agenda by day, To wrap up, and Past', async ({ page }) => {
+test('Appointments: an agenda by day and Past; over-and-unrecorded ones are under Your move', async ({
+  page,
+}) => {
   await open(page, '/#/appointments')
   await expect(page.getByRole('radio', { name: 'Upcoming' })).toBeChecked()
-  const wrap = page.getByRole('region', { name: 'To wrap up' })
-  // Declan's visit is over with no outcome; Eimear's (quoted) and Fiona's (won) are not listed.
-  await expect(wrap.getByRole('link')).toHaveCount(1)
-  await expect(wrap).toContainText('Declan Sample')
-  await expect(wrap).toContainText('Site visit Tue 24 Nov')
+  // "To wrap up" is gone: Declan's visit (over, nothing recorded) is under Your move instead.
+  await expect(page.getByRole('region', { name: 'To wrap up' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Your move' })).toBeVisible()
 
   const headings = page.getByRole('heading', { level: 2 })
-  await expect(headings).toHaveText(['To wrap up', 'Today', 'Tomorrow', 'Wed 2 Dec'])
+  await expect(headings).toHaveText(['Today', 'Tomorrow', 'Wed 2 Dec'])
   const today = page.getByRole('region', { name: 'Today' })
   await expect(today).toContainText('15:00')
   await expect(today).toContainText('Helen Example')
@@ -565,6 +570,6 @@ test('desktop: the list, the enquiry in two columns, and the agenda', async ({ p
   await expect.poll(async () => (await next.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(0)
 
   await page.goto('/#/appointments')
-  await expect(page.getByRole('region', { name: 'To wrap up' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Today' })).toBeVisible()
   await shot(page, 'appointments-desktop')
 })

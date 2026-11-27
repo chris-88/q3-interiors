@@ -7,6 +7,7 @@ const past: StageBooking = {
   confirmed_at: '2026-11-18T10:00:00Z',
   state: 'confirmed',
   mode: 'on_site',
+  attendance: 'attended',
 }
 const base = {
   status: 'contacted',
@@ -99,13 +100,15 @@ describe('estimates in the stage', () => {
     expect(stage).toEqual({ key: 'booked', label: 'Booked' })
     expect(nextStep(stage.key)).toBe('appointment')
     expect(stageLine(e, stage, now)).toBe('Site visit Sat 28 Nov, 10:00 · Estimate sent 20 Nov')
-    // Once that visit has happened, the next thing is a new estimate based on it.
+    // Once that visit's time has passed: first how it went, then a new estimate based on it.
     const later = Date.parse('2026-11-28T12:00:00Z')
-    const after = enquiryStage(e, later)
+    expect(enquiryStage(e, later)).toEqual({ key: 'to_record', label: 'How did it go?' })
+    const went = { ...e, bookings: [call, { ...visit, attendance: 'attended' }] }
+    const after = enquiryStage(went, later)
     expect(after).toEqual({ key: 'awaiting_quote', label: 'Estimate to write' })
     expect(nextStep(after.key)).toBe('record')
     // A call after the estimate does not reopen it.
-    const rang = { ...e, bookings: [call, { ...visit, mode: 'phone' }] }
+    const rang = { ...e, bookings: [call, { ...visit, mode: 'phone', attendance: 'attended' }] }
     expect(enquiryStage(rang, later).key).toBe('quote_requested')
   })
 })

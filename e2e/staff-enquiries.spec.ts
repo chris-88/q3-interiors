@@ -117,17 +117,18 @@ test('staff see v2 enquiries with the preference, project answers and contact re
 
   // The list (redesigned 2026-11-28): name, project and town, where it stands, one stage badge.
   // The layout follow-up and the preference moved to the enquiry page (no pile of pills).
-  const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
-  await expect(rows.first()).toContainText('Sample Customer')
-  await expect(rows.first()).toContainText('Kitchen · Dublin 8')
-  await expect(rows.first()).toContainText('Asked to be contacted')
-  await expect(rows.first()).toContainText('Call back')
-  await expect(rows.nth(1)).toContainText('Whole home renovation')
-  await expect(rows.nth(1)).toContainText('Not booked yet')
+  // (Grouped by whose move it is since 2026-11-30: the due chip, what happened, the job.)
+  const rows = page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem')
+  const sample = rows.filter({ hasText: 'Sample Customer' })
+  await expect(sample).toContainText('Kitchen')
+  await expect(sample).toContainText('Asked us to ring')
+  await expect(sample).toContainText('Ring')
+  const other = rows.filter({ hasText: 'Whole home renovation' })
+  await expect(other).toContainText('New enquiry')
   await shot(page, 's1-enquiry-list')
 
   // A v2 enquiry with a contact request.
-  await rows.first().getByRole('link').click()
+  await sample.getByRole('link').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sample Customer')
   await expect(page.getByText('Q3-BBBB22')).toBeVisible()
   // The contact request is the Next step (it was a red alert at the top).
@@ -228,8 +229,8 @@ test('staff see what a customer added after booking: the marker, the answers and
   await installFakeStaff(page, world)
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
-  const row = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem').first()
-  await expect(row).toContainText('Added after booking')
+  const row = page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem').first()
+  await expect(row).toContainText('added after booking')
   await row.getByRole('link').click()
 
   const prepared = page.getByRole('region', { name: 'Help us prepare' })

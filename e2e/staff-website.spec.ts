@@ -73,8 +73,8 @@ test('the enquiry page says which website project it came from; v3 types read pl
   await installFakeStaff(page, world)
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
-  const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
-  await expect(rows.first()).toContainText('Workplace fit-out · Dublin 2')
+  const rows = page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem')
+  await expect(rows.first()).toContainText('Workplace fit-out')
 
   await rows.first().getByRole('link').click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sample Customer')

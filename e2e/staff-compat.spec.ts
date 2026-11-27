@@ -203,7 +203,7 @@ test('screens cope with values, kinds, fields and rows a newer release added', a
 
   // The list: an unknown outcome shown plainly as the stage, the unreadable row left out with a
   // note. (The redesign shows one stage per row; the outcome outranks the status.)
-  const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('link')
+  const rows = page.getByRole('region', { name: 'Enquiries' }).getByRole('link')
   await expect(rows).toHaveCount(2)
   const future = rows.filter({ hasText: 'deferred' })
   await expect(future).toHaveCount(1)
@@ -260,7 +260,7 @@ test('a newer build reloads the app at once when nobody is typing', async ({ pag
   )
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
-  await expect(page.getByRole('list', { name: 'Enquiries' }).getByRole('link')).toHaveCount(1)
+  await expect(page.getByRole('region', { name: 'Enquiries' }).getByRole('link')).toHaveCount(1)
   let loads = 0
   page.on('load', () => (loads += 1))
   newer = true

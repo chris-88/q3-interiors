@@ -1,103 +1,121 @@
 import { useState } from 'react'
 import { RefreshCw, Search } from 'lucide-react'
-import { Link, useLocation } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 import { useEnquiries, useFormVersions, type EnquirySummary } from '@/api/enquiries'
-import { Chips } from '@/components/staff/chips'
 import {
   enquiryName,
-  projectLine,
-  storeFilter,
+  projectType,
   storeSearch,
-  storedFilter,
   storedSearch,
 } from '@/components/staff/enquiry-text'
+import { DueChip } from '@/components/staff/due-chip'
 import { useLoadedAt } from '@/components/staff/use-loaded-at'
 import { ExceptionsBanner } from '@/components/staff/exceptions-banner'
-import { StageBadge } from '@/components/staff/stage-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  ENQUIRY_FILTERS,
-  NEEDS_ACTION,
-  filterCounts,
-  stageLine,
-  visibleEnquiries,
-  type EnquiryFilter,
-  type Staged,
-} from '@/lib/enquiry-stage'
-import { formatDateTime, shortAge } from '@/lib/format'
+import { GROUP_LABELS, groupStages, type StageView } from '@/lib/enquiry-stage'
 import type { FormDefinition } from '@/forms/types'
 
-function EnquiryRow({
-  enquiry,
-  form,
-  now,
-  marked,
-}: {
-  enquiry: Staged<EnquirySummary>
-  form: FormDefinition | undefined
-  now: number
-  marked: boolean
-}) {
-  const line = stageLine(enquiry, enquiry.stage, now)
+type Row = EnquirySummary & { view: StageView }
+
+const GROUP_HINTS = {
+  your_move: 'overdue first',
+  diary: 'next first',
+  waiting: 'soonest good-until first',
+} as const
+
+/** Two lines: the name and the due chip; what has happened and the job. Nothing that matters is cut. */
+function EnquiryRow({ enquiry, form }: { enquiry: Row; form: FormDefinition | undefined }) {
+  const { view } = enquiry
+  const job = projectType(enquiry, form)
   return (
     <li>
       <Link
         to={`/enquiries/${enquiry.id}`}
-        className="bg-background hover:bg-muted/50 flex min-h-12 gap-3 rounded-md border p-3 transition-colors"
+        className="hover:bg-soft flex min-h-16 flex-col justify-center gap-0.5 border-t px-1 py-2.5 transition-colors"
       >
-        <span
-          className={`mt-1.5 size-2 shrink-0 rounded-full ${marked ? 'bg-action' : 'bg-transparent'}`}
-          aria-hidden="true"
-        />
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-base font-medium">{enquiryName(enquiry)}</span>
-            <time
-              dateTime={enquiry.submitted_at}
-              title={formatDateTime(enquiry.submitted_at)}
-              className="text-muted-foreground shrink-0 text-xs tabular-nums"
-            >
-              <span className="sr-only">Received </span>
-              {shortAge(enquiry.submitted_at, now)}
-              <span className="sr-only"> ago</span>
-            </time>
+        <span className="flex items-start justify-between gap-2">
+          <span className="min-w-0 text-base leading-snug font-medium break-words">
+            {enquiryName(enquiry)}
           </span>
-          <span className="text-muted-foreground truncate text-sm">
-            {projectLine(enquiry, form)}
+          {view.chip && <DueChip view={view} />}
+        </span>
+        <span className="text-muted-foreground flex items-start justify-between gap-2 text-sm">
+          <span className="min-w-0 break-words">
+            {view.news}
+            {enquiry.added_after_booking_at && ' · added after booking'}
           </span>
-          <span className="flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-sm">
-              {marked && <span className="sr-only">Needs action: </span>}
-              {line}
-              {enquiry.added_after_booking_at && (
-                <span className="text-muted-foreground"> · Added after booking</span>
-              )}
-            </span>
-            <StageBadge stage={enquiry.stage} />
-          </span>
+          {job && <span className="shrink-0">{job}</span>}
         </span>
       </Link>
     </li>
   )
 }
 
+function Group({
+  id,
+  title,
+  hint,
+  rows,
+  forms,
+  empty,
+}: {
+  id: string
+  title: string
+  hint?: string
+  rows: Row[]
+  forms: Map<string, FormDefinition> | undefined
+  empty: string
+}) {
+  return (
+    <section aria-labelledby={id} className="flex flex-col">
+      <h2
+        id={id}
+        className="text-muted-foreground flex items-baseline justify-between gap-2 px-1 pb-1.5 text-sm font-medium"
+      >
+        <span>
+          {title} · {rows.length}
+        </span>
+        {hint && rows.length > 1 && <span className="text-xs font-normal">{hint}</span>}
+      </h2>
+      {rows.length === 0 ? (
+        <p className="text-muted-foreground border-t px-1 py-3 text-sm">{empty}</p>
+      ) : (
+        <ul aria-labelledby={id} className="border-b">
+          {rows.map((e) => (
+            <EnquiryRow
+              key={e.id}
+              enquiry={e}
+              form={forms?.get(`${e.form_id}@${e.form_version}`)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/**
+ * The customers list, grouped by whose move it is: Your move, In the diary, Waiting on them. Won,
+ * lost and closed are behind "Finished" (`?show=finished`).
+ */
 export function EnquiryListPage() {
   const location = useLocation()
+  const [params, setParams] = useSearchParams()
+  const finished = params.get('show') === 'finished'
   const deleted = (location.state as { deleted?: string } | null)?.deleted ?? null
   const enquiries = useEnquiries()
   const forms = useFormVersions()
-  const [filter, setFilter] = useState<EnquiryFilter>(storedFilter)
   const [query, setQuery] = useState(storedSearch)
-  // Ages and "upcoming" are judged against the moment the list was loaded.
+  // Due dates and "upcoming" are judged against the moment the list was loaded.
   const now = useLoadedAt(enquiries.dataUpdatedAt)
   const all = enquiries.data ?? []
-  const shown = visibleEnquiries(all, filter, query, now)
-  const counts = filterCounts(all, query, now)
-  const filterLabel = ENQUIRY_FILTERS.find(([k]) => k === filter)?.[1] ?? ''
+  const groups = groupStages(all, query, now)
+  const open = groups.your_move.length + groups.diary.length + groups.waiting.length
   const refreshing = enquiries.isFetching && !enquiries.isPending
+  const searching = query.trim() !== ''
 
   return (
     <div className="flex flex-col gap-3">
@@ -110,7 +128,7 @@ export function EnquiryListPage() {
         </Alert>
       )}
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-section text-ink font-medium">Enquiries</h1>
+        <h1 className="text-section text-ink font-medium">{finished ? 'Finished' : 'Enquiries'}</h1>
         <Button
           variant="ghost"
           size="icon"
@@ -145,22 +163,10 @@ export function EnquiryListPage() {
         />
       </div>
 
-      <Chips
-        name="enquiry-filter"
-        legend="Show"
-        options={ENQUIRY_FILTERS}
-        value={filter}
-        counts={enquiries.data ? counts : undefined}
-        onChange={(next) => {
-          setFilter(next)
-          storeFilter(next)
-        }}
-      />
-
       {enquiries.isPending ? (
         <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading enquiries">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-20 w-full" />
+            <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
       ) : enquiries.isError ? (
@@ -180,24 +186,60 @@ export function EnquiryListPage() {
         <p className="bg-background text-muted-foreground rounded-md border p-6 text-center">
           No enquiries yet. New ones appear here as soon as they are sent.
         </p>
-      ) : shown.length === 0 ? (
-        <p className="bg-background text-muted-foreground rounded-md border p-6 text-center">
-          {query.trim()
-            ? `Nothing under “${filterLabel}” matches “${query.trim()}”.`
-            : `Nothing under “${filterLabel}”.`}
-        </p>
+      ) : finished ? (
+        <section aria-label="Enquiries" className="flex flex-col gap-3">
+          <Group
+            id="group-finished"
+            title="Won, lost and closed"
+            rows={groups.finished}
+            forms={forms.data}
+            empty={
+              searching ? `Nothing finished matches “${query.trim()}”.` : 'Nothing finished yet.'
+            }
+          />
+          <Link
+            to="/"
+            onClick={() => setParams({})}
+            className="inline-flex min-h-12 items-center self-start px-1 underline underline-offset-4"
+          >
+            Back to open enquiries
+          </Link>
+        </section>
       ) : (
-        <ul aria-label="Enquiries" className="flex flex-col gap-2">
-          {shown.map((enquiry) => (
-            <EnquiryRow
-              key={enquiry.id}
-              enquiry={enquiry}
-              form={forms.data?.get(`${enquiry.form_id}@${enquiry.form_version}`)}
-              now={now}
-              marked={filter === 'open' && NEEDS_ACTION.has(enquiry.stage.key)}
-            />
-          ))}
-        </ul>
+        <>
+          <section aria-label="Enquiries" className="flex flex-col gap-4">
+            {searching && open === 0 && (
+              <p className="text-muted-foreground px-1 text-sm">
+                No open enquiry matches “{query.trim()}”.
+                {groups.finished.length > 0 &&
+                  ` ${groups.finished.length} finished ${groups.finished.length === 1 ? 'one does' : 'ones do'}.`}
+              </p>
+            )}
+            {(['your_move', 'diary', 'waiting'] as const).map((g) => (
+              <Group
+                key={g}
+                id={`group-${g}`}
+                title={GROUP_LABELS[g]}
+                hint={GROUP_HINTS[g]}
+                rows={groups[g]}
+                forms={forms.data}
+                empty={
+                  g === 'your_move'
+                    ? 'Nothing for you to do.'
+                    : g === 'diary'
+                      ? 'Nothing booked.'
+                      : 'Nobody to wait on.'
+                }
+              />
+            ))}
+          </section>
+          <Link
+            to="/?show=finished"
+            className="inline-flex min-h-12 items-center self-start px-1 underline underline-offset-4"
+          >
+            Finished ({groups.finished.length})
+          </Link>
+        </>
       )}
     </div>
   )

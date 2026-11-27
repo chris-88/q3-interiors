@@ -1,4 +1,4 @@
-// The Appointments agenda: Upcoming and Past, grouped by Irish day, the "To wrap up" group, and
+// The Appointments agenda: Upcoming and Past, grouped by Irish day, and
 // the badge an appointment gets only when something is not normal. Pure, tested without a browser.
 import { formatShortDay, irishDayKey } from './format'
 
@@ -38,26 +38,6 @@ export function splitAgenda<T extends AgendaBooking>(bookings: T[], now: number)
     .filter((b) => !upcoming.includes(b))
     .sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))
   return { upcoming, past }
-}
-
-/**
- * "To wrap up": appointments that are over and still need Attended / No-show recorded. Read from
- * the same stage model as the Enquiries list, so the two never disagree: only an enquiry whose
- * stage is "Estimate to write" (`awaiting_quote`, Needs action), and only its latest confirmed
- * appointment that is over, when that has no attendance yet. One per enquiry, latest first.
- * `stageOf` gives an enquiry's stage key, or null while the enquiries are not loaded.
- */
-export function toWrapUp<T extends AgendaBooking>(
-  bookings: T[],
-  stageOf: (enquiryId: string) => string | null,
-  now: number,
-): T[] {
-  const seen = new Set<string>()
-  return bookings
-    .filter((b) => b.state === 'confirmed' && Date.parse(b.ends_at) < now)
-    .sort((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at))
-    .filter((b) => (seen.has(b.enquiry_id) ? false : (seen.add(b.enquiry_id), true)))
-    .filter((b) => b.attendance === null && stageOf(b.enquiry_id) === 'awaiting_quote')
 }
 
 /** "Today", "Tomorrow", "Yesterday", else "Fri 27 Nov" (Irish days). */

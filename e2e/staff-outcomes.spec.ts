@@ -80,14 +80,14 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await page.goto('/#/')
   await signIn(page, 'staff@example.com', 'another long password')
 
-  // Redesign: Open (the default) hides lost ones; awaiting quote is under Needs action.
-  const list = page.getByRole('list', { name: 'Enquiries' })
+  // Grouped by whose move it is: lost ones are under Finished; the visit just over is Q3's move.
+  const list = page.getByRole('region', { name: 'Enquiries' })
   await expect(list.getByRole('listitem')).toHaveCount(2)
-  await page.getByRole('radio', { name: /^Needs action/ }).check({ force: true })
-  await expect(list.getByRole('listitem')).toHaveCount(1)
-  await expect(list).toContainText('Estimate to write')
+  const yours = page.getByRole('region', { name: /^Your move/ })
+  await expect(yours.getByRole('listitem')).toHaveCount(1)
+  await expect(yours).toContainText('How did it go?')
   await shot(page, 'list-filter-awaiting-390')
-  await list.getByRole('link').first().click()
+  await yours.getByRole('link').first().click()
 
   // Record the quote from the Next step card (the Outcome section moved there). Once won, the
   // same card is titled Result (review F7).
@@ -148,11 +148,10 @@ test('staff record a quote, then the win, then correct it; the list filters by o
 
   // The list by outcome.
   await page.goto('/#/')
-  await page.getByRole('radio', { name: /^Won/ }).check({ force: true })
-  await expect(list.getByRole('listitem')).toHaveCount(1)
-  await expect(list).toContainText('Won €18,000')
-  await page.getByRole('radio', { name: /^Lost/ }).check({ force: true })
-  await expect(list.getByRole('listitem')).toHaveCount(2)
+  await page.getByRole('link', { name: /^Finished/ }).click()
+  await expect(list.getByRole('listitem')).toHaveCount(3)
+  await expect(list.getByRole('listitem').filter({ hasText: 'Won €18,000' })).toHaveCount(1)
+  await expect(list.getByRole('listitem').filter({ hasText: /Lost/ })).toHaveCount(2)
 
   expect(
     w.rpcCalls
@@ -162,8 +161,7 @@ test('staff record a quote, then the win, then correct it; the list filters by o
 
   // Desktop width.
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.getByRole('radio', { name: /^Won/ }).check({ force: true })
-  await shot(page, 'list-filter-won-desktop')
+  await shot(page, 'list-finished-desktop')
   await page.goto('/#/enquiries/e-visit')
   await expect(page.getByRole('region', { name: 'Result' })).toContainText('Won €18,000.00')
   await shot(page, 'enquiry-won-desktop')

@@ -36,7 +36,7 @@ expect_code() {
 
 for table in enquiries form_versions staff enquiry_revisions enquiry_attribution enquiry_events \
   bookings appointment_types staff_availability calendar_connections integration_jobs communications \
-  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions estimates; do
+  booking_settings ads ad_versions ad_variants ad_requests ad_events enquiry_photos landing_sessions estimates estimate_work_items; do
   expect_code "anon cannot select $table" 42501 "$(curl -s "$rest/$table?select=*" "${headers[@]}")"
 done
 expect_code "anon cannot update enquiries" 42501 \
@@ -75,6 +75,10 @@ if [[ "$visit_code" == 204 || "$visit_code" == 200 ]]; then echo "ok    record_v
 expect_code "anon cannot send an estimate" 42501 \
   "$(curl -s -X POST "$rest/rpc/send_estimate" "${headers[@]}" \
     -d '{"p_booking_id":"00000000-0000-4000-8000-000000000000","p_price":1000,"p_percent":10,"p_work":"test"}')"
+expect_code "anon cannot add an estimate work item" 42501 \
+  "$(curl -s -X POST "$rest/rpc/add_estimate_work_item" "${headers[@]}" -d '{"p_project_type":"kitchen","p_label":"test"}')"
+expect_code "anon cannot remove an estimate work item" 42501 \
+  "$(curl -s -X POST "$rest/rpc/archive_estimate_work_item" "${headers[@]}" -d '{"p_id":"00000000-0000-4000-8000-000000000000"}')"
 expect_code "anon cannot resolve tokens directly" 42501 \
   "$(curl -s -X POST "$rest/rpc/resolve_enquiry_token" "${headers[@]}" -d '{"p_token":"x"}')"
 

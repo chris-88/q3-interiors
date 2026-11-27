@@ -131,7 +131,7 @@ select pg_temp.expect((select detail = '€9,500 to €10,500 (price €10,000, 
   from public.enquiry_events where enquiry_id = pg_temp.id('a') and kind = 'estimate_sent'),
   'history line');
 -- Staff read it; an updated estimate is a second row (the newest is the current one).
-select pg_temp.expect((select count(*) = 1 from public.estimates), 'staff read estimates');
+select pg_temp.expect((select count(*) = 1 from public.estimates where enquiry_id = pg_temp.id('a')), 'staff read estimates');
 reset role;
 -- A reworded caveats block is what the next estimate carries.
 insert into public.message_blocks (key, body) values ('estimate_caveats', 'Reworded caveats.')

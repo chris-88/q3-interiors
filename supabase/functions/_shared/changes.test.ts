@@ -320,7 +320,7 @@ describe('messages', () => {
     expect(m.html).not.toContain('Cancel appointment')
   })
 
-  it('a call says plainly that a price needs a site visit, and promises no estimate', async () => {
+  it('a call email says most jobs need a site visit, and says nothing else about price', async () => {
     const s = setup()
     await booked(s)
     const ctx = (await s.db.bookingContext(s.db.bookings[0]!.id))!
@@ -328,13 +328,15 @@ describe('messages', () => {
     for (const template of ['booking_confirmation', 'booking_reminder'] as const) {
       const m = renderMessage(template, { ctx, manageUrl: null, businessPhone: null })
       expect(m.subject).toMatch(/your call on /)
-      expect(m.text).not.toMatch(/estimate|price range|quote/i)
+      // Only the call note may speak of a price; take it out and nothing else may.
+      const rest = m.text.replace('Most jobs need a site visit before we can price them.', '')
+      expect(rest).not.toMatch(/estimate|price|quote/i)
     }
     const confirmation = renderMessage('booking_confirmation', {
       ctx,
       manageUrl: null,
       businessPhone: null,
     })
-    expect(confirmation.text).toContain('If you want a price, the next step is a site visit.')
+    expect(confirmation.text).toContain('Most jobs need a site visit before we can price them.')
   })
 })

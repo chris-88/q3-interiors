@@ -49,8 +49,8 @@ export function ConfirmationPage() {
       <ul className="text-muted-foreground mt-4 flex list-disc flex-col gap-3 pl-5">
         <li>We will read your enquiry and get in touch by phone or email to talk it through.</li>
         <li>
-          If you want a price, we will arrange a site visit to see the space and take measurements,
-          then send you an estimate.
+          If the job needs a site visit before we can price it, we will arrange one to see the space
+          and take measurements.
         </li>
         <li>{visitNote}</li>
       </ul>

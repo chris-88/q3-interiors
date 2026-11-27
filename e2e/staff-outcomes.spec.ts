@@ -85,13 +85,17 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await expect(list.getByRole('listitem')).toHaveCount(2)
   await page.getByRole('radio', { name: /^Needs action/ }).check({ force: true })
   await expect(list.getByRole('listitem')).toHaveCount(1)
-  await expect(list).toContainText('Awaiting quote')
+  await expect(list).toContainText('Estimate to write')
   await shot(page, 'list-filter-awaiting-390')
   await list.getByRole('link').first().click()
 
-  // Record the quote from the Next step card (the Outcome section moved there).
-  const outcome = page.getByRole('region', { name: 'Next step' })
-  await expect(outcome).toContainText('No quote recorded yet')
+  // Record the quote from the Next step card (the Outcome section moved there). Once won, the
+  // same card is titled Result (review F7).
+  const outcome = page.getByRole('region', { name: /^(Next step|Result)$/ })
+  // After the visit the next step is the estimate; a quote is one tap away (review F3).
+  await expect(outcome).toContainText('No estimate sent yet')
+  await expect(outcome.getByRole('button', { name: 'Mark won' })).toHaveCount(0)
+  await outcome.getByRole('button', { name: 'Record a quote or result' }).click()
   await outcome.getByRole('button', { name: 'Record quote' }).click()
   await outcome.getByLabel('Quote amount (€, incl. VAT)').fill('lots')
   await outcome.getByRole('button', { name: 'Save quote' }).click()
@@ -130,7 +134,7 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   // Mark another lost: a reason is required, "other" needs a note.
   await page.goto('/#/enquiries/e-new')
   // Contacted, nothing booked: the outcome is one tap away on the Next step card.
-  const other = page.getByRole('region', { name: 'Next step' })
+  const other = page.getByRole('region', { name: /^(Next step|Result)$/ })
   await other.getByRole('button', { name: 'Record a quote or result' }).click()
   await other.getByRole('button', { name: 'Mark lost' }).click()
   await other.getByRole('button', { name: 'Save as lost' }).click()
@@ -161,7 +165,7 @@ test('staff record a quote, then the win, then correct it; the list filters by o
   await page.getByRole('radio', { name: /^Won/ }).check({ force: true })
   await shot(page, 'list-filter-won-desktop')
   await page.goto('/#/enquiries/e-visit')
-  await expect(page.getByRole('region', { name: 'Next step' })).toContainText('Won €18,000.00')
+  await expect(page.getByRole('region', { name: 'Result' })).toContainText('Won €18,000.00')
   await shot(page, 'enquiry-won-desktop')
 })
 

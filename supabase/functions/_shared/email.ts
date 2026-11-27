@@ -2,6 +2,7 @@ import { STAFF_URL } from './site.ts'
 import { backoffSeconds } from './calendar-job.ts'
 import {
   renderAccountEmail,
+  renderEstimate,
   renderMessage,
   renderStaffAlert,
   type RenderedMessage,
@@ -100,6 +101,11 @@ export type CommunicationDeps = {
   }
 }
 
+/** The customer's "Get my quote" page for one estimate (token in the path, as booking links). */
+export function quoteUrl(appUrl: string, token: string, estimateId: string): string {
+  return `${appUrl}/#/estimate/${token}/${estimateId}`
+}
+
 /** The set-password page; GoTrue's token hash is verified there with verifyOtp. */
 export function setPasswordUrl(staffUrl: string, tokenHash: string, template: string): string {
   const params = new URLSearchParams({ token_hash: tokenHash, type: 'recovery' })
@@ -176,17 +182,55 @@ export async function processCommunication(
       }),
     )
   }
-  if (comm.template === 'staff_new_enquiry' || comm.template === 'staff_callback_request') {
+  if (comm.template === 'estimate') {
+    const estimate = comm.estimate_id ? await db.estimateById(comm.estimate_id) : null
+    const enquiry = estimate ? await db.getEnquiry(estimate.enquiry_id) : null
+    if (!estimate || !enquiry) {
+      await db.communicationSkipped(comm.id, 'Estimate no longer exists')
+      return 'skipped'
+    }
+    const settings = await db.getSettings()
+    // A fresh 30-day token, minted at send time and never logged, like the booking links.
+    const token = await db.mintAccessToken(enquiry.id)
+    const name = enquiry.answers.name
+    return send(
+      comm,
+      deps,
+      renderEstimate({
+        customerName: typeof name === 'string' ? name : '',
+        workLookedAt: estimate.work_looked_at,
+        low: estimate.low_eur,
+        high: estimate.high_eur,
+        caveats: estimate.caveats,
+        quoteUrl: quoteUrl(deps.appUrl, token, estimate.id),
+        businessPhone: settings.business_phone,
+        privacyUrl: `${deps.appUrl}/#/privacy`,
+        siteUrl: deps.appUrl,
+      }),
+    )
+  }
+  if (
+    comm.template === 'staff_new_enquiry' ||
+    comm.template === 'staff_callback_request' ||
+    comm.template === 'staff_quote_request'
+  ) {
     const summary = comm.enquiry_id ? await db.enquirySummary(comm.enquiry_id) : null
     if (!summary) {
       await db.communicationSkipped(comm.id, 'Enquiry no longer exists')
       return 'skipped'
     }
+    const estimate =
+      comm.template === 'staff_quote_request' && comm.estimate_id
+        ? await db.estimateById(comm.estimate_id)
+        : null
     const message = renderStaffAlert(comm.template, {
       summary,
       staffUrl: `${deps.staffUrl ?? STAFF_URL}/#/enquiries/${summary.id}`,
       siteUrl: deps.appUrl,
       wording: await db.getWording(),
+      estimate: estimate
+        ? { low: estimate.low_eur, high: estimate.high_eur, sentAt: estimate.sent_at }
+        : null,
     })
     return send(comm, deps, message)
   }

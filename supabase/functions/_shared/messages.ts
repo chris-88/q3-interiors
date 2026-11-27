@@ -5,6 +5,7 @@
 // and may only use the tokens listed for them. Vocabulary follows the brand guide: an enquiry; a
 // call or a site visit; an estimate is a price range after a call or visit; a written quote is the
 // price for an agreed scope (never "full quote", "estimated range" or "quotation").
+import { formatRange } from './estimate.ts'
 import { formatLocal } from './time.ts'
 import type {
   BookingContext,
@@ -107,6 +108,14 @@ export const WORDING = {
     max: 400,
     tokens: [],
   },
+  estimate_caveats: {
+    label: 'Estimate: what it is and is not',
+    where: 'Estimate email, under the price range (saved with each estimate as sent)',
+    default:
+      'This is an estimate, not a quote. It’s a price range for the work we looked at together, with VAT included. It could change if the scope changes or if we find something we couldn’t see on the visit, which is common in older homes. It’s good for 10 days. If you want to go ahead, tell us and we’ll send your quote: one price, with what’s included and what isn’t.',
+    max: 600,
+    tokens: [],
+  },
   sign_off: {
     label: 'Sign-off',
     where: 'The last line of every customer email',
@@ -207,6 +216,10 @@ type Draft = {
   subject: string
   /** Paragraphs; each is one or more lines. */
   paragraphs: string[][]
+  /** One line set large after the paragraphs (the estimate's range). */
+  big?: string
+  /** Paragraphs between the large line and the button. */
+  beforeAction?: string[][]
   action?: { label: string; url: string }
   /** Further links written under the button (e.g. "Cancel appointment"). */
   links?: { label: string; url: string }[]
@@ -228,6 +241,8 @@ function escapeHtml(value: string): string {
 function toText(d: Draft, footer: string[]): string {
   const blocks = [
     ...d.paragraphs.map((p) => p.join('\n')),
+    ...(d.big ? [d.big] : []),
+    ...(d.beforeAction ?? []).map((p) => p.join('\n')),
     ...(d.action ? [`${d.action.label}: ${d.action.url}`] : []),
     ...(d.links ?? []).map((l) => `${l.label}: ${l.url}`),
     ...(d.after ?? []).map((p) => p.join('\n')),
@@ -245,6 +260,9 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
   const badge = opts.siteUrl
     ? `<img src="${escapeHtml(opts.siteUrl)}/brand/q3-email-logo.png" width="160" height="61" alt="Q3 Interiors" style="display:block;border:0;margin:0 0 24px">`
     : ''
+  const big = d.big
+    ? `<p style="margin:8px 0 24px;font:700 28px/1.25 Roboto,Arial,sans-serif;color:${BRAND.ink}">${escapeHtml(d.big)}</p>`
+    : ''
   const button = d.action
     ? `<p style="margin:8px 0 24px"><a href="${escapeHtml(d.action.url)}" style="display:inline-block;background:${BRAND.action};color:#ffffff;font:500 16px/1.4 Roboto,Arial,sans-serif;text-decoration:none;padding:12px 24px;border-radius:4px">${escapeHtml(d.action.label)}</a></p>`
     : ''
@@ -261,7 +279,7 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
 <body style="margin:0;padding:0;background:#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff"><tr><td style="padding:24px 16px">
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto"><tr><td>
-${badge}${d.paragraphs.map(p).join('\n')}${button}${links}${(d.after ?? []).map(p).join('\n')}${privacy}
+${badge}${d.paragraphs.map(p).join('\n')}${big}${(d.beforeAction ?? []).map(p).join('\n')}${button}${links}${(d.after ?? []).map(p).join('\n')}${privacy}
 </td></tr></table></td></tr></table></body></html>`
 }
 
@@ -417,6 +435,52 @@ export function renderMessage(template: CustomerTemplate, input: MessageInput): 
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The estimate (after a site visit)
+// ---------------------------------------------------------------------------------------------
+
+export const ESTIMATE_SUBJECT = 'Your estimate from Q3 Interiors'
+export const ESTIMATE_SIGN_OFF = 'Chris Quinn, Q3 Interiors'
+
+export type EstimateEmailInput = {
+  /** The customer's full name as given; the greeting uses the first name. */
+  customerName: string
+  workLookedAt: string
+  low: number
+  high: number
+  /** The caveats paragraph as saved with the estimate. */
+  caveats: string
+  /** The "Get my quote" page (token link); null leaves the button out. */
+  quoteUrl: string | null
+  businessPhone: string | null
+  privacyUrl?: string | null
+  siteUrl?: string | null
+}
+
+/**
+ * The estimate email. Order: greeting; thanks for the visit; the work we looked at; the range,
+ * large; the caveats; "Get my quote"; the sign-off with the business phone. Words per the tone
+ * of voice: an estimate is a range, a quote is one price; never "formal quote" or "quotation".
+ */
+export function renderEstimate(input: EstimateEmailInput): RenderedMessage {
+  const first = firstName(input.customerName)
+  return compose(
+    {
+      subject: ESTIMATE_SUBJECT,
+      paragraphs: [
+        [first ? `Hello ${first},` : 'Hello,'],
+        ['Thanks for having us out to look at the work.'],
+        ['The work we looked at:', input.workLookedAt.trim()],
+      ],
+      big: `${formatRange(input.low, input.high)}, VAT included`,
+      beforeAction: [[input.caveats.trim()]],
+      action: input.quoteUrl ? { label: 'Get my quote', url: input.quoteUrl } : undefined,
+      after: [input.businessPhone ? [ESTIMATE_SIGN_OFF, input.businessPhone] : [ESTIMATE_SIGN_OFF]],
+    },
+    input,
+  )
+}
+
 export type StaffAlertInput = {
   summary: EnquirySummary
   /** Staff detail page for the enquiry. */
@@ -442,8 +506,8 @@ function choiceLabel(summary: EnquirySummary, fieldId: string): string | null {
  * name, email, phone or address.
  */
 export function renderStaffAlert(
-  template: 'staff_new_enquiry' | 'staff_callback_request',
-  input: StaffAlertInput,
+  template: 'staff_new_enquiry' | 'staff_callback_request' | 'staff_quote_request',
+  input: StaffAlertInput & { estimate?: { low: number; high: number; sentAt: string } | null },
 ): RenderedMessage {
   const { summary } = input
   const other =
@@ -464,6 +528,29 @@ export function renderStaffAlert(
     ...(rooms ? [`Rooms: ${rooms}`] : []),
   ]
   const action = { label: 'Open the enquiry', url: input.staffUrl }
+  if (template === 'staff_quote_request') {
+    const sent = input.estimate ? formatLocal(Date.parse(input.estimate.sentAt)) : null
+    return compose(
+      {
+        subject: `Quote requested ${summary.reference}: ${project}`,
+        paragraphs: [
+          ['A customer has asked for their quote.'],
+          [
+            `Reference: ${summary.reference}`,
+            `Project: ${project}`,
+            `Area: ${area}`,
+            ...(input.estimate && sent
+              ? [
+                  `Estimate: ${formatRange(input.estimate.low, input.estimate.high)}, sent ${sent.date}`,
+                ]
+              : []),
+          ],
+        ],
+        action,
+      },
+      { siteUrl: input.siteUrl },
+    )
+  }
   if (template === 'staff_new_enquiry') {
     return compose(
       {

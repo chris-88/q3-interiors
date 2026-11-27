@@ -86,6 +86,10 @@ const requestSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('cancel'), token, reason: z.string().max(300).optional() }),
   z.object({ action: z.literal('move_options'), token }),
   z.object({ action: z.literal('reschedule'), token, start: z.iso.datetime() }),
+  // The estimate email's "Get my quote": the page reads the estimate, then a button posts the yes
+  // (a mail scanner opening the link records nothing).
+  z.object({ action: z.literal('estimate'), token, estimateId: z.uuid() }),
+  z.object({ action: z.literal('request_quote'), token, estimateId: z.uuid() }),
 ])
 
 export type PublicRequest = z.infer<typeof requestSchema>
@@ -358,6 +362,26 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
         }
       }
       return ok({ status: result.status === 'removed' ? 'removed' : 'not_found' })
+    }
+
+    case 'estimate': {
+      const estimate = await db.estimateById(req.estimateId)
+      if (!estimate || estimate.enquiry_id !== enquiryId)
+        return { status: 404, body: { error: 'not_found' } }
+      return ok({
+        low: estimate.low_eur,
+        high: estimate.high_eur,
+        workLookedAt: estimate.work_looked_at,
+        sentAt: estimate.sent_at,
+        validUntil: estimate.valid_until,
+        quoteRequested: estimate.quote_requested_at !== null,
+      })
+    }
+
+    case 'request_quote': {
+      const result = await db.requestQuote(enquiryId, req.estimateId)
+      if (result === 'not_found') return { status: 404, body: { error: 'not_found' } }
+      return ok({ status: 'requested' })
     }
 
     case 'request_contact': {

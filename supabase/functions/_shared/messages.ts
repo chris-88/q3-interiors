@@ -6,6 +6,7 @@
 // call or a site visit; an estimate is a price range after a call or visit; a written quote is the
 // price for an agreed scope (never "full quote", "estimated range" or "quotation").
 import { estimateWords, formatRange } from './estimate.ts'
+import { QUOTE_PAGE_WORDING } from './quote-page.ts'
 import { formatLocal } from './time.ts'
 import type {
   BookingContext,
@@ -116,6 +117,11 @@ export const WORDING = {
     max: 600,
     tokens: [],
   },
+  quote_page_ask: { ...QUOTE_PAGE_WORDING.quote_page_ask, tokens: [] },
+  quote_page_what: { ...QUOTE_PAGE_WORDING.quote_page_what, tokens: [] },
+  quote_page_steps: { ...QUOTE_PAGE_WORDING.quote_page_steps, tokens: [] },
+  quote_page_commit: { ...QUOTE_PAGE_WORDING.quote_page_commit, tokens: [] },
+  quote_timing: { ...QUOTE_PAGE_WORDING.quote_timing, tokens: [] },
   estimate_call_caveats: {
     label: 'Estimate after a call',
     where:

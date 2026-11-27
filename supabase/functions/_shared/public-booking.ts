@@ -8,6 +8,7 @@ import { GoogleError, type CalendarApi } from './google.ts'
 import { availabilityWindow, generateSlots, type Slot, type SlotType } from './slots.ts'
 import { BUSINESS_TZ } from './time.ts'
 import { PHOTO_MAX_BYTES, THUMB_MAX_BYTES, decodeBase64, inspectJpeg } from './jpeg.ts'
+import { quotePageText } from './quote-page.ts'
 import type { PhotoStore } from './storage.ts'
 import type { AppointmentType, Db } from './types.ts'
 
@@ -377,6 +378,9 @@ export async function handlePublic(raw: unknown, deps: PublicDeps): Promise<Publ
         sentAt: estimate.sent_at,
         validUntil: estimate.valid_until,
         quoteRequested: estimate.quote_requested_at !== null,
+        // The page's staff-editable text (defaults filled in) and the number to ring.
+        text: quotePageText(await db.getWording()),
+        businessPhone: (await db.getSettings()).business_phone,
       })
     }
 

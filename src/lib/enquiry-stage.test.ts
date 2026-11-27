@@ -2,16 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   directionsHref,
   enquiryStage,
-  filterCounts,
   mailHref,
   matchesSearch,
   matchesStage,
   nextStep,
-  readEnquiryFilter,
   siteAddress,
   stageLine,
   telHref,
-  visibleEnquiries,
   type StageBooking,
 } from './enquiry-stage'
 
@@ -21,6 +18,7 @@ const past: StageBooking = {
   confirmed_at: '2026-11-18T10:00:00Z',
   state: 'confirmed',
   mode: 'on_site',
+  attendance: 'attended',
 }
 const future: StageBooking = {
   starts_at: '2026-11-27T10:30:00Z',
@@ -67,6 +65,8 @@ describe('enquiryStage', () => {
   })
   it('a confirmed appointment that has happened, with no outcome, is Estimate to write', () => {
     expect(key({ bookings: [past] })).toBe('awaiting_quote')
+    // Nothing recorded about it yet: the next thing is to say how it went.
+    expect(key({ bookings: [{ ...past, attendance: null }] })).toBe('to_record')
     expect(key({ bookings: [{ ...past, state: 'cancelled' }] })).toBe('new')
     expect(key({ bookings: [{ ...past, confirmed_at: null, state: 'failed' }] })).toBe('new')
   })
@@ -129,12 +129,6 @@ describe('chips', () => {
     for (const k of ['contacted', 'booked', 'quoted', 'in_review'] as const)
       expect(matchesStage(k, 'action')).toBe(false)
   })
-  it('reads a remembered chip, including the one older builds stored', () => {
-    expect(readEnquiryFilter(null)).toBe('open')
-    expect(readEnquiryFilter('won')).toBe('won')
-    expect(readEnquiryFilter('awaiting_quote')).toBe('action')
-    expect(readEnquiryFilter('nonsense')).toBe('open')
-  })
 })
 
 describe('search', () => {
@@ -157,39 +151,6 @@ describe('search', () => {
     expect(matchesSearch(e, '+353 87 123')).toBe(true)
     expect(matchesSearch(e, 'cork')).toBe(false)
     expect(matchesSearch(e, '999')).toBe(false)
-  })
-})
-
-describe('visibleEnquiries and filterCounts', () => {
-  const list = [
-    enquiry({ id: 'booked', bookings: [future] }),
-    enquiry({ id: 'new' }),
-    enquiry({ id: 'won', outcome: 'won' }),
-    enquiry({ id: 'quoted', outcome: 'quoted' }),
-    enquiry({ id: 'awaiting', bookings: [past], answers: { name: 'Other Person' } }),
-    enquiry({ id: 'closed', status: 'unsuitable' }),
-  ]
-  it('Open puts the ones needing action first, otherwise keeps the loaded order', () => {
-    expect(visibleEnquiries(list, 'open', '', now).map((e) => e.id)).toEqual([
-      'new',
-      'awaiting',
-      'booked',
-      'quoted',
-    ])
-    expect(visibleEnquiries(list, 'all', '', now).map((e) => e.id)).toEqual(list.map((e) => e.id))
-    expect(visibleEnquiries(list, 'open', 'other', now).map((e) => e.id)).toEqual(['awaiting'])
-  })
-  it('counts each chip for the current search', () => {
-    expect(filterCounts(list, '', now)).toEqual({
-      open: 4,
-      action: 2,
-      booked: 1,
-      quoted: 1,
-      won: 1,
-      lost: 0,
-      all: 6,
-    })
-    expect(filterCounts(list, 'other person', now).all).toBe(1)
   })
 })
 

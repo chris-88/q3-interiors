@@ -181,7 +181,7 @@ async function open(page: Page, path = '/#/') {
   return world
 }
 
-const rows = (page: Page) => page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
+const rows = (page: Page) => page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem')
 const row = (page: Page, name: string) => rows(page).filter({ hasText: name })
 const nextStep = (page: Page) => page.getByRole('region', { name: 'Next step' })
 const h1 = (page: Page, name: string) =>
@@ -190,9 +190,10 @@ const h1 = (page: Page, name: string) =>
 test('screens at 390px for the review (before and after)', async ({ page }) => {
   await open(page)
   await expect(rows(page).first()).toBeVisible()
-  await page.getByRole('radio', { name: /^All/ }).check({ force: true })
+  await shot(page, 'list-open')
+  await page.getByRole('link', { name: /^Finished/ }).click()
   await expect(row(page, 'Fiona Test')).toBeVisible()
-  await shot(page, 'list-all')
+  await shot(page, 'list-finished')
   for (const [id, name, file] of [
     ['e-mix001', 'Orla Test', 'f1-mixed-detail'],
     ['e-visit1', 'Brian Example', 'f3-visit-happened'],
@@ -221,11 +222,13 @@ test('screens at 390px for the review (before and after)', async ({ page }) => {
 test('F1: a visit still to come is never hidden by an estimate', async ({ page }) => {
   await open(page)
   const orla = row(page, 'Orla Test')
-  await expect(orla).toContainText('Site visit Sat 28 Nov, 10:00')
+  await expect(orla).toContainText('Visit Sat 10:00')
   await expect(orla).toContainText('Estimate sent 20 Nov')
-  await expect(orla).toContainText('Booked')
-  await page.getByRole('radio', { name: /^Booked/ }).check({ force: true })
-  await expect(rows(page)).toHaveCount(1)
+  // In the diary, not waiting on the estimate.
+  await expect(
+    page.getByRole('region', { name: /^In the diary/ }).getByRole('listitem'),
+  ).toHaveCount(1)
+  await expect(page.getByRole('region', { name: /^In the diary/ })).toContainText('Orla Test')
   await orla.getByRole('link').click()
   await h1(page, 'Orla Test')
   await expect(nextStep(page)).toContainText('Sat 28 Nov, 10:00')
@@ -235,17 +238,17 @@ test('F1: a visit still to come is never hidden by an estimate', async ({ page }
   await expect(page.getByRole('region', { name: 'Estimate' })).toContainText('€9,500 to €10,500')
 })
 
-test('F2: To wrap up lists only passed appointments still needing attendance', async ({ page }) => {
+test('F2: one list of work: an appointment over and unrecorded is under Your move', async ({
+  page,
+}) => {
   await open(page, '/#/appointments')
-  const wrap = page.getByRole('region', { name: 'To wrap up' })
-  await expect(wrap.getByRole('link')).toHaveCount(1)
-  await expect(wrap).toContainText('Brian Example')
-  await expect(wrap).not.toContainText('Declan Sample')
-  await expect(wrap).not.toContainText('Helen Example')
-  // The same person is under Needs action on the Enquiries list.
+  await expect(page.getByRole('region', { name: 'To wrap up' })).toHaveCount(0)
   await page.getByRole('link', { name: 'Enquiries' }).click()
-  await page.getByRole('radio', { name: /^Needs action/ }).check({ force: true })
-  await expect(row(page, 'Brian Example')).toBeVisible()
+  const yours = page.getByRole('region', { name: /^Your move/ })
+  await expect(yours.getByRole('listitem').filter({ hasText: 'Brian Example' })).toContainText(
+    'How did it go?',
+  )
+  await expect(yours.getByRole('listitem').filter({ hasText: 'How did it go?' })).toHaveCount(1)
 })
 
 test('F3, F7: after a visit the next step is the estimate, with one filled button', async ({
@@ -253,7 +256,7 @@ test('F3, F7: after a visit the next step is the estimate, with one filled butto
 }) => {
   await open(page, '/#/enquiries/e-visit1')
   await h1(page, 'Brian Example')
-  await expect(page.getByText('Estimate to write').first()).toBeVisible()
+  await expect(page.getByText('How did it go?').first()).toBeVisible()
   const next = nextStep(page)
   await expect(next).toContainText('No estimate sent yet.')
   await expect(next).not.toContainText('No quote recorded yet')
@@ -280,9 +283,11 @@ test('F3, F7: after a visit the next step is the estimate, with one filled butto
 
 test('F4: list lines lead with the news', async ({ page }) => {
   await open(page)
-  await expect(row(page, 'Declan Sample')).toContainText('Quote due Mon 30 Nov · €9,500 to €10,500')
-  await expect(row(page, 'Ciara Test')).toContainText('No answer in 10 days · €9,500 to €10,500')
-  await expect(row(page, 'Brian Example')).toContainText('Estimate to write')
+  await expect(row(page, 'Declan Sample')).toContainText('Quote due Mon 30 Nov')
+  await expect(row(page, 'Declan Sample')).toContainText('Asked for a quote 25 Nov')
+  await expect(row(page, 'Ciara Test')).toContainText('No answer')
+  await expect(row(page, 'Ciara Test')).toContainText('Estimate €9,500 to €10,500')
+  await expect(row(page, 'Brian Example')).toContainText('How did it go?')
 })
 
 test('F5: a won enquiry shows a Result card, not Next step', async ({ page }) => {

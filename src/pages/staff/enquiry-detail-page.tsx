@@ -30,18 +30,14 @@ import { BookingActions } from '@/components/staff/booking-actions'
 import { QuoteSection, QuoteSummary, WRITE_QUOTE_EVENT } from '@/components/staff/quote-section'
 import { currentQuote } from '@/api/quotes'
 import { ChaseForm } from '@/components/staff/chase-form'
+import { DueChip } from '@/components/staff/due-chip'
 import { DeleteEnquiry } from '@/components/staff/delete-enquiry'
 import {
   EstimateSection,
   EstimateSummary,
   estimateVisits,
 } from '@/components/staff/estimate-section'
-import {
-  enquiryName,
-  projectLine,
-  storedFilter,
-  storedSearch,
-} from '@/components/staff/enquiry-text'
+import { enquiryName, projectLine, storedSearch } from '@/components/staff/enquiry-text'
 import { eventLine } from '@/components/staff/event-text'
 import { ListWalk } from '@/components/staff/list-walk'
 import { OutcomeForm } from '@/components/staff/outcome-form'
@@ -67,7 +63,8 @@ import {
   siteAddress,
   telHref,
   upcomingBooking,
-  visibleEnquiries,
+  groupStages,
+  stageOf,
 } from '@/lib/enquiry-stage'
 import { formatDateTime, formatShortWhen } from '@/lib/format'
 import { OUTCOME_STAGES } from '@/lib/outcome'
@@ -139,7 +136,10 @@ function EnquiryWalk({ id }: { id: string }) {
   const list = useEnquiries()
   const now = useLoadedAt(list.dataUpdatedAt)
   if (!list.data) return null
-  const ids = visibleEnquiries(list.data, storedFilter(), storedSearch(), now).map((e) => e.id)
+  // The list as shown: Your move, In the diary, Waiting on them (or Finished, for a finished one).
+  const g = groupStages(list.data, storedSearch(), now)
+  const open = [...g.your_move, ...g.diary, ...g.waiting].map((e) => e.id)
+  const ids = open.includes(id) ? open : g.finished.map((e) => e.id)
   const place = neighbours(ids, id)
   return place ? (
     <ListWalk label="Enquiries in this list" place={place} to={(t) => `/enquiries/${t}`} />
@@ -976,7 +976,8 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
   const bookings = useEnquiryBookings(enquiry.id)
   const form = forms.data?.get(`${enquiry.form_id}@${enquiry.form_version}`)
   const siteForm = forms.data?.get(`site_details@${enquiry.site_details_form_version ?? 1}`)
-  const stage = enquiryStage(enquiry, now)
+  const view = stageOf(enquiry, now)
+  const stage = view
   const featured = featuredBooking(enquiry, bookings.data ?? [], now)?.id ?? null
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
@@ -993,6 +994,7 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
           )}
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <StageBadge stage={stage} />
+            <DueChip view={view} />
             <span className="text-muted-foreground font-mono text-xs">{enquiry.reference}</span>
             <span className="text-muted-foreground text-xs">
               Received{' '}

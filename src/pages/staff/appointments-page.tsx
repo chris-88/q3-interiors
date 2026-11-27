@@ -1,6 +1,5 @@
 import { MapPin, Phone } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router'
-import { useEnquiries } from '@/api/enquiries'
 import { useAppointments, type StaffBooking } from '@/api/staff-booking'
 import { Chips } from '@/components/staff/chips'
 import { useLoadedAt } from '@/components/staff/use-loaded-at'
@@ -15,10 +14,9 @@ import {
   groupByDay,
   readAgendaFilter,
   splitAgenda,
-  toWrapUp,
 } from '@/lib/agenda'
-import { directionsHref, enquiryStage, siteAddress, telHref } from '@/lib/enquiry-stage'
-import { formatClock, formatShortDay } from '@/lib/format'
+import { directionsHref, siteAddress, telHref } from '@/lib/enquiry-stage'
+import { formatClock } from '@/lib/format'
 
 function nameOf(b: StaffBooking): string {
   const name = b.enquiries?.answers.name
@@ -117,53 +115,8 @@ function Days({ bookings, now }: { bookings: StaffBooking[]; now: number }) {
   )
 }
 
-function WrapUp({ bookings }: { bookings: StaffBooking[] }) {
-  if (bookings.length === 0) return null
-  return (
-    <section
-      aria-labelledby="wrap-up"
-      className="bg-soft flex flex-col gap-2 rounded-md border p-3"
-    >
-      <h2 id="wrap-up" className="text-base font-medium">
-        To wrap up
-      </h2>
-      <p className="text-muted-foreground text-sm">Over, and attendance not recorded yet.</p>
-      <ul className="flex flex-col gap-1">
-        {bookings.map((b) => (
-          <li key={b.id}>
-            <Link
-              to={`/enquiries/${b.enquiry_id}`}
-              className="bg-background hover:bg-muted/50 flex min-h-12 items-center justify-between gap-3 rounded-md border px-3 py-2"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{nameOf(b)}</span>
-                <span className="text-muted-foreground block truncate text-sm">
-                  {b.appointment_types.mode === 'phone'
-                    ? 'Call'
-                    : b.appointment_types.mode === 'on_site'
-                      ? 'Site visit'
-                      : b.appointment_types.label}{' '}
-                  {formatShortDay(b.starts_at)}
-                </span>
-              </span>
-              <span className="text-sm underline underline-offset-4">Record</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}
-
 export function AppointmentsPage() {
   const appointments = useAppointments()
-  // The Enquiries list's stages, so "To wrap up" agrees with Needs action.
-  const enquiries = useEnquiries()
-  const enquiriesAt = useLoadedAt(enquiries.dataUpdatedAt)
-  const stageOf = (id: string) => {
-    const e = enquiries.data?.find((x) => x.id === id)
-    return e ? enquiryStage(e, enquiriesAt).key : null
-  }
   const [params, setParams] = useSearchParams()
   const filter = readAgendaFilter(`?${params.toString()}`)
   const now = useLoadedAt(appointments.dataUpdatedAt)
@@ -211,7 +164,14 @@ export function AppointmentsPage() {
             )
           return (
             <>
-              <WrapUp bookings={toWrapUp(appointments.data, stageOf, now)} />
+              {/* Appointments that are over and need "How did it go?" are under Your move. */}
+              <p className="text-muted-foreground text-sm">
+                Over and not recorded yet? They are under{' '}
+                <Link to="/" className="underline underline-offset-4">
+                  Your move
+                </Link>
+                .
+              </p>
               {upcoming.length === 0 ? (
                 <p className="bg-background text-muted-foreground rounded-md border p-6 text-center">
                   No upcoming appointments.

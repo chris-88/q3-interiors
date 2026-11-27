@@ -1,6 +1,5 @@
 import { findField, formatAnswer } from '@/forms/logic'
 import type { FormDefinition } from '@/forms/types'
-import { readEnquiryFilter, type EnquiryFilter } from '@/lib/enquiry-stage'
 
 type Answered = { reference: string; answers: Record<string, string | string[]> }
 
@@ -8,6 +7,15 @@ type Answered = { reference: string; answers: Record<string, string | string[]> 
 export function enquiryName(e: Answered): string {
   const name = e.answers.name
   return typeof name === 'string' && name.trim() ? name.trim() : e.reference
+}
+
+/** The project type alone ("Kitchen"), or what they typed for "something else"; null if none. */
+export function projectType(e: Answered, form: FormDefinition | undefined): string | null {
+  const other = e.answers.project_type_other
+  const type = e.answers.project_type
+  const field = form ? findField(form, 'project_type') : undefined
+  if (typeof other === 'string' && other.trim()) return other.trim()
+  return (field ? formatAnswer(field, type) : null) ?? (typeof type === 'string' ? type : null)
 }
 
 /** "Kitchen · Dublin 8": the project type (or what they typed for "something else") and town. */
@@ -25,9 +33,8 @@ export function projectLine(e: Answered, form: FormDefinition | undefined): stri
     .join(' · ')
 }
 
-// The list's chip and search, remembered per tab (sessionStorage) so the enquiry page can walk the
-// same list and coming back finds it as it was. Search text stays in this tab, never in a URL.
-const FILTER_KEY = 'q3.staff.enquiryFilter'
+// The list's search, remembered per tab (sessionStorage) so the enquiry page can walk the same list
+// and coming back finds it as it was. Search text stays in this tab, never in a URL.
 const SEARCH_KEY = 'q3.staff.enquirySearch'
 
 function read(key: string): string | null {
@@ -45,7 +52,5 @@ function write(key: string, value: string) {
   }
 }
 
-export const storedFilter = (): EnquiryFilter => readEnquiryFilter(read(FILTER_KEY))
-export const storeFilter = (f: EnquiryFilter) => write(FILTER_KEY, f)
 export const storedSearch = (): string => read(SEARCH_KEY) ?? ''
 export const storeSearch = (q: string) => write(SEARCH_KEY, q)

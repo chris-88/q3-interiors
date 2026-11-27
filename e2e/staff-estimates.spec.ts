@@ -322,15 +322,18 @@ test('a call never offers an estimate', async ({ page }) => {
 
 test('the list and the enquiry page show where each estimate stands', async ({ page }) => {
   await open(page, '/#/')
-  const rows = page.getByRole('list', { name: 'Enquiries' })
+  const rows = page.getByRole('region', { name: 'Enquiries' })
   const quiet = rows.getByRole('listitem').filter({ hasText: 'Ciara Test' })
   // News first (review F6).
-  await expect(quiet).toContainText('No answer in 10 days · €9,500 to €10,500')
-  await expect(quiet).toContainText('No answer in 10 days')
+  await expect(quiet).toContainText('No answer')
+  await expect(quiet).toContainText('Estimate €9,500 to €10,500')
   const asked = rows.getByRole('listitem').filter({ hasText: 'Declan Sample' })
-  await expect(asked).toContainText('Quote due Mon 30 Nov · €9,500 to €10,500')
-  await page.getByRole('radio', { name: /Needs action/ }).check({ force: true })
-  await expect(rows.getByRole('listitem').filter({ hasText: 'Ciara Test' })).toHaveCount(1)
+  await expect(asked).toContainText('Quote due Mon 30 Nov')
+  await expect(asked).toContainText('Asked for a quote 25 Nov')
+  // Both are Q3's move.
+  const yours = page.getByRole('region', { name: /^Your move/ })
+  await expect(yours.getByRole('listitem').filter({ hasText: 'Ciara Test' })).toHaveCount(1)
+  await expect(yours.getByRole('listitem').filter({ hasText: 'Declan Sample' })).toHaveCount(1)
   await shot(page, 'staff-estimate-list')
   await asked.getByRole('link').click()
   const next = page.getByRole('region', { name: 'Next step' })

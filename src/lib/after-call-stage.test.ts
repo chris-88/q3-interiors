@@ -30,7 +30,7 @@ const base = {
 describe('after the call', () => {
   it('a past call waits for its attendance, then offers the next step', () => {
     const waiting = { ...base, bookings: [call()] }
-    expect(enquiryStage(waiting, now).key).toBe('awaiting_quote')
+    expect(enquiryStage(waiting, now).key).toBe('to_record')
     const held = { ...base, bookings: [call({ attendance: 'attended' })] }
     const stage = enquiryStage(held, now)
     expect(stage).toEqual({ key: 'call_held', label: 'Call held' })
@@ -117,9 +117,12 @@ describe('after the call', () => {
       mode: 'on_site',
     }
     expect(enquiryStage({ ...sent, bookings: [visit] }, now).key).toBe('booked')
-    // Once that visit has happened, it is the visit that waits for an estimate.
+    // Once that visit's time has passed, it is the visit that is asked about, then the estimate.
     const later = Date.parse('2026-12-03T12:00:00Z')
-    expect(enquiryStage({ ...sent, bookings: [visit] }, later).key).toBe('awaiting_quote')
+    expect(enquiryStage({ ...sent, bookings: [visit] }, later).key).toBe('to_record')
+    expect(
+      enquiryStage({ ...sent, bookings: [{ ...visit, attendance: 'attended' }] }, later).key,
+    ).toBe('awaiting_quote')
   })
 
   it('an estimate after the call takes over the stage', () => {

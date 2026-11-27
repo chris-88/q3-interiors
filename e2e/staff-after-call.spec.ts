@@ -275,7 +275,9 @@ test('a booking link: confirm, then the enquiry shows it was sent until they boo
 
   await page.getByRole('link', { name: 'All enquiries' }).click()
   const row = page.getByRole('link', { name: /Brian Example/ })
-  await expect(row).toContainText('Site visit link sent')
-  await expect(row).toContainText('Site visit link sent 27 Nov')
+  await expect(row).toContainText('Visit link sent 27 Nov')
+  await expect(page.getByRole('region', { name: /^Waiting on them/ })).toContainText(
+    'Brian Example',
+  )
   await shot(page, 'after-call-list')
 })

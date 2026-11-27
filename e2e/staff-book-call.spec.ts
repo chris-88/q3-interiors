@@ -215,10 +215,11 @@ test('book a call for a new enquiry: the customer’s free times, then Booked wi
     idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
   })
   await page.getByRole('link', { name: 'All enquiries' }).click()
-  const row = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem').filter({
+  const row = page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem').filter({
     hasText: 'Aoife Sample',
   })
-  await expect(row).toContainText('Call Wed 2 Dec, 14:00')
+  await expect(row).toContainText('Call Wed 14:00')
+  await expect(row).toContainText('Call booked')
 })
 
 test('a call-back request: Ring stays the main action until the panel opens', async ({ page }) => {
@@ -255,16 +256,17 @@ test('a missed call or visit: its own stage, Ring first, then rebook; not "Estim
   page,
 }) => {
   await open(page, '/#/')
-  const rows = page.getByRole('list', { name: 'Enquiries' }).getByRole('listitem')
+  const rows = page.getByRole('region', { name: 'Enquiries' }).getByRole('listitem')
   const ciara = rows.filter({ hasText: 'Ciara Test' })
-  await expect(ciara).toContainText('Missed call Tue 24 Nov · ring or rebook')
-  await expect(ciara).toContainText('Needs action')
+  await expect(ciara).toContainText('Missed call Tue 24 Nov')
+  await expect(ciara).toContainText('Ring, due Tue 24 Nov')
   await expect(ciara).not.toContainText('Estimate to write')
   const gerry = rows.filter({ hasText: 'Gerry Sample' })
-  await expect(gerry).toContainText('Missed visit Wed 25 Nov · ring or rebook')
-  await page.getByRole('radio', { name: /^Needs action/ }).check({ force: true })
-  await expect(rows.filter({ hasText: 'Ciara Test' })).toHaveCount(1)
-  await expect(rows.filter({ hasText: 'Gerry Sample' })).toHaveCount(1)
+  await expect(gerry).toContainText('Missed visit Wed 25 Nov')
+  // Both are Q3's move.
+  const yours = page.getByRole('region', { name: /^Your move/ })
+  await expect(yours.getByRole('listitem').filter({ hasText: 'Ciara Test' })).toHaveCount(1)
+  await expect(yours.getByRole('listitem').filter({ hasText: 'Gerry Sample' })).toHaveCount(1)
   await shot(page, 'missed-list')
 
   await gerry.getByRole('link').click()

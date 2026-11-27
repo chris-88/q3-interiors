@@ -8,7 +8,7 @@ import {
   isPastDate,
   QUOTE_DUE_WORKING_DAYS,
 } from '../../supabase/functions/_shared/working-days.ts'
-import { formatDayMonth, formatShortDay, formatShortWhen } from './format'
+import { formatClock, formatDayMonth, formatShortDay, formatShortWhen, irishDayKey } from './format'
 import { reasonLabel } from './outcome'
 
 export type StageBooking = {
@@ -62,6 +62,7 @@ export const STAGES = [
   'in_review',
   'contacted',
   'booked',
+  'to_record',
   'call_held',
   'link_sent',
   'missed_call',
@@ -71,6 +72,7 @@ export const STAGES = [
   'quote_requested',
   'no_answer',
   'quoted',
+  'quote_no_answer',
   'change_requested',
   'won',
   'lost',
@@ -85,6 +87,8 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   in_review: 'In review',
   contacted: 'Contacted',
   booked: 'Booked',
+  // An appointment whose time has passed with nothing recorded: how did it go?
+  to_record: 'How did it go?',
   call_held: 'Call held',
   link_sent: 'Site visit link sent',
   missed_call: 'Missed call',
@@ -96,6 +100,8 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
   quote_requested: 'Quote to write',
   no_answer: 'No answer in 10 days',
   quoted: 'Quote sent',
+  // A quote past its good-until date with no answer.
+  quote_no_answer: 'No answer to the quote',
   change_requested: 'Change asked for',
   won: 'Won',
   lost: 'Lost',
@@ -106,12 +112,14 @@ export const STAGE_LABELS: Record<Exclude<StageKey, 'other'>, string> = {
 export const NEEDS_ACTION: ReadonlySet<StageKey> = new Set([
   'new',
   'contact',
+  'to_record',
   'call_held',
   'missed_call',
   'missed_visit',
   'awaiting_quote',
   'quote_requested',
   'no_answer',
+  'quote_no_answer',
   'change_requested',
 ])
 const FINISHED: ReadonlySet<StageKey> = new Set(['won', 'lost', 'closed'])
@@ -271,6 +279,23 @@ export function missedBooking<T extends StageBooking>(
   return passed
 }
 
+/**
+ * The latest finished, confirmed appointment when nothing about it is recorded yet: no attendance,
+ * no call held and no estimate sent after it. Its next step is "How did it go?".
+ */
+export function unrecordedBooking<T extends StageBooking>(
+  e: Omit<StageInput, 'bookings'> & { bookings: T[] },
+  now: number,
+): T | null {
+  const passed = passedBooking(e.bookings, now)
+  if (!passed || passed.state !== 'confirmed' || passed.attendance) return null
+  const after = (iso: string | null | undefined) =>
+    !!iso && Date.parse(iso) > Date.parse(passed.starts_at)
+  if (after(e.call_held_at)) return null
+  if (after(currentEstimate(e.estimates)?.sent_at)) return null
+  return passed
+}
+
 export type Stage = { key: StageKey; label: string }
 
 /**
@@ -297,12 +322,16 @@ export function enquiryStage(e: StageInput, now: number): Stage {
   if (e.outcome === 'won') return known('won')
   if (e.outcome === 'lost') return known('lost')
   if (e.status === 'unsuitable') return known('closed')
-  if (e.outcome === 'quoted')
-    return known(latestQuote(e.quotes)?.change_requested_at ? 'change_requested' : 'quoted')
+  if (e.outcome === 'quoted') {
+    const q = latestQuote(e.quotes)
+    if (q?.change_requested_at) return known('change_requested')
+    return known(q?.valid_until && isPastDate(q.valid_until, now) ? 'quote_no_answer' : 'quoted')
+  }
   if (e.outcome !== null) return { key: 'other', label: e.outcome }
   if (upcomingBooking(e.bookings, now)) return known('booked')
   const missed = missedBooking(e, now)
   if (missed) return known(missed.mode === 'on_site' ? 'missed_visit' : 'missed_call')
+  if (unrecordedBooking(e, now)) return known('to_record')
   const estimate = currentEstimate(e.estimates)
   if (estimate) {
     const passed = passedBooking(e.bookings, now)
@@ -380,7 +409,14 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
     }
     case 'contact':
       return 'Asked to be contacted'
-    case 'quoted': {
+    case 'to_record': {
+      const b = unrecordedBooking(e, now)
+      return b
+        ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}, how did it go?`
+        : stage.label
+    }
+    case 'quoted':
+    case 'quote_no_answer': {
       const q = latestQuote(e.quotes)
       if (q) return quoteLine(q)
       return e.quote_amount ? `Quoted ${euroShort(e.quote_amount)}` : 'Quoted'
@@ -415,28 +451,11 @@ export function stageLine(e: LineInput, stage: Stage, now: number): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The list: chips, search, order
+// The list: open or finished, and search
 // ---------------------------------------------------------------------------------------------
 
-export const ENQUIRY_FILTERS = [
-  ['open', 'Open'],
-  ['action', 'Needs action'],
-  ['booked', 'Booked'],
-  ['quoted', 'Quoted'],
-  ['won', 'Won'],
-  ['lost', 'Lost'],
-  ['all', 'All'],
-] as const
-export type EnquiryFilter = (typeof ENQUIRY_FILTERS)[number][0]
-
-/**
- * The remembered chip. Values older builds stored still mean something ("awaiting_quote" is now
- * part of Needs action); anything else falls back to Open.
- */
-export function readEnquiryFilter(stored: string | null): EnquiryFilter {
-  if (stored === 'awaiting_quote') return 'action'
-  return ENQUIRY_FILTERS.some(([key]) => key === stored) ? (stored as EnquiryFilter) : 'open'
-}
+/** A view of the list by stage: everything, the open ones, or Needs action (also any one stage). */
+export type EnquiryFilter = 'all' | 'open' | 'action' | StageKey
 
 export function matchesStage(stage: StageKey, filter: EnquiryFilter): boolean {
   switch (filter) {
@@ -478,40 +497,6 @@ export function matchesSearch(e: Searchable, query: string): boolean {
 }
 
 export type Staged<T> = T & { stage: Stage }
-
-/**
- * What a chip shows for a search: matching rows in the loaded order (newest first), except that
- * under Open the ones needing action come first.
- */
-export function visibleEnquiries<T extends StageInput & Searchable>(
-  enquiries: T[],
-  filter: EnquiryFilter,
-  query: string,
-  now: number,
-): Staged<T>[] {
-  const rows = enquiries
-    .filter((e) => matchesSearch(e, query))
-    .map((e) => ({ ...e, stage: enquiryStage(e, now) }))
-    .filter((e) => matchesStage(e.stage.key, filter))
-  if (filter !== 'open') return rows
-  const first = (e: Staged<T>) => (NEEDS_ACTION.has(e.stage.key) ? 0 : 1)
-  return rows
-    .map((e, i) => [e, i] as const)
-    .sort(([a, i], [b, j]) => first(a) - first(b) || i - j)
-    .map(([e]) => e)
-}
-
-/** How many rows each chip would show for this search. */
-export function filterCounts<T extends StageInput & Searchable>(
-  enquiries: T[],
-  query: string,
-  now: number,
-): Record<EnquiryFilter, number> {
-  const stages = enquiries.filter((e) => matchesSearch(e, query)).map((e) => enquiryStage(e, now))
-  return Object.fromEntries(
-    ENQUIRY_FILTERS.map(([key]) => [key, stages.filter((s) => matchesStage(s.key, key)).length]),
-  ) as Record<EnquiryFilter, number>
-}
 
 // ---------------------------------------------------------------------------------------------
 // The enquiry page's Next step
@@ -557,6 +542,7 @@ export function nextStep(stage: StageKey): NextStep {
     case 'booked':
       return 'appointment'
     case 'awaiting_quote':
+    case 'to_record':
       return 'record'
     case 'call_held':
     case 'link_sent':
@@ -569,6 +555,7 @@ export function nextStep(stage: StageKey): NextStep {
     case 'no_answer':
       return 'estimate'
     case 'quoted':
+    case 'quote_no_answer':
       return 'quoted'
     case 'change_requested':
       return 'quote_change'
@@ -614,4 +601,435 @@ export function siteAddress(
     (p): p is string => typeof p === 'string' && p.trim() !== '',
   )
   return answers.site_street ? parts.join(', ') : null
+}
+
+// ---------------------------------------------------------------------------------------------
+// stageOf: the one model the list, the badge, the enquiry page and Appointments read
+// ---------------------------------------------------------------------------------------------
+
+/** The five steps on the strip, then the end. */
+export const STEPS = ['call', 'visit', 'estimate', 'quote', 'deposit'] as const
+export type Step = (typeof STEPS)[number]
+export const STEP_LABELS: Record<Step, string> = {
+  call: 'Call',
+  visit: 'Site visit',
+  estimate: 'Estimate',
+  quote: 'Quote',
+  deposit: 'Deposit',
+}
+
+/** Whose move it is: Q3's, the customer's, the diary's (an appointment to come), or nobody's. */
+export type Whose = 'q3' | 'customer' | 'diary' | 'none'
+export type Group = 'your_move' | 'diary' | 'waiting' | 'finished'
+export const GROUP_LABELS: Record<Exclude<Group, 'finished'>, string> = {
+  your_move: 'Your move',
+  diary: 'In the diary',
+  waiting: 'Waiting on them',
+}
+
+/** The actions a stage offers (the enquiry page turns them into buttons). */
+export type ActionKey =
+  | 'ring'
+  | 'email'
+  | 'record_outcome'
+  | 'choose_next'
+  | 'book_call'
+  | 'book_visit'
+  | 'send_link'
+  | 'we_spoke'
+  | 'mark_contacted'
+  | 'move'
+  | 'cancel'
+  | 'write_estimate'
+  | 'updated_estimate'
+  | 'write_quote'
+  | 'revise_quote'
+  | 'record_quote'
+  | 'view_quote'
+  | 'mark_won'
+  | 'mark_lost'
+  | 'not_suitable'
+  | 'edit_result'
+
+/**
+ * When the stage is due: `date` is an Irish calendar day (YYYY-MM-DD) or, for the diary, the
+ * appointment's start (ISO). `kind`: `due` (Q3 owes it by then), `time` (the diary), `until` (a
+ * waiting stage's good-until date).
+ */
+export type Due = { date: string; kind: 'due' | 'time' | 'until' }
+/** How the due chip looks: filled when overdue or today, outlined later, grey for the diary or a good-until date. */
+export type Urgency = 'overdue' | 'today' | 'later' | 'neutral'
+
+export type StageView = Stage & {
+  step: Step | null
+  whose: Whose
+  group: Group
+  due: Due | null
+  urgency: Urgency
+  /** The short chip on the list row ("Quote due Mon 30 Nov", "Visit Thu 10:00", "Good till 5 Dec"). */
+  chip: string | null
+  /** The row's second line: what has happened, briefly. */
+  news: string
+  primary: ActionKey | null
+  others: ActionKey[]
+  /** The next appointment still to come, if any. */
+  next: StageBooking | null
+}
+
+export type ViewInput = LineInput & {
+  submitted_at?: string
+}
+
+const dayOf = (iso: string) => irishDayKey(iso)
+const shortDate = (day: string) => formatShortDay(`${day}T12:00:00Z`)
+
+function urgencyOf(due: Due | null, now: number): Urgency {
+  if (!due || due.kind !== 'due') return 'neutral'
+  const today = irishDayKey(now)
+  if (due.date < today) return 'overdue'
+  return due.date === today ? 'today' : 'later'
+}
+
+/** "Today 10:00", "Tomorrow 10:00", "Thu 10:00" within the week, else "Thu 3 Dec, 10:00". */
+export function diaryWhen(iso: string, now: number): string {
+  const day = irishDayKey(iso)
+  const today = irishDayKey(now)
+  const plus = (n: number) => irishDayKey(Date.parse(`${today}T12:00:00Z`) + n * 86_400_000)
+  const clock = formatClock(iso)
+  if (day === today) return `Today ${clock}`
+  if (day === plus(1)) return `Tomorrow ${clock}`
+  if (day > today && day < plus(7)) return `${formatShortDay(iso).split(' ')[0]} ${clock}`
+  return `${formatShortDay(iso)}, ${clock}`
+}
+
+const kindWord = (mode: string | null | undefined) => (mode === 'on_site' ? 'Visit' : 'Call')
+
+/**
+ * The stage, where it sits on the strip, whose move it is, by when, and the actions it offers.
+ * Unknown values from a newer release: the raw label, in Your move with no due date, and no
+ * actions beyond Ring and Email.
+ */
+export function stageOf(e: ViewInput, now: number): StageView {
+  const stage = enquiryStage(e, now)
+  const next = upcomingBooking(e.bookings, now)
+  const estimate = currentEstimate(e.estimates)
+  const quote = latestQuote(e.quotes)
+  const range = estimate ? formatRange(estimate.low_eur, estimate.high_eur) : ''
+  const base = { next }
+  const q3 = (
+    step: Step | null,
+    due: Due | null,
+    chip: (u: Urgency) => string | null,
+    news: string,
+    primary: ActionKey | null,
+    others: ActionKey[],
+  ): StageView => {
+    const urgency = urgencyOf(due, now)
+    return {
+      ...stage,
+      ...base,
+      step,
+      whose: 'q3',
+      group: 'your_move',
+      due,
+      urgency,
+      chip: chip(urgency),
+      news,
+      primary,
+      others,
+    }
+  }
+  const waiting = (
+    step: Step | null,
+    until: string | null,
+    chip: string | null,
+    news: string,
+    primary: ActionKey | null,
+    others: ActionKey[],
+  ): StageView => ({
+    ...stage,
+    ...base,
+    step,
+    whose: 'customer',
+    group: 'waiting',
+    due: until ? { date: until, kind: 'until' } : null,
+    urgency: 'neutral',
+    chip,
+    news,
+    primary,
+    others,
+  })
+  const finished = (step: Step | null, news: string): StageView => ({
+    ...stage,
+    ...base,
+    step,
+    whose: 'none',
+    group: 'finished',
+    due: null,
+    urgency: 'neutral',
+    chip: null,
+    news,
+    primary: null,
+    others: ['edit_result'],
+  })
+  const ringChip = (u: Urgency, due: Due | null) =>
+    u === 'today'
+      ? 'Ring today'
+      : u === 'overdue' && due
+        ? `Ring, due ${shortDate(due.date)}`
+        : 'Ring'
+  const dueChip = (label: string, due: Due | null) => (u: Urgency) =>
+    due ? `${label} ${u === 'today' ? 'today' : shortDate(due.date)}` : label
+
+  switch (stage.key) {
+    case 'won':
+      return finished('deposit', stageLine(e, stage, now))
+    case 'lost':
+    case 'closed':
+      return finished(null, stageLine(e, stage, now))
+    case 'booked': {
+      const b = next
+      const step: Step = b?.mode === 'on_site' ? 'visit' : 'call'
+      return {
+        ...stage,
+        ...base,
+        step: estimate ? 'estimate' : step,
+        whose: 'diary',
+        group: 'diary',
+        due: b ? { date: b.starts_at, kind: 'time' } : null,
+        urgency: 'neutral',
+        chip: b
+          ? `${kindWord(b.mode)} ${diaryWhen(b.starts_at, now).replace(/^(Today|Tomorrow)/, (w) => w.toLowerCase())}`
+          : null,
+        news: estimate
+          ? `Estimate sent ${formatDayMonth(estimate.sent_at)}`
+          : b?.state === 'confirmed'
+            ? `${appointmentKind(b?.mode)} booked`
+            : `${appointmentKind(b?.mode)} not confirmed yet`,
+        primary: null,
+        others: b?.mode === 'phone' ? ['move', 'cancel', 'we_spoke'] : ['move', 'cancel'],
+      }
+    }
+    case 'to_record': {
+      const b = unrecordedBooking(e, now)
+      const due: Due | null = b ? { date: dayOf(b.starts_at), kind: 'due' } : null
+      return q3(
+        b?.mode === 'on_site' ? 'visit' : 'call',
+        due,
+        () => 'How did it go?',
+        b ? `${appointmentKind(b.mode)} ${formatShortDay(b.starts_at)}` : stage.label,
+        'record_outcome',
+        ['move'],
+      )
+    }
+    case 'missed_call':
+    case 'missed_visit': {
+      const b = missedBooking(e, now)
+      const due: Due | null = b ? { date: dayOf(b.starts_at), kind: 'due' } : null
+      return q3(
+        stage.key === 'missed_visit' ? 'visit' : 'call',
+        due,
+        (u) => ringChip(u, due),
+        b ? `Missed ${kindWord(b.mode).toLowerCase()} ${formatShortDay(b.starts_at)}` : stage.label,
+        'ring',
+        stage.key === 'missed_visit'
+          ? ['book_visit', 'email', 'not_suitable']
+          : ['book_call', 'email', 'not_suitable'],
+      )
+    }
+    case 'call_held': {
+      const held = callHeldAt(e, now)
+      const due: Due | null = held ? { date: dayOf(held), kind: 'due' } : null
+      return q3(
+        'call',
+        due,
+        () => 'Choose next step',
+        held ? `Spoke ${formatShortDay(held)}` : stage.label,
+        'choose_next',
+        ['book_visit', 'send_link', 'write_estimate', 'not_suitable'],
+      )
+    }
+    case 'link_sent': {
+      const sent = visitLinkSentAt(e, now)
+      return waiting(
+        'visit',
+        null,
+        sent ? `Link sent ${formatDayMonth(sent)}` : 'Link sent',
+        sent ? `Visit link sent ${formatDayMonth(sent)}` : stage.label,
+        'book_visit',
+        ['send_link', 'write_estimate', 'ring'],
+      )
+    }
+    case 'awaiting_quote': {
+      const b = passedBooking(e.bookings, now)
+      const due: Due | null = b ? { date: dayOf(b.starts_at), kind: 'due' } : null
+      return q3(
+        'estimate',
+        due,
+        () => 'Write estimate',
+        b
+          ? `${b.mode === 'on_site' ? 'Visited' : 'Spoke'} ${formatShortDay(b.starts_at)}`
+          : stage.label,
+        'write_estimate',
+        ['book_visit', 'record_quote', 'not_suitable'],
+      )
+    }
+    case 'estimate_sent':
+      return waiting(
+        'estimate',
+        estimate ? dayOf(estimate.valid_until) : null,
+        estimate ? `Good till ${formatDayMonth(estimate.valid_until)}` : null,
+        estimate ? `Estimate ${range}` : stage.label,
+        'ring',
+        ['write_quote', 'updated_estimate', 'record_quote', 'mark_lost'],
+      )
+    case 'no_answer': {
+      const due: Due | null = estimate ? { date: dayOf(estimate.valid_until), kind: 'due' } : null
+      return q3(
+        'estimate',
+        due,
+        () => 'No answer',
+        estimate
+          ? `Estimate ${range} · ran out ${formatDayMonth(estimate.valid_until)}`
+          : stage.label,
+        'ring',
+        ['write_quote', 'updated_estimate', 'mark_lost'],
+      )
+    }
+    case 'quote_requested': {
+      const d = estimate ? quoteDueDate(estimate) : null
+      const due: Due | null = d ? { date: d, kind: 'due' } : null
+      return q3(
+        'quote',
+        due,
+        dueChip('Quote due', due),
+        estimate?.quote_requested_at
+          ? `Asked for a quote ${formatDayMonth(estimate.quote_requested_at)}`
+          : stage.label,
+        'write_quote',
+        ['record_quote', 'updated_estimate', 'mark_lost'],
+      )
+    }
+    case 'change_requested': {
+      const d = quote ? updatedQuoteDue(quote) : null
+      const due: Due | null = d ? { date: d, kind: 'due' } : null
+      return q3(
+        'quote',
+        due,
+        dueChip('Updated quote due', due),
+        quote?.change_requested_at
+          ? `Asked for a change ${formatDayMonth(quote.change_requested_at)}`
+          : stage.label,
+        'revise_quote',
+        ['view_quote', 'mark_won', 'mark_lost'],
+      )
+    }
+    case 'quoted': {
+      const news = quote
+        ? `Quote ${euroShort(quote.price_eur)}`
+        : e.quote_amount
+          ? `Quoted ${euroShort(e.quote_amount)}`
+          : 'Quoted'
+      return waiting(
+        'quote',
+        quote?.valid_until ?? null,
+        quote?.valid_until ? `Good till ${formatDayMonth(`${quote.valid_until}T12:00:00Z`)}` : null,
+        news,
+        'ring',
+        quote
+          ? ['revise_quote', 'view_quote', 'mark_won', 'mark_lost']
+          : ['record_quote', 'mark_won', 'mark_lost'],
+      )
+    }
+    case 'quote_no_answer': {
+      const due: Due | null = quote?.valid_until ? { date: quote.valid_until, kind: 'due' } : null
+      return q3(
+        'quote',
+        due,
+        () => 'No answer',
+        quote
+          ? `Quote ${euroShort(quote.price_eur)} · ran out ${formatDayMonth(`${quote.valid_until}T12:00:00Z`)}`
+          : stage.label,
+        'ring',
+        ['revise_quote', 'view_quote', 'mark_won', 'mark_lost'],
+      )
+    }
+    case 'contact':
+    case 'new':
+    case 'in_review': {
+      const from = stage.key === 'contact' ? e.contact_requested_at : (e.submitted_at ?? null)
+      const due: Due | null = from ? { date: dayOf(from), kind: 'due' } : null
+      const p = e.answers.appointment_preference
+      const news =
+        stage.key === 'contact'
+          ? 'Asked us to ring'
+          : p === 'phone'
+            ? 'Wants a call'
+            : p === 'on_site'
+              ? 'Wants a site visit'
+              : stage.key === 'in_review'
+                ? 'In review'
+                : 'New enquiry'
+      return q3('call', due, (u) => ringChip(u, due), news, 'ring', [
+        'book_call',
+        'we_spoke',
+        'mark_contacted',
+        'email',
+        'not_suitable',
+      ])
+    }
+    case 'contacted':
+      return waiting('call', null, 'Contacted', 'Contacted, nothing booked', 'book_call', [
+        'ring',
+        'we_spoke',
+        'email',
+        'not_suitable',
+      ])
+    default:
+      // A stage or outcome a newer release wrote: in view, plainly, with only safe actions.
+      return {
+        ...stage,
+        ...base,
+        step: null,
+        whose: 'q3',
+        group: 'your_move',
+        due: null,
+        urgency: 'neutral',
+        chip: null,
+        news: stage.label,
+        primary: null,
+        others: ['ring', 'email'],
+      }
+  }
+}
+
+/** Your move: overdue first, then the oldest due; In the diary: next first; Waiting on them: soonest good-until first. */
+export function groupStages<T extends ViewInput & Searchable>(
+  enquiries: T[],
+  query: string,
+  now: number,
+): Record<Group, (T & { view: StageView })[]> {
+  const out: Record<Group, (T & { view: StageView })[]> = {
+    your_move: [],
+    diary: [],
+    waiting: [],
+    finished: [],
+  }
+  for (const e of enquiries) {
+    if (!matchesSearch(e, query)) continue
+    const view = stageOf(e, now)
+    out[view.group].push({ ...e, view })
+  }
+  const key = (d: Due | null) => (d ? (d.kind === 'time' ? d.date : `${d.date}T12:00:00Z`) : '9999')
+  const byDue = (a: { view: StageView }, b: { view: StageView }) =>
+    Date.parse(key(a.view.due)) - Date.parse(key(b.view.due))
+  const rank: Record<Urgency, number> = { overdue: 0, today: 1, later: 2, neutral: 3 }
+  out.your_move.sort((a, b) => rank[a.view.urgency] - rank[b.view.urgency] || byDue(a, b))
+  out.diary.sort(byDue)
+  out.waiting.sort((a, b) => {
+    const da = a.view.due ? 0 : 1
+    const db = b.view.due ? 0 : 1
+    return da - db || byDue(a, b)
+  })
+  return out
 }

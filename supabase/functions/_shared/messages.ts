@@ -216,6 +216,8 @@ type Draft = {
   subject: string
   /** Paragraphs; each is one or more lines. */
   paragraphs: string[][]
+  /** A bulleted list after the paragraphs, then an optional line (the estimate's work). */
+  list?: { items: string[]; after: string | null }
   /** One line set large after the paragraphs (the estimate's range). */
   big?: string
   /** Paragraphs between the large line and the button. */
@@ -241,6 +243,8 @@ function escapeHtml(value: string): string {
 function toText(d: Draft, footer: string[]): string {
   const blocks = [
     ...d.paragraphs.map((p) => p.join('\n')),
+    ...(d.list && d.list.items.length ? [d.list.items.map((i) => `- ${i}`).join('\n')] : []),
+    ...(d.list?.after ? [d.list.after] : []),
     ...(d.big ? [d.big] : []),
     ...(d.beforeAction ?? []).map((p) => p.join('\n')),
     ...(d.action ? [`${d.action.label}: ${d.action.url}`] : []),
@@ -259,6 +263,15 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
   // The wordmark, served from the site at twice its displayed size.
   const badge = opts.siteUrl
     ? `<img src="${escapeHtml(opts.siteUrl)}/brand/q3-email-logo.png" width="160" height="61" alt="Q3 Interiors" style="display:block;border:0;margin:0 0 24px">`
+    : ''
+  const list = d.list
+    ? `${
+        d.list.items.length
+          ? `<ul style="margin:0 0 16px;padding:0 0 0 24px;font:16px/1.55 Roboto,Arial,sans-serif;color:${BRAND.ink}">${d.list.items
+              .map((i) => `<li style="margin:0 0 4px">${escapeHtml(i)}</li>`)
+              .join('')}</ul>`
+          : ''
+      }${d.list.after ? p([d.list.after]) : ''}`
     : ''
   const big = d.big
     ? `<p style="margin:8px 0 24px;font:700 28px/1.25 Roboto,Arial,sans-serif;color:${BRAND.ink}">${escapeHtml(d.big)}</p>`
@@ -279,7 +292,7 @@ function toHtml(d: Draft, opts: { siteUrl: string | null; privacyUrl: string | n
 <body style="margin:0;padding:0;background:#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff"><tr><td style="padding:24px 16px">
 <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto"><tr><td>
-${badge}${d.paragraphs.map(p).join('\n')}${big}${(d.beforeAction ?? []).map(p).join('\n')}${button}${links}${(d.after ?? []).map(p).join('\n')}${privacy}
+${badge}${d.paragraphs.map(p).join('\n')}${list}${big}${(d.beforeAction ?? []).map(p).join('\n')}${button}${links}${(d.after ?? []).map(p).join('\n')}${privacy}
 </td></tr></table></td></tr></table></body></html>`
 }
 
@@ -445,7 +458,10 @@ export const ESTIMATE_SIGN_OFF = 'Chris Quinn, Q3 Interiors'
 export type EstimateEmailInput = {
   /** The customer's full name as given; the greeting uses the first name. */
   customerName: string
-  workLookedAt: string
+  /** The ticked work items, in the order shown on the form. */
+  workItems: string[]
+  /** The optional "Anything else" note, shown under the list. */
+  note: string | null
   low: number
   high: number
   /** The caveats paragraph as saved with the estimate. */
@@ -470,8 +486,12 @@ export function renderEstimate(input: EstimateEmailInput): RenderedMessage {
       paragraphs: [
         [first ? `Hello ${first},` : 'Hello,'],
         ['Thanks for having us out to look at the work.'],
-        ['The work we looked at:', input.workLookedAt.trim()],
+        ['The work we looked at:'],
       ],
+      list: {
+        items: input.workItems.map((i) => i.trim()).filter(Boolean),
+        after: input.note?.trim() || null,
+      },
       big: `${formatRange(input.low, input.high)}, VAT included`,
       beforeAction: [[input.caveats.trim()]],
       action: input.quoteUrl ? { label: 'Get my quote', url: input.quoteUrl } : undefined,

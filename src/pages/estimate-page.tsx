@@ -73,9 +73,17 @@ export function EstimatePage() {
         <p className="text-title text-ink font-bold tabular-nums">
           {formatRange(e.low, e.high)}, VAT included
         </p>
-        <p className="mt-4 text-sm break-words whitespace-pre-line">
-          The work we looked at: {e.workLookedAt}
-        </p>
+        <p className="mt-4 text-sm">The work we looked at:</p>
+        {e.workItems.length > 0 && (
+          <ul className="mt-1 list-disc pl-5 text-sm">
+            {e.workItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        )}
+        {(e.note ?? e.workLookedAt) && (
+          <p className="mt-1 text-sm break-words whitespace-pre-line">{e.note ?? e.workLookedAt}</p>
+        )}
         <p className="mt-6">
           Tell us to go ahead and we’ll send your quote: one price, with what’s included and what
           isn’t. You don’t commit to anything until you accept the quote.

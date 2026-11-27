@@ -59,8 +59,14 @@ if (address && isSuppressed(address)) fail(`${address} is a reserved test addres
 const range = estimateRange(10_000, 5)
 const message = renderEstimate({
   customerName: 'Ann Sample',
-  workLookedAt:
-    'Kitchen: strip out the old units, new units and worktop, tiled floor, plaster and paint.',
+  workItems: [
+    'Strip out the old kitchen',
+    'New units and worktop',
+    'Tiled floor',
+    'Plastering',
+    'Painting',
+  ],
+  note: 'Keep the existing window and move the radiator to the back wall.',
   low: range.low,
   high: range.high,
   caveats:

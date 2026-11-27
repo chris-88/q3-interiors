@@ -31,7 +31,8 @@ function setup() {
     enquiry_id: enquiryId,
     low_eur: 9500,
     high_eur: 10500,
-    work_looked_at: 'Kitchen: strip out, new units, tiled floor.',
+    work_items: ['Strip out the old kitchen', 'New units and worktop', 'Tiled floor'],
+    work_looked_at: 'Keep the window.',
     caveats: WORDING.estimate_caveats.default,
     sent_at: new Date(clock).toISOString(),
     valid_until: new Date(clock + 10 * 86_400_000).toISOString(),
@@ -51,7 +52,8 @@ function setup() {
 
 const input = {
   customerName: 'Mary Byrne',
-  workLookedAt: 'Kitchen: strip out, new units, tiled floor.',
+  workItems: ['Strip out the old kitchen', 'New units and worktop', 'Tiled floor'],
+  note: 'Keep the window.',
   low: 9500,
   high: 10500,
   caveats: WORDING.estimate_caveats.default,
@@ -87,8 +89,20 @@ describe('estimate email', () => {
       expect(`${m.subject} ${m.text}`).not.toMatch(word)
   })
 
+  it('lists the work ticked, then the note, in both parts', () => {
+    const m = renderEstimate(input)
+    expect(m.text).toContain(
+      'The work we looked at:\n\n- Strip out the old kitchen\n- New units and worktop\n- Tiled floor\n\nKeep the window.',
+    )
+    expect(m.html).toContain('<li style="margin:0 0 4px">Strip out the old kitchen</li>')
+    expect(m.html.indexOf('</ul>')).toBeLessThan(m.html.indexOf('Keep the window.'))
+    const noteOnly = renderEstimate({ ...input, workItems: [] })
+    expect(noteOnly.html).not.toContain('<ul')
+    expect(noteOnly.text).toContain('The work we looked at:\n\nKeep the window.')
+  })
+
   it('escapes what staff typed and leaves the phone out when there is none', () => {
-    const m = renderEstimate({ ...input, workLookedAt: '<b>Bathroom</b>', businessPhone: null })
+    const m = renderEstimate({ ...input, note: '<b>Bathroom</b>', businessPhone: null })
     expect(m.html).toContain('&lt;b&gt;Bathroom&lt;/b&gt;')
     expect(m.text).toContain('Chris Quinn, Q3 Interiors')
     expect(m.text).not.toContain('01 234')

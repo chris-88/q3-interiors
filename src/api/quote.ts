@@ -10,7 +10,10 @@ import { call, InvalidLinkError } from './booking'
 const estimateSchema = z.object({
   low: z.number(),
   high: z.number(),
-  workLookedAt: z.string(),
+  // The ticked items and the note; older function responses had only workLookedAt.
+  workItems: z.array(z.string()).default([]),
+  note: z.string().nullable().default(null),
+  workLookedAt: z.string().nullable().optional(),
   sentAt: z.string(),
   validUntil: z.string(),
   quoteRequested: z.boolean(),

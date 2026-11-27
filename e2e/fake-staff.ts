@@ -382,6 +382,35 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         ]
         return json(route, 200, null)
       }
+      if (table === 'rpc/add_estimate_work_item' || table === 'rpc/archive_estimate_work_item') {
+        // The server's rules (see 20261129120000_estimate_work_items.sql).
+        if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
+        const rows = (world.tables.estimate_work_items ??= []) as Record<string, unknown>[]
+        if (table === 'rpc/archive_estimate_work_item') {
+          const { p_id } = req.postDataJSON() as { p_id: string }
+          const row = rows.find((r) => r.id === p_id)
+          if (!row) return json(route, 404, { code: 'P0002', message: 'item not found' })
+          row.archived_at ??= new Date().toISOString()
+          return json(route, 200, null)
+        }
+        const b = req.postDataJSON() as { p_project_type: string | null; p_label: string }
+        const label = (b.p_label ?? '').trim().replace(/\s+/g, ' ')
+        if (label.length < 2 || label.length > 60)
+          return json(route, 400, { code: '22023', message: 'label' })
+        const type = b.p_project_type || null
+        const same = rows.find(
+          (r) =>
+            (r.project_type ?? null) === type &&
+            String(r.label).toLowerCase() === label.toLowerCase(),
+        )
+        if (same) {
+          same.archived_at = null
+          return json(route, 200, same.id)
+        }
+        const id = `wi-${rows.length + 1}`
+        rows.push({ id, label, project_type: type, archived_at: null, position: rows.length + 1 })
+        return json(route, 200, id)
+      }
       if (table === 'rpc/send_estimate') {
         // The server's rules (see 20261129100000_estimates.sql), with the shared range rule.
         if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
@@ -390,6 +419,7 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
           p_price: number
           p_percent: number
           p_work: string
+          p_items?: string[]
         }
         const booking = ((world.tables.bookings ?? []) as Record<string, unknown>[]).find(
           (x) => x.id === b.p_booking_id,
@@ -398,7 +428,13 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         if ((booking.appointment_types as { mode: string }).mode !== 'on_site')
           return json(route, 400, { code: '22023', message: 'site visits only' })
         const work = (b.p_work ?? '').trim()
-        if (work.length < 3 || work.length > 600 || !isValidPercent(b.p_percent))
+        const items = (b.p_items ?? []).map((i) => i.trim())
+        if (
+          (items.length === 0 && !work) ||
+          work.length > 600 ||
+          items.some((i) => i.length < 2 || i.length > 60) ||
+          !isValidPercent(b.p_percent)
+        )
           return json(route, 400, { code: '22023', message: 'invalid' })
         let range
         try {
@@ -421,7 +457,8 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
             plus_minus_percent: b.p_percent,
             low_eur: range.low,
             high_eur: range.high,
-            work_looked_at: work,
+            work_items: items,
+            work_looked_at: work || null,
             caveats: WORDING.estimate_caveats.default,
             sent_at: sent,
             valid_until: new Date(Date.parse(sent) + 10 * 86_400_000).toISOString(),

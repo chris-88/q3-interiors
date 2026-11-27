@@ -202,7 +202,8 @@ export function createDb(): Db {
       await q`select private.photo_deletion_failed(${path}, ${error})`
     },
     async estimateById(estimateId) {
-      const [row] = await q`select id, enquiry_id, low_eur, high_eur, work_looked_at, caveats,
+      const [row] =
+        await q`select id, enquiry_id, low_eur, high_eur, work_items, work_looked_at, caveats,
         to_jsonb(sent_at) #>> '{}' as sent_at, to_jsonb(valid_until) #>> '{}' as valid_until,
         to_jsonb(quote_requested_at) #>> '{}' as quote_requested_at
         from public.estimates where id = ${estimateId}`

@@ -198,7 +198,8 @@ export async function processCommunication(
       deps,
       renderEstimate({
         customerName: typeof name === 'string' ? name : '',
-        workLookedAt: estimate.work_looked_at,
+        workItems: estimate.work_items ?? [],
+        note: estimate.work_looked_at,
         low: estimate.low_eur,
         high: estimate.high_eur,
         caveats: estimate.caveats,

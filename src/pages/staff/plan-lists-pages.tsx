@@ -1,13 +1,14 @@
 // The lists behind job plans (Settings, any staff member): the product list (name, unit, usual
 // price each, supplier) and the tradespeople (name, trade, phone). Search, change, archive. A
 // changed usual price applies to items added from now on; jobs already planned keep theirs.
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import {
   useAddProduct,
   useAddTradesperson,
   useArchiveProduct,
   useArchiveTradesperson,
-  useProducts,
+  useProductBrowse,
+  type ProductFilter,
   useTradespeople,
   useUpdateProduct,
   useUpdateTradesperson,
@@ -18,8 +19,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  formatCents,
   parseEuroToCents,
+  productPriceLine,
+  sourceName,
+  SOURCE_NAMES,
   priceText,
   type Product,
   type Tradesperson,
@@ -67,6 +70,7 @@ function ListScreen({
   showArchived,
   setShowArchived,
   archivedCount,
+  filters,
   adding,
   loading,
   failed,
@@ -79,7 +83,9 @@ function ListScreen({
   setSearch: (v: string) => void
   showArchived: boolean
   setShowArchived: (v: boolean) => void
-  archivedCount: number
+  /** null: the count is not known (a server-paged list), the toggle is always offered. */
+  archivedCount: number | null
+  filters?: ReactNode
   adding: ReactNode
   loading: boolean
   failed: boolean
@@ -105,7 +111,8 @@ function ListScreen({
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-      {archivedCount > 0 && (
+      {filters}
+      {(archivedCount === null || archivedCount > 0) && (
         <label className="flex min-h-12 items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -113,7 +120,7 @@ function ListScreen({
             checked={showArchived}
             onChange={(e) => setShowArchived(e.target.checked)}
           />
-          Show archived ({archivedCount})
+          Show archived{archivedCount === null ? '' : ` (${archivedCount})`}
         </label>
       )}
       {failed ? (
@@ -191,6 +198,8 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
         <p className="text-muted-foreground text-xs">
           A new usual price is used for items added from now on. Jobs already planned keep the price
           they were planned at.
+          {product.source &&
+            ` If you change the price, later ${sourceName(product)} updates keep yours and show theirs beside it.`}
         </p>
       )}
       {problem && (
@@ -218,6 +227,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
 function ProductRow({ product }: { product: Product }) {
   const [editing, setEditing] = useState(false)
   const archive = useArchiveProduct()
+  const from = sourceName(product)
   if (editing)
     return (
       <li className="py-2">
@@ -233,10 +243,26 @@ function ProductRow({ product }: { product: Product }) {
           {product.name}
           {product.archived_at && ' (archived)'}
         </p>
-        <p className="text-muted-foreground text-sm">
-          {formatCents(product.price_cents)} / {product.unit}
-          {product.supplier ? ` · ${product.supplier}` : ''}
-        </p>
+        <p className="text-muted-foreground text-sm">{productPriceLine(product)}</p>
+        {product.category && (
+          <p className="text-muted-foreground text-xs break-words">{product.category}</p>
+        )}
+        {(product.uses ?? 0) > 0 && (
+          <p className="text-muted-foreground text-xs">
+            On {product.uses} job {product.uses === 1 ? 'line' : 'lines'}
+          </p>
+        )}
+        {from && product.source_url && (
+          <a
+            href={product.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary inline-flex min-h-12 items-center text-sm underline"
+          >
+            View on {from}
+            <span className="sr-only"> (opens in a new tab): {product.name}</span>
+          </a>
+        )}
       </div>
       <div className="flex gap-2">
         <Button variant="outline" className="h-12" onClick={() => setEditing(true)}>
@@ -261,27 +287,58 @@ function ProductRow({ product }: { product: Product }) {
   )
 }
 
+/** The list's views: his own and what he has used (the default), or a supplier catalogue. */
+const PRODUCT_FILTERS: { value: ProductFilter; label: string }[] = [
+  { value: 'mine_used', label: 'Mine and used' },
+  { value: 'mine', label: 'Mine' },
+  { value: 'used', label: 'Used on jobs' },
+  ...Object.entries(SOURCE_NAMES).map(([value, label]) => ({ value, label })),
+  { value: 'all', label: 'All' },
+]
+
 export function ProductsPage() {
-  const products = useProducts()
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<ProductFilter>('mine_used')
   const [showArchived, setShowArchived] = useState(false)
   const [adding, setAdding] = useState(false)
-  const all = products.data ?? []
-  const shown = all.filter(
-    (p) => (showArchived || !p.archived_at) && matches(search, p.name, p.supplier, p.unit),
-  )
+  const asked = useSettledValue(search)
+  const products = useProductBrowse(filter, asked, showArchived)
+  const shown = products.data?.pages.flat() ?? []
+  const total = products.data?.pages[0]?.[0]?.total ?? 0
   return (
     <ListScreen
       title="Product list"
-      intro="Everything you have added to a job plan, with its usual price. Items you type on a plan are added here."
+      intro="Your own products, the ones you have used on jobs, and supplier catalogues. Catalogue prices include VAT."
       search={search}
       setSearch={setSearch}
       showArchived={showArchived}
       setShowArchived={setShowArchived}
-      archivedCount={all.filter((p) => p.archived_at).length}
+      archivedCount={null}
       loading={products.isPending}
       failed={products.isError}
       retry={() => void products.refetch()}
+      filters={
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1 text-sm font-medium">Show</legend>
+          <div className="flex flex-wrap gap-2">
+            {PRODUCT_FILTERS.map((f) => (
+              <label
+                key={f.value}
+                className="border-edge has-checked:border-action has-checked:bg-action flex min-h-12 cursor-pointer items-center rounded-full border px-4 has-checked:text-white has-focus-visible:outline-3 has-focus-visible:outline-offset-3"
+              >
+                <input
+                  type="radio"
+                  name="product-filter"
+                  className="sr-only"
+                  checked={filter === f.value}
+                  onChange={() => setFilter(f.value)}
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      }
       adding={
         adding ? (
           <ProductForm product={null} onDone={() => setAdding(false)} />
@@ -298,19 +355,46 @@ export function ProductsPage() {
     >
       {shown.length === 0 ? (
         <p className="text-muted-foreground">
-          {all.length === 0
-            ? 'No products yet. Add one here or type an item on a job plan.'
-            : 'No product matches that search.'}
+          {asked
+            ? 'No product matches that search.'
+            : filter === 'mine_used' || filter === 'mine'
+              ? 'No products of your own yet. Add one here or type an item on a job plan.'
+              : 'Nothing here yet.'}
         </p>
       ) : (
-        <ul aria-label="Products" className="flex flex-col">
-          {shown.map((p) => (
-            <ProductRow key={p.id} product={p} />
-          ))}
-        </ul>
+        <>
+          <p className="text-muted-foreground text-sm" aria-live="polite">
+            Showing {shown.length} of {total}
+          </p>
+          <ul aria-label="Products" className="flex flex-col">
+            {shown.map((p) => (
+              <ProductRow key={p.id} product={p} />
+            ))}
+          </ul>
+          {products.hasNextPage && (
+            <Button
+              variant="outline"
+              className="h-12 self-start px-5"
+              disabled={products.isFetchingNextPage}
+              onClick={() => void products.fetchNextPage()}
+            >
+              {products.isFetchingNextPage ? 'Loading…' : 'Show more'}
+            </Button>
+          )}
+        </>
       )}
     </ListScreen>
   )
+}
+
+/** The search box's value once typing pauses, so the server is asked once per pause. */
+function useSettledValue(value: string, ms = 250) {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const t = window.setTimeout(() => setSettled(value), ms)
+    return () => window.clearTimeout(t)
+  }, [value, ms])
+  return settled
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -18,13 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatShortWhen } from '@/lib/format'
 import { siteAddress } from '@/lib/enquiry-stage'
-import {
-  useJobPlan,
-  useProducts,
-  useStageTemplate,
-  useStartPlan,
-  useTradespeople,
-} from '@/api/job-plan'
+import { useJobPlan, useStageTemplate, useStartPlan, useTradespeople } from '@/api/job-plan'
 import { PlanLists, PlanView } from '@/components/staff/job-plan'
 
 export const TASKS = ['estimate', 'quote', 'visit', 'call', 'plan'] as const
@@ -105,7 +99,6 @@ function BookCallTask({ enquiry }: { enquiry: EnquiryDetail }) {
 /** The job plan (won jobs): start it from the job type's stages, then stages and materials. */
 function PlanTask({ enquiry }: { enquiry: EnquiryDetail }) {
   const plan = useJobPlan(enquiry.id)
-  const products = useProducts()
   const people = useTradespeople()
   const projectType =
     typeof enquiry.answers.project_type === 'string' ? enquiry.answers.project_type : null
@@ -113,7 +106,7 @@ function PlanTask({ enquiry }: { enquiry: EnquiryDetail }) {
   const template = useStageTemplate(projectType, notStarted)
   const start = useStartPlan(enquiry.id)
   const address = siteAddress(enquiry.answers, enquiry.site_details)
-  const failed = plan.isError || products.isError || people.isError
+  const failed = plan.isError || people.isError
   return (
     <TaskFrame
       enquiryId={enquiry.id}
@@ -145,7 +138,6 @@ function PlanTask({ enquiry }: { enquiry: EnquiryDetail }) {
               className="mt-2 h-12"
               onClick={() => {
                 void plan.refetch()
-                void products.refetch()
                 void people.refetch()
               }}
             >
@@ -153,7 +145,7 @@ function PlanTask({ enquiry }: { enquiry: EnquiryDetail }) {
             </Button>
           </AlertDescription>
         </Alert>
-      ) : !plan.data || !products.data || !people.data ? (
+      ) : !plan.data || !people.data ? (
         <Skeleton className="h-64 w-full" />
       ) : notStarted ? (
         <div className="flex flex-col gap-3">
@@ -186,12 +178,7 @@ function PlanTask({ enquiry }: { enquiry: EnquiryDetail }) {
           <PlanLists />
         </div>
       ) : (
-        <PlanView
-          enquiryId={enquiry.id}
-          plan={plan.data}
-          products={products.data}
-          people={people.data}
-        />
+        <PlanView enquiryId={enquiry.id} plan={plan.data} people={people.data} />
       )}
     </TaskFrame>
   )

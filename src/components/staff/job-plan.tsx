@@ -6,6 +6,7 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
   useAddLine,
+  useProductSearch,
   useAddProduct,
   useAddStage,
   useAddTradesperson,
@@ -32,11 +33,10 @@ import {
   planByStage,
   priceText,
   quantityText,
-  searchProducts,
+  productPriceLine,
   totalsOf,
   type PlanLine,
   type PlanStage,
-  type Product,
   type Tradesperson,
 } from '@/lib/job-plan'
 
@@ -325,25 +325,28 @@ function NewProduct({
   )
 }
 
-function AddItem({
-  enquiryId,
-  stage,
-  products,
-}: {
-  enquiryId: string
-  stage: PlanStage
-  products: Product[]
-}) {
+/** The value after it has stopped changing for a moment (so the server is asked once per pause). */
+function useSettled<T>(value: T, ms = 200): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const t = window.setTimeout(() => setSettled(value), ms)
+    return () => window.clearTimeout(t)
+  }, [value, ms])
+  return settled
+}
+
+function AddItem({ enquiryId, stage }: { enquiryId: string; stage: PlanStage }) {
   const id = useId()
   const add = useAddLine(enquiryId)
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState<string | null>(null)
-  const matches = searchProducts(products, query)
-  const exact = exactProduct(
-    products.filter((p) => !p.archived_at),
-    query,
-  )
   const typed = query.trim().replace(/\s+/g, ' ')
+  const asked = useSettled(typed)
+  const search = useProductSearch(asked)
+  // Results for what is on screen now (an older answer is kept while the next one loads).
+  const matches = typed.length >= 2 ? (search.data ?? []) : []
+  const exact = exactProduct(matches, typed)
+  const settled = asked === typed && !search.isFetching
   const focusInput = () => document.getElementById(`${id}-q`)?.focus()
   if (creating)
     return (
@@ -353,7 +356,6 @@ function AddItem({
         name={creating}
         onDone={() => {
           setCreating(null)
-          setQuery('')
           window.requestAnimationFrame(focusInput)
         }}
       />
@@ -373,41 +375,49 @@ function AddItem({
         onChange={(e) => setQuery(e.target.value)}
       />
       <p id={`${id}-hint`} className="sr-only">
-        Type to search your product list; matches appear below.
+        Type to search your product list and the supplier catalogue; matches appear below.
       </p>
-      {typed.length > 0 && (
+      {typed.length >= 2 && (
         <ul aria-label={`Matches for ${typed}`} className="flex flex-col gap-1">
           {matches.map((p) => (
             <li key={p.id}>
               <button
                 type="button"
-                disabled={add.isPending}
                 className="border-edge hover:bg-soft flex min-h-12 w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left"
-                onClick={() =>
-                  add.mutate(
-                    { stageId: stage.id, productId: p.id },
-                    {
-                      onSuccess: () => {
-                        setQuery('')
-                        focusInput()
-                      },
-                    },
-                  )
-                }
+                onClick={() => {
+                  // The box is cleared as the item goes in, so anything typed next is kept.
+                  setQuery('')
+                  focusInput()
+                  add.mutate({ stageId: stage.id, productId: p.id })
+                }}
               >
-                <span className="font-medium">{p.name}</span>
-                <span className="text-muted-foreground shrink-0 text-sm">
-                  {formatCents(p.price_cents)} / {p.unit}
+                <span className="flex min-w-0 flex-col">
+                  <span className="font-medium break-words">{p.name}</span>
+                  {p.category && (
+                    <span className="text-muted-foreground text-xs break-words">{p.category}</span>
+                  )}
+                </span>
+                <span className="text-muted-foreground shrink-0 text-right text-sm">
+                  {productPriceLine(p)}
+                  {(p.uses ?? 0) > 0 && <span className="block text-xs">Used before</span>}
                 </span>
               </button>
             </li>
           ))}
-          {!exact && typed.length >= 2 && (
+          {search.isError && (
+            <li role="alert" className="text-destructive text-sm">
+              Could not search the list. Try again.
+            </li>
+          )}
+          {!exact && settled && (
             <li>
               <button
                 type="button"
                 className="border-edge hover:bg-soft flex min-h-12 w-full items-center rounded-md border border-dashed px-3 py-2 text-left"
-                onClick={() => setCreating(typed)}
+                onClick={() => {
+                  setCreating(typed)
+                  setQuery('')
+                }}
               >
                 Add “{typed}” as new
               </button>
@@ -672,7 +682,6 @@ function StageOptions({
 type Props = {
   enquiryId: string
   plan: JobPlan
-  products: Product[]
   people: Tradesperson[]
 }
 
@@ -703,7 +712,7 @@ function LineRow({ enquiryId, line }: { enquiryId: string; line: PlanLine }) {
   )
 }
 
-function StageSections({ enquiryId, plan, products, people }: Props) {
+function StageSections({ enquiryId, plan, people }: Props) {
   const stages = planByStage(plan.stages, plan.lines)
   return (
     <div className="flex flex-col gap-4">
@@ -732,7 +741,7 @@ function StageSections({ enquiryId, plan, products, people }: Props) {
               ))}
             </ul>
           )}
-          <AddItem enquiryId={enquiryId} stage={stage} products={products} />
+          <AddItem enquiryId={enquiryId} stage={stage} />
           <StageOptions
             enquiryId={enquiryId}
             stage={stage}
@@ -776,7 +785,7 @@ function TableLine({ enquiryId, line }: { enquiryId: string; line: PlanLine }) {
   )
 }
 
-function PlanTable({ enquiryId, plan, products, people }: Props) {
+function PlanTable({ enquiryId, plan, people }: Props) {
   const stages = planByStage(plan.stages, plan.lines)
   const all = totalsOf(plan.lines)
   return (
@@ -842,7 +851,7 @@ function PlanTable({ enquiryId, plan, products, people }: Props) {
         )
         const add = (
           <td colSpan={6} className="p-2">
-            <AddItem enquiryId={enquiryId} stage={stage} products={products} />
+            <AddItem enquiryId={enquiryId} stage={stage} />
           </td>
         )
         return (

@@ -28,6 +28,40 @@ export type Product = {
   price_cents: number
   supplier: string | null
   archived_at: string | null
+  /** null = Dad's own product; else the supplier catalogue it came from ("goodwins"). */
+  source?: string | null
+  supplier_sku?: string | null
+  source_url?: string | null
+  category?: string | null
+  /** The supplier's VAT-inclusive price at the last import. */
+  supplier_price_cents?: number | null
+  /** Staff changed a catalogue product's price; imports keep it. */
+  price_edited_at?: string | null
+  /** Lines on jobs that use it. */
+  uses?: number
+}
+
+/** Supplier catalogues this build knows by name; an unknown source shows its supplier or slug. */
+export const SOURCE_NAMES: Record<string, string> = { goodwins: 'Goodwins' }
+export const sourceName = (p: Pick<Product, 'source' | 'supplier'>) =>
+  p.source ? (SOURCE_NAMES[p.source] ?? p.supplier ?? p.source) : null
+
+/**
+ * A product's price as the lists show it: "€12 / bag" for his own; "€12.80 inc VAT · Goodwins"
+ * from a catalogue; "€11 / each, your price · Goodwins €13.50 inc VAT" once he changed it.
+ */
+export function productPriceLine(p: Product): string {
+  const own = `${formatCents(p.price_cents)} / ${p.unit}`
+  const from = sourceName(p)
+  if (!from) return p.supplier ? `${own} · ${p.supplier}` : own
+  if (
+    p.price_edited_at &&
+    p.supplier_price_cents != null &&
+    p.supplier_price_cents !== p.price_cents
+  )
+    return `${own}, your price · ${from} ${formatCents(p.supplier_price_cents)} inc VAT`
+  if (p.price_edited_at) return `${own}, your price · ${from}`
+  return `${formatCents(p.price_cents)} inc VAT · ${from}`
 }
 
 export type Tradesperson = {
@@ -123,29 +157,6 @@ export const quantityText = (n: number) => String(Number(n.toFixed(3)))
 /** "24.50", "1200" for an input's starting value. */
 export const priceText = (cents: number) =>
   cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2)
-
-/**
- * The products to offer for what he has typed, best first: names starting with it, then a word
- * starting with it, then containing it; archived ones never. At most `limit`.
- */
-export function searchProducts(products: Product[], query: string, limit = 5): Product[] {
-  const q = query.trim().toLowerCase().replace(/\s+/g, ' ')
-  if (!q) return []
-  const rank = (name: string) => {
-    const n = name.toLowerCase()
-    if (n.startsWith(q)) return 0
-    if (n.split(/\s+/).some((w) => w.startsWith(q))) return 1
-    if (n.includes(q)) return 2
-    return 3
-  }
-  return products
-    .filter((p) => !p.archived_at)
-    .map((p) => ({ p, r: rank(p.name) }))
-    .filter((x) => x.r < 3)
-    .sort((a, b) => a.r - b.r || a.p.name.localeCompare(b.p.name))
-    .slice(0, limit)
-    .map((x) => x.p)
-}
 
 /** Whether the typed name is already a product (any case): then there is no "Add as new". */
 export function exactProduct(products: Product[], query: string): Product | null {

@@ -87,6 +87,7 @@ export function jobPlanRpc(
     'update_job_material',
     'set_job_material_got',
     'remove_job_material',
+    'find_products',
   ]
   if (!known.includes(fn)) return null
   if (!actor.active) return { status: 403, body: { code: '42501', message: 'not allowed' } }
@@ -209,9 +210,12 @@ export function jobPlanRpc(
     case 'add_product': {
       const name = tidy(b.p_name)
       const price = Number(b.p_price_cents)
-      if (name.length < 2 || name.length > 80 || !Number.isInteger(price) || price < 0)
+      if (name.length < 2 || name.length > 200 || !Number.isInteger(price) || price < 0)
         return bad('product')
-      const same = products.find((p) => String(p.name).toLowerCase() === name.toLowerCase())
+      // Own names are one per name in any case; catalogue names may repeat.
+      const same = products.find(
+        (p) => !p.source && String(p.name).toLowerCase() === name.toLowerCase(),
+      )
       if (same) {
         same.archived_at = null
         return ok(same.id)
@@ -234,6 +238,8 @@ export function jobPlanRpc(
       const name = tidy(b.p_name)
       const price = Number(b.p_price_cents)
       if (name.length < 2 || !Number.isInteger(price) || price < 0) return bad('product')
+      // A changed price on a catalogue product is remembered, so imports keep it.
+      if (p.source && price !== p.price_cents) p.price_edited_at = new Date().toISOString()
       Object.assign(p, {
         name,
         unit: tidy(b.p_unit) || 'each',
@@ -241,6 +247,66 @@ export function jobPlanRpc(
         supplier: tidy(b.p_supplier) || null,
       })
       return ok()
+    }
+    case 'find_products': {
+      // The server's search in short (20261202100000_product_catalogue.sql): every word in the
+      // name or starting the SKU; used on a job first, then own, then catalogue; then the match.
+      const q = tidy(b.p_query).toLowerCase()
+      const words = q ? q.split(' ').slice(0, 8) : []
+      const first = words[0] ?? ''
+      const filter = String(b.p_filter ?? 'all')
+      const used = (id: unknown) => lines.filter((l) => l.product_id === id).length
+      const rank = (r: Row) => {
+        const name = String(r.name).toLowerCase()
+        const sku = String(r.supplier_sku ?? '').toLowerCase()
+        if (!q) return 3
+        if (name === q || sku === q) return 0
+        if (name.startsWith(q)) return 1
+        if (name.split(' ').some((w) => w.startsWith(first))) return 2
+        return 3
+      }
+      const hits = products
+        .filter((r) => b.p_archived || !r.archived_at)
+        .filter((r) =>
+          words.every(
+            (w) =>
+              String(r.name).toLowerCase().includes(w) ||
+              String(r.supplier_sku ?? '')
+                .toLowerCase()
+                .startsWith(w),
+          ),
+        )
+        .map((r): Row & { source: unknown; uses: number; rank: number } => ({
+          ...r,
+          source: r.source ?? null,
+          uses: used(r.id),
+          rank: rank(r),
+        }))
+        .filter((r) =>
+          filter === 'all'
+            ? true
+            : filter === 'mine'
+              ? !r.source
+              : filter === 'used'
+                ? r.uses > 0
+                : filter === 'mine_used'
+                  ? !r.source || r.uses > 0
+                  : r.source === filter,
+        )
+        .sort(
+          (a, c) =>
+            Number(c.uses > 0) - Number(a.uses > 0) ||
+            Number(!c.source) - Number(!a.source) ||
+            a.rank - c.rank ||
+            String(a.name).toLowerCase().localeCompare(String(c.name).toLowerCase()),
+        )
+      const limit = Number(b.p_limit ?? 20)
+      const offset = Number(b.p_offset ?? 0)
+      return ok(
+        hits
+          .slice(offset, offset + limit)
+          .map(({ rank: _rank, ...r }) => ({ ...r, total: hits.length })),
+      )
     }
     case 'archive_product': {
       const p = products.find((x) => x.id === b.p_id)

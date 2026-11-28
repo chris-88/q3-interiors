@@ -174,12 +174,36 @@ describe('stageOf', () => {
   })
 
   it('won, lost and closed are finished; a newer release’s outcome stays in view, plainly', () => {
-    // A won job's one action is its plan; it is still finished (no "Your move" from a plan).
+    // A won job's one action is its plan. It is on (Jobs on) until every stage is done, then
+    // finished; never "Your move".
     expect(stageOf(enquiry({ outcome: 'won' }), now)).toMatchObject({
-      group: 'finished',
+      group: 'jobs',
       step: 'deposit',
       primary: 'plan',
+      job: 'Plan not started',
     })
+    const stage = (name: string, position: number, done: boolean, who?: string) => ({
+      name,
+      position,
+      done_at: done ? '2026-11-27T10:00:00Z' : null,
+      tradespeople: who ? { name: who } : null,
+    })
+    expect(
+      stageOf(
+        enquiry({
+          outcome: 'won',
+          job_stages: [
+            stage('Tiling', 2, false),
+            stage('Strip out', 1, true),
+            stage('First fix', 1.5, false, 'Pat'),
+          ],
+        }),
+        now,
+      ),
+    ).toMatchObject({ group: 'jobs', job: 'Next: First fix · Pat' })
+    expect(
+      stageOf(enquiry({ outcome: 'won', job_stages: [stage('Strip out', 1, true)] }), now).group,
+    ).toBe('finished')
     expect(stageOf(enquiry({ outcome: 'lost' }), now).primary).toBeNull()
     expect(stageOf(enquiry({ status: 'unsuitable' }), now).group).toBe('finished')
     expect(stageOf(enquiry({ outcome: 'paused' }), now)).toMatchObject({
@@ -214,7 +238,9 @@ describe('the list grouped by whose move it is', () => {
     expect(g.your_move.map((r) => r.id)).toEqual(['overdue-old', 'overdue-new', 'today', 'later'])
     expect(g.diary.map((r) => r.id)).toEqual(['diary-1', 'diary-2'])
     expect(g.waiting.map((r) => r.id)).toEqual(['wait-1', 'wait-2', 'contacted'])
-    expect(g.finished.map((r) => r.id)).toEqual(['won'])
+    // A won job with its plan still to do is on, not finished.
+    expect(g.jobs.map((r) => r.id)).toEqual(['won'])
+    expect(g.finished).toEqual([])
   })
 
   it('search narrows every group', () => {

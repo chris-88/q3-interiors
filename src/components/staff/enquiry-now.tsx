@@ -28,7 +28,7 @@ import {
   type StageView,
 } from '@/lib/enquiry-stage'
 import { formatShortDay, formatShortWhen } from '@/lib/format'
-import { draftOf, draftTitle, type DraftKind } from '@/lib/task-draft'
+import { draftAction, draftOf, draftTitle, type DraftKind } from '@/lib/task-draft'
 import { isKnown } from '@/lib/tolerant'
 import { OUTCOME_STAGES } from '@/lib/outcome'
 
@@ -391,8 +391,13 @@ export function ActionBar({
   const title = useRef<HTMLHeadingElement>(null)
   const first = firstName(enquiry)
   const draft = draftOf(enquiry, view)
-  const primary = barAction(view)
-  const others = view.others.filter((k) => k !== primary)
+  // A draft waiting on this device leads, whatever the stage's own primary (which then joins the
+  // others in the sheet).
+  const carryOn = draftAction(view, draft) as ActionKey | null
+  const primary = carryOn ?? barAction(view)
+  const others = [...(carryOn && view.primary ? [view.primary] : []), ...view.others].filter(
+    (k) => k !== primary,
+  )
   const show = (key: ActionKey | null, listed = false) => {
     setPanel(key)
     setRetitled(null)

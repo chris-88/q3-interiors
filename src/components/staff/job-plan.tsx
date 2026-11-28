@@ -2,7 +2,7 @@
 // materials it needs (from his own product list, which grows as he types), a tick for each item
 // got, the stage's tradesperson, and totals. At 390px each stage is a section of rows; from 1024px
 // the same plan is one table (stage, item, qty, unit, price each, total, got it, tradesperson).
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
   useAddLine,
@@ -35,6 +35,9 @@ import {
   quantityText,
   productPriceLine,
   totalsOf,
+  toGetLine,
+  nextStageLine,
+  UNITS,
   type PlanLine,
   type PlanStage,
   type Tradesperson,
@@ -55,6 +58,64 @@ export function useWide(query = '(min-width: 1024px)') {
 }
 
 const errorText = 'Not saved. Try again.'
+
+/** The unit as chips, so "m2" and "sqm" do not split; anything else is typed under Other. */
+export function UnitChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const id = useId()
+  const known = (UNITS as readonly string[]).includes(value)
+  const [other, setOther] = useState(!known)
+  const chip =
+    'border-edge has-checked:border-action has-checked:bg-action flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-full border px-3 text-base has-checked:text-white has-focus-visible:outline-3 has-focus-visible:outline-offset-3'
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-1">
+      <legend className="mb-1 text-sm">Unit</legend>
+      <div className="flex flex-wrap gap-2">
+        {UNITS.map((u) => (
+          <label key={u} className={chip}>
+            <input
+              type="radio"
+              name={`${id}-unit`}
+              className="sr-only"
+              checked={!other && value === u}
+              onChange={() => {
+                setOther(false)
+                onChange(u)
+              }}
+            />
+            {u}
+          </label>
+        ))}
+        <label className={chip}>
+          <input
+            type="radio"
+            name={`${id}-unit`}
+            className="sr-only"
+            checked={other}
+            onChange={() => {
+              setOther(true)
+              if (known) onChange('')
+            }}
+          />
+          Other
+        </label>
+      </div>
+      {other && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`${id}-other`} className="text-sm">
+            Other unit
+          </label>
+          <Input
+            id={`${id}-other`}
+            className="h-12 text-base"
+            maxLength={20}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </div>
+      )}
+    </fieldset>
+  )
+}
 
 function Err({ show, text = errorText }: { show: boolean; text?: string }) {
   if (!show) return null
@@ -106,10 +167,13 @@ function LineEditor({
   enquiryId,
   line,
   onDone,
+  focus = true,
 }: {
   enquiryId: string
   line: PlanLine
   onDone: () => void
+  /** Move focus to Quantity (not when he has gone on typing the next item). */
+  focus?: boolean
 }) {
   const id = useId()
   const update = useUpdateLine(enquiryId)
@@ -119,7 +183,12 @@ function LineEditor({
   const [price, setPrice] = useState(priceText(line.price_cents))
   const [problem, setProblem] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
-  useEffect(() => document.getElementById(`${id}-qty`)?.focus(), [id])
+  useEffect(() => {
+    if (!focus) return
+    const el = document.getElementById(`${id}-qty`) as HTMLInputElement | null
+    el?.focus()
+    el?.select()
+  }, [id, focus])
   const save = () => {
     const q = parseQuantity(qty)
     const c = parseEuroToCents(price)
@@ -156,7 +225,7 @@ function LineEditor({
       }}
     >
       <p className="font-medium">{line.name}</p>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
           <label htmlFor={`${id}-qty`} className="text-sm">
             Quantity
@@ -164,20 +233,10 @@ function LineEditor({
           <Input
             id={`${id}-qty`}
             inputMode="decimal"
+            enterKeyHint="done"
             className="h-12 text-base"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`${id}-unit`} className="text-sm">
-            Unit
-          </label>
-          <Input
-            id={`${id}-unit`}
-            className="h-12 text-base"
-            value={unit}
-            onChange={(e) => setUnit(e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -193,6 +252,7 @@ function LineEditor({
           />
         </div>
       </div>
+      <UnitChips value={unit} onChange={setUnit} />
       <p className="text-muted-foreground text-xs">
         Changes this job only; the usual price in your product list stays as it is.
       </p>
@@ -240,21 +300,25 @@ function NewProduct({
   const id = useId()
   const addProduct = useAddProduct(enquiryId)
   const addLine = useAddLine(enquiryId)
+  const [qty, setQty] = useState('1')
   const [unit, setUnit] = useState('each')
   const [price, setPrice] = useState('')
   const [supplier, setSupplier] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
-  useEffect(() => document.getElementById(`${id}-price`)?.focus(), [id])
+  useEffect(() => document.getElementById(`${id}-qty`)?.focus(), [id])
   const busy = addProduct.isPending || addLine.isPending
   const save = () => {
     const c = parseEuroToCents(price)
+    const q = parseQuantity(qty)
+    if (q === null) return setProblem('Enter a quantity, for example 2 or 12.5.')
     if (c === null) return setProblem('Enter the usual price each in euro, for example 24.50.')
     if (!unit.trim()) return setProblem('Enter a unit, for example each, m2 or bag.')
     setProblem(null)
     addProduct.mutate(
       { name, unit: unit.trim(), priceCents: c, supplier: supplier.trim() },
       {
-        onSuccess: (productId) => addLine.mutate({ stageId, productId }, { onSuccess: onDone }),
+        onSuccess: (productId) =>
+          addLine.mutate({ stageId, productId, quantity: q }, { onSuccess: () => onDone() }),
       },
     )
   }
@@ -273,6 +337,18 @@ function NewProduct({
       </p>
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
+          <label htmlFor={`${id}-qty`} className="text-sm">
+            Quantity
+          </label>
+          <Input
+            id={`${id}-qty`}
+            inputMode="decimal"
+            className="h-12 text-base"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
           <label htmlFor={`${id}-price`} className="text-sm">
             Price each (€)
           </label>
@@ -284,18 +360,8 @@ function NewProduct({
             onChange={(e) => setPrice(e.target.value)}
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={`${id}-unit`} className="text-sm">
-            Unit
-          </label>
-          <Input
-            id={`${id}-unit`}
-            className="h-12 text-base"
-            value={unit}
-            onChange={(e) => setUnit(e.target.value)}
-          />
-        </div>
       </div>
+      <UnitChips value={unit} onChange={setUnit} />
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-supplier`} className="text-sm">
           Supplier (optional)
@@ -335,10 +401,25 @@ function useSettled<T>(value: T, ms = 200): T {
   return settled
 }
 
-function AddItem({ enquiryId, stage }: { enquiryId: string; stage: PlanStage }) {
+function AddItem({
+  enquiryId,
+  stage,
+  onAdded,
+}: {
+  enquiryId: string
+  stage: PlanStage
+  /** The new line, and whether its Quantity should take focus (not if he typed on). */
+  onAdded: (lineId: string, focus: boolean) => void
+}) {
   const id = useId()
   const add = useAddLine(enquiryId)
   const [query, setQuery] = useState('')
+  // What is in the box right now, read when a save returns (state there would be stale).
+  const current = useRef('')
+  const type = (v: string) => {
+    current.current = v
+    setQuery(v)
+  }
   const [creating, setCreating] = useState<string | null>(null)
   const typed = query.trim().replace(/\s+/g, ' ')
   const asked = useSettled(typed)
@@ -372,7 +453,7 @@ function AddItem({ enquiryId, stage }: { enquiryId: string; stage: PlanStage }) 
         className="h-12 text-base"
         value={query}
         aria-describedby={`${id}-hint`}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => type(e.target.value)}
       />
       <p id={`${id}-hint`} className="sr-only">
         Type to search your product list and the supplier catalogue; matches appear below.
@@ -385,10 +466,14 @@ function AddItem({ enquiryId, stage }: { enquiryId: string; stage: PlanStage }) 
                 type="button"
                 className="border-edge hover:bg-soft flex min-h-12 w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left"
                 onClick={() => {
-                  // The box is cleared as the item goes in, so anything typed next is kept.
-                  setQuery('')
+                  // The box is cleared as the item goes in, so anything typed next is kept; the
+                  // new line then asks the quantity, unless he has already typed the next item.
+                  type('')
                   focusInput()
-                  add.mutate({ stageId: stage.id, productId: p.id })
+                  add.mutate(
+                    { stageId: stage.id, productId: p.id },
+                    { onSuccess: (lineId) => onAdded(lineId, current.current === '') },
+                  )
                 }}
               >
                 <span className="flex min-w-0 flex-col">
@@ -416,7 +501,7 @@ function AddItem({ enquiryId, stage }: { enquiryId: string; stage: PlanStage }) 
                 className="border-edge hover:bg-soft flex min-h-12 w-full items-center rounded-md border border-dashed px-3 py-2 text-left"
                 onClick={() => {
                   setCreating(typed)
-                  setQuery('')
+                  type('')
                 }}
               >
                 Add “{typed}” as new
@@ -589,11 +674,14 @@ function StageOptions({
   stage,
   first,
   last,
+  extra = null,
 }: {
   enquiryId: string
   stage: PlanStage
   first: boolean
   last: boolean
+  /** An empty stage keeps its tradesperson in here, so the stage is one line and Add item. */
+  extra?: ReactNode
 }) {
   const id = useId()
   const rename = useRenameStage(enquiryId)
@@ -607,6 +695,7 @@ function StageOptions({
         Change stage<span className="sr-only">: {stage.name}</span>
       </summary>
       <div className="flex flex-col gap-3 pt-2">
+        {extra}
         <form
           noValidate
           className="flex items-end gap-2"
@@ -685,12 +774,52 @@ type Props = {
   people: Tradesperson[]
 }
 
-function LineRow({ enquiryId, line }: { enquiryId: string; line: PlanLine }) {
-  const [editing, setEditing] = useState(false)
+type ViewProps = Props & {
+  /** Only what is still to get: got items and stages with nothing left are hidden. */
+  onlyToGet: boolean
+  opened: Opened
+  setOpened: (o: Opened) => void
+}
+
+/** The stages and lines to show: everything, or only what is left to get. */
+function shownStages(plan: JobPlan, onlyToGet: boolean) {
+  const stages = planByStage(plan.stages, plan.lines)
+  if (!onlyToGet) return stages
+  return stages
+    .map((s) => ({ ...s, lines: s.lines.filter((l) => !l.got_at) }))
+    .filter((s) => s.lines.length > 0)
+}
+
+type Opened = { lineId: string; focus: boolean } | null
+
+function LineRow({
+  enquiryId,
+  line,
+  opened,
+  onClosed,
+}: {
+  enquiryId: string
+  line: PlanLine
+  opened: Opened
+  onClosed: () => void
+}) {
+  const justAdded = opened?.lineId === line.id
+  const [chosen, setEditing] = useState(false)
+  // A line just added opens at once; one tapped opens too.
+  const editing = chosen || justAdded
+  const close = () => {
+    setEditing(false)
+    if (justAdded) onClosed()
+  }
   if (editing)
     return (
       <li>
-        <LineEditor enquiryId={enquiryId} line={line} onDone={() => setEditing(false)} />
+        <LineEditor
+          enquiryId={enquiryId}
+          line={line}
+          onDone={close}
+          focus={!justAdded || (opened?.focus ?? true)}
+        />
       </li>
     )
   return (
@@ -712,15 +841,16 @@ function LineRow({ enquiryId, line }: { enquiryId: string; line: PlanLine }) {
   )
 }
 
-function StageSections({ enquiryId, plan, people }: Props) {
-  const stages = planByStage(plan.stages, plan.lines)
+function StageSections({ enquiryId, plan, people, onlyToGet, opened, setOpened }: ViewProps) {
+  const stages = shownStages(plan, onlyToGet)
+  const all = planByStage(plan.stages, plan.lines)
   return (
     <div className="flex flex-col gap-4">
-      {stages.map(({ stage, lines, totals }, i) => (
+      {stages.map(({ stage, lines, totals }) => (
         <section
           key={stage.id}
           aria-labelledby={`stage-${stage.id}`}
-          className="bg-background flex flex-col gap-2 rounded-md border p-3"
+          className={`bg-background flex flex-col rounded-md border p-3 ${totals.items === 0 ? 'gap-1' : 'gap-2'}`}
         >
           <div className="flex items-start justify-between gap-2">
             <h2 id={`stage-${stage.id}`} className="text-lg leading-snug font-medium break-words">
@@ -728,25 +858,42 @@ function StageSections({ enquiryId, plan, people }: Props) {
             </h2>
             <StageDone enquiryId={enquiryId} stage={stage} />
           </div>
-          <p className="text-muted-foreground text-sm">
-            {totals.items === 0
-              ? 'No items yet'
-              : `${totals.items} ${totals.items === 1 ? 'item' : 'items'} · ${totals.got} got · ${formatCents(totals.cents)}`}
-          </p>
-          <TradespersonPicker enquiryId={enquiryId} stage={stage} people={people} />
+          {totals.items > 0 && (
+            <p className="text-muted-foreground text-sm">
+              {`${totals.items} ${totals.items === 1 ? 'item' : 'items'} · ${totals.got} got · ${formatCents(totals.cents)}`}
+            </p>
+          )}
+          {totals.items > 0 && (
+            <TradespersonPicker enquiryId={enquiryId} stage={stage} people={people} />
+          )}
           {lines.length > 0 && (
             <ul aria-label={`Items for ${stage.name}`} className="flex flex-col">
               {lines.map((l) => (
-                <LineRow key={l.id} enquiryId={enquiryId} line={l} />
+                <LineRow
+                  key={l.id}
+                  enquiryId={enquiryId}
+                  line={l}
+                  opened={opened}
+                  onClosed={() => setOpened(null)}
+                />
               ))}
             </ul>
           )}
-          <AddItem enquiryId={enquiryId} stage={stage} />
+          <AddItem
+            enquiryId={enquiryId}
+            stage={stage}
+            onAdded={(lineId, focus) => setOpened({ lineId, focus })}
+          />
           <StageOptions
             enquiryId={enquiryId}
             stage={stage}
-            first={i === 0}
-            last={i === stages.length - 1}
+            first={all[0]?.stage.id === stage.id}
+            last={all[all.length - 1]?.stage.id === stage.id}
+            extra={
+              totals.items === 0 ? (
+                <TradespersonPicker enquiryId={enquiryId} stage={stage} people={people} />
+              ) : null
+            }
           />
         </section>
       ))}
@@ -754,12 +901,34 @@ function StageSections({ enquiryId, plan, people }: Props) {
   )
 }
 
-function TableLine({ enquiryId, line }: { enquiryId: string; line: PlanLine }) {
-  const [editing, setEditing] = useState(false)
+function TableLine({
+  enquiryId,
+  line,
+  opened,
+  onClosed,
+}: {
+  enquiryId: string
+  line: PlanLine
+  opened: Opened
+  onClosed: () => void
+}) {
+  const justAdded = opened?.lineId === line.id
+  const [chosen, setEditing] = useState(false)
+  // A line just added opens at once; one tapped opens too.
+  const editing = chosen || justAdded
+  const close = () => {
+    setEditing(false)
+    if (justAdded) onClosed()
+  }
   if (editing)
     return (
       <td colSpan={6} className="p-2">
-        <LineEditor enquiryId={enquiryId} line={line} onDone={() => setEditing(false)} />
+        <LineEditor
+          enquiryId={enquiryId}
+          line={line}
+          onDone={close}
+          focus={!justAdded || (opened?.focus ?? true)}
+        />
       </td>
     )
   return (
@@ -785,8 +954,9 @@ function TableLine({ enquiryId, line }: { enquiryId: string; line: PlanLine }) {
   )
 }
 
-function PlanTable({ enquiryId, plan, people }: Props) {
-  const stages = planByStage(plan.stages, plan.lines)
+function PlanTable({ enquiryId, plan, people, onlyToGet, opened, setOpened }: ViewProps) {
+  const stages = shownStages(plan, onlyToGet)
+  const order = planByStage(plan.stages, plan.lines)
   const all = totalsOf(plan.lines)
   return (
     <table className="bg-background w-full border-collapse rounded-md border text-sm">
@@ -819,7 +989,7 @@ function PlanTable({ enquiryId, plan, people }: Props) {
           </th>
         </tr>
       </thead>
-      {stages.map(({ stage, lines, totals }, i) => {
+      {stages.map(({ stage, lines, totals }) => {
         const span = lines.length + 1
         const stageCell = (
           <th
@@ -839,8 +1009,8 @@ function PlanTable({ enquiryId, plan, people }: Props) {
             <StageOptions
               enquiryId={enquiryId}
               stage={stage}
-              first={i === 0}
-              last={i === stages.length - 1}
+              first={order[0]?.stage.id === stage.id}
+              last={order[order.length - 1]?.stage.id === stage.id}
             />
           </th>
         )
@@ -851,7 +1021,11 @@ function PlanTable({ enquiryId, plan, people }: Props) {
         )
         const add = (
           <td colSpan={6} className="p-2">
-            <AddItem enquiryId={enquiryId} stage={stage} />
+            <AddItem
+              enquiryId={enquiryId}
+              stage={stage}
+              onAdded={(lineId, focus) => setOpened({ lineId, focus })}
+            />
           </td>
         )
         return (
@@ -867,7 +1041,12 @@ function PlanTable({ enquiryId, plan, people }: Props) {
                 {lines.map((l, n) => (
                   <tr key={l.id} className="border-t align-middle">
                     {n === 0 && stageCell}
-                    <TableLine enquiryId={enquiryId} line={l} />
+                    <TableLine
+                      enquiryId={enquiryId}
+                      line={l}
+                      opened={opened}
+                      onClosed={() => setOpened(null)}
+                    />
                     {n === 0 && whoCell}
                   </tr>
                 ))}
@@ -927,19 +1106,42 @@ function AddStage({ enquiryId }: { enquiryId: string }) {
 /** The started plan: the job's totals, the stages (sections or the table), adding a stage. */
 export function PlanView(props: Props) {
   const wide = useWide()
+  const [onlyToGet, setOnlyToGet] = useState(false)
+  const [opened, setOpened] = useState<Opened>(null)
   const all = totalsOf(props.plan.lines)
   const done = props.plan.stages.filter((s) => s.done_at).length
+  const left = all.items - all.got
+  const view = { ...props, onlyToGet, opened, setOpened }
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-base">
-        <span className="font-medium">{formatCents(all.cents)}</span>
-        <span className="text-muted-foreground">
-          {' '}
-          · {all.items} {all.items === 1 ? 'item' : 'items'}, {all.got} got · {done} of{' '}
-          {props.plan.stages.length} stages done
-        </span>
-      </p>
-      {wide ? <PlanTable {...props} /> : <StageSections {...props} />}
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-4">
+          <p className="text-lg font-medium">{toGetLine(props.plan.lines)}</p>
+          {left > 0 && (
+            <label className="flex min-h-12 cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-5"
+                checked={onlyToGet}
+                onChange={(e) => setOnlyToGet(e.target.checked)}
+              />
+              Show only these
+            </label>
+          )}
+        </div>
+        <p>{nextStageLine(props.plan.stages, props.people)}</p>
+        <p className="text-muted-foreground text-sm">
+          {formatCents(all.cents)} in all · {all.items} {all.items === 1 ? 'item' : 'items'},{' '}
+          {all.got} got · {done} of {props.plan.stages.length} stages done
+        </p>
+      </div>
+      {onlyToGet && left === 0 ? (
+        <p className="text-muted-foreground">Everything is got.</p>
+      ) : wide ? (
+        <PlanTable {...view} />
+      ) : (
+        <StageSections {...view} />
+      )}
       <AddStage enquiryId={props.enquiryId} />
       <PlanLists />
     </div>
@@ -990,6 +1192,8 @@ export function PlanFoldBody({
   const stages = planByStage(plan.stages, plan.lines)
   return (
     <div className="flex flex-col gap-2">
+      <p className="font-medium">{toGetLine(plan.lines)}</p>
+      <p className="text-sm">{nextStageLine(plan.stages, people)}</p>
       <ul className="flex flex-col text-sm">
         {stages.map(({ stage, totals }) => {
           const who = people.find((p) => p.id === stage.tradesperson_id)

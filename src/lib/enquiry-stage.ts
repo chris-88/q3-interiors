@@ -21,6 +21,32 @@ export type StageBooking = {
   attendance?: string | null
 }
 
+/** A job plan's stage, as the list reads it. */
+export type StageJobStage = {
+  name: string
+  position: number
+  done_at: string | null
+  tradespeople?: { name: string } | null
+}
+
+/**
+ * A won job is on until every stage of its plan is done (Chris to confirm when a job is
+ * finished; the coordinator's default, 2026-11-28). No plan, or a plan with a stage to do: on.
+ */
+export function jobOn(e: Pick<StageInput, 'job_stages'>): boolean {
+  const stages = e.job_stages ?? []
+  return stages.length === 0 || stages.some((s) => !s.done_at)
+}
+
+/** "Next: First fix plumbing · Pat", "Plan not started", or "Every stage done". */
+export function jobNextLine(e: Pick<StageInput, 'job_stages'>): string {
+  const stages = [...(e.job_stages ?? [])].sort((a, b) => a.position - b.position)
+  if (stages.length === 0) return 'Plan not started'
+  const next = stages.find((s) => !s.done_at)
+  if (!next) return 'Every stage done'
+  return `Next: ${next.name}${next.tradespeople?.name ? ` · ${next.tradespeople.name}` : ''}`
+}
+
 /** An estimate sent after a site visit (the newest is the current one). */
 export type StageEstimate = {
   sent_at: string
@@ -54,6 +80,8 @@ export type StageInput = {
   call_held_at?: string | null
   /** A quote's amount, sent from here or recorded by hand (kept after a win or loss). */
   quote_amount?: number | null
+  /** A won job's plan stages (absent from older reads: no plan). */
+  job_stages?: StageJobStage[]
   /** The latest "Book your site visit" link emailed. */
   visit_link_sent_at?: string | null
 }
@@ -666,11 +694,12 @@ export function stripSteps(e: StageInput, view: { key: string; step: Step | null
 
 /** Whose move it is: Q3's, the customer's, the diary's (an appointment to come), or nobody's. */
 export type Whose = 'q3' | 'customer' | 'diary' | 'none'
-export type Group = 'your_move' | 'diary' | 'waiting' | 'finished'
+export type Group = 'your_move' | 'diary' | 'waiting' | 'jobs' | 'finished'
 export const GROUP_LABELS: Record<Exclude<Group, 'finished'>, string> = {
   your_move: 'Your move',
   diary: 'In the diary',
   waiting: 'Waiting on them',
+  jobs: 'Jobs on',
 }
 
 /** The actions a stage offers (the enquiry page turns them into buttons). */
@@ -719,6 +748,8 @@ export type StageView = Stage & {
   others: ActionKey[]
   /** The next appointment still to come, if any. */
   next: StageBooking | null
+  /** A job on: what is next on its plan ("Next: Tiling · Pat", "Plan not started"). */
+  job?: string
 }
 
 export type ViewInput = LineInput & {
@@ -827,9 +858,12 @@ export function stageOf(e: ViewInput, now: number): StageView {
     due ? `${label} ${u === 'today' ? 'today' : shortDate(due.date)}` : label
 
   switch (stage.key) {
-    case 'won':
-      // A won job is planned next (stages, materials, who does what): the one action.
-      return { ...finished('deposit', stageLine(e, stage, now)), primary: 'plan' }
+    case 'won': {
+      // A won job is planned next (stages, materials, who does what): the one action. It is "on"
+      // until every stage of its plan is done, then finished.
+      const view = { ...finished('deposit', stageLine(e, stage, now)), primary: 'plan' as const }
+      return jobOn(e) ? { ...view, group: 'jobs', job: jobNextLine(e) } : view
+    }
     case 'lost':
     case 'closed':
       return finished(null, stageLine(e, stage, now))
@@ -1061,6 +1095,7 @@ export function groupStages<T extends ViewInput & Searchable>(
     your_move: [],
     diary: [],
     waiting: [],
+    jobs: [],
     finished: [],
   }
   for (const e of enquiries) {

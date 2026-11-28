@@ -67,6 +67,8 @@ export type StaffWorld = {
   callOptions?: unknown
   /** staff-booking request bodies, in order. */
   staffBookingCalls?: Record<string, unknown>[]
+  /** Hold each job plan line write this long (a slow save, for typing during it). */
+  planLineDelayMs?: number
 }
 
 export function staffWorld(): StaffWorld {
@@ -312,6 +314,8 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         })
       }
       if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      if (table === 'rpc/add_job_material' && world.planLineDelayMs)
+        await new Promise((r) => setTimeout(r, world.planLineDelayMs))
       const plan = jobPlanRpc(
         world.tables,
         table.slice(4),
@@ -968,6 +972,19 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
             : (a.campaign_creatives ?? null),
         }
       })
+    } else if (table === 'enquiries' && world.tables.job_stages) {
+      // A won job's plan stages, embedded as PostgREST would for job_stages(..., tradespeople(name)).
+      const stages = world.tables.job_stages as Record<string, unknown>[]
+      const people = (world.tables.tradespeople ?? []) as Record<string, unknown>[]
+      rows = ((world.tables.enquiries ?? []) as Record<string, unknown>[]).map((e) => ({
+        ...e,
+        job_stages: stages
+          .filter((st) => st.enquiry_id === e.id)
+          .map((st) => ({
+            ...st,
+            tradespeople: people.find((p) => p.id === st.tradesperson_id) ?? null,
+          })),
+      }))
     } else if (table === 'campaign_spend' && !admin) {
       rows = []
     } else {

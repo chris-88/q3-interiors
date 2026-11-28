@@ -261,8 +261,10 @@ test('the list: grouped by whose move it is, two lines with a due chip, search, 
   page,
 }) => {
   await open(page)
-  await expect(list(page).getByRole('listitem')).toHaveCount(7)
-  // No chips, no dot, no age: three groups say whose move it is.
+  await expect(list(page).getByRole('listitem')).toHaveCount(8)
+  // No chips, no dot, no age: the groups say whose move it is; a won job is a job on.
+  expect(await groupNames(page, /^Jobs on/)).toEqual(['Fiona Test'])
+  await expect(group(page, /^Jobs on/)).toContainText('Plan not started')
   await expect(page.getByRole('radio')).toHaveCount(0)
   await expect(list(page).locator('time')).toHaveCount(0)
   await expect(group(page, /^Your move/)).toBeVisible()
@@ -294,12 +296,13 @@ test('the list: grouped by whose move it is, two lines with a due chip, search, 
   await expect(page.getByRole('region', { name: 'Needs attention' })).toHaveCount(0)
   await shot(page, 'list-open-390')
 
-  // Won, lost and closed are behind Finished.
-  await page.getByRole('link', { name: 'Finished (2)' }).click()
+  // Lost and closed (and a won job with every stage done) are behind Finished.
+  await page.getByRole('link', { name: 'Finished (1)' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Finished')
-  await expect(list(page)).toContainText('Won €18,000')
+  await expect(list(page)).not.toContainText('Won €18,000')
   await expect(list(page)).toContainText('Lost: Price')
   await page.getByRole('link', { name: 'Back to open enquiries' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Enquiries')
 
   // Search: by name, phone and reference, as you type, across the groups.
   const search = page.getByRole('searchbox', { name: 'Search enquiries' })
@@ -308,8 +311,10 @@ test('the list: grouped by whose move it is, two lines with a due chip, search, 
   await search.fill('cork')
   expect(await names(page)).toEqual(['Declan Sample'])
   await search.fill('q3-won')
+  expect(await names(page)).toEqual(['Fiona Test'])
+  await search.fill('q3-lost')
   await expect(
-    page.getByText('No open enquiry matches “q3-won”. 1 finished one does.'),
+    page.getByText('No open enquiry matches “q3-lost”. 1 finished one does.'),
   ).toBeVisible()
   await search.fill('sample')
   await shot(page, 'list-search-390')
@@ -343,14 +348,14 @@ test('the enquiry page walks the list and offers call, email and directions', as
     .getByRole('link', { name: /Aoife Sample/ })
     .click()
   const walk = page.getByRole('navigation', { name: 'Enquiries in this list' })
-  await expect(walk).toContainText('3 of 7')
+  await expect(walk).toContainText('3 of 8')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
   await expect(page.getByText('Kitchen · Dublin 8').first()).toBeVisible()
   await openFold(page, 'Details')
   await expect(page.getByText('Q3-CALL01')).toBeVisible()
   await walk.getByRole('link', { name: 'Next' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Helen Example')
-  await expect(walk).toContainText('4 of 7')
+  await expect(walk).toContainText('4 of 8')
   await walk.getByRole('link', { name: 'Previous' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aoife Sample')
 
@@ -664,7 +669,7 @@ test('Appointments: an agenda by day and Past; over-and-unrecorded ones are unde
 test('desktop: the list, the enquiry in two columns, and the agenda', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await open(page)
-  await expect(list(page).getByRole('listitem')).toHaveCount(7)
+  await expect(list(page).getByRole('listitem')).toHaveCount(8)
   await shot(page, 'list-desktop')
 
   await page.goto('/#/enquiries/e-visit1')

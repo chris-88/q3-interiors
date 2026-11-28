@@ -112,6 +112,20 @@ export function draftOf(
   return null
 }
 
+/**
+ * The action that carries on a waiting draft, at any stage that offers it as the primary or among
+ * the others (so "Choose the next step" with an estimate started offers "Carry on with the
+ * estimate" in the bar). Null without a draft.
+ */
+export function draftAction(
+  view: { primary: string | null; others: string[] },
+  draft: DraftKind | null,
+): string | null {
+  if (!draft) return null
+  const keys = draft === 'estimate' ? ESTIMATE_ACTIONS : QUOTE_ACTIONS
+  return [view.primary, ...view.others].find((k): k is string => !!k && keys.includes(k)) ?? null
+}
+
 /** The action's title while its draft waits: "Carry on with the estimate". */
 export function draftTitle(key: string, draft: DraftKind | null): string | null {
   if (draft === 'estimate' && ESTIMATE_ACTIONS.includes(key)) return 'Carry on with the estimate'

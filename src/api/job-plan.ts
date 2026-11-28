@@ -283,8 +283,12 @@ export const useArchiveProduct = () =>
   )
 
 export const useAddLine = (enquiryId: string) =>
-  usePlanMutation(enquiryId, (i: { stageId: string; productId: string }) =>
-    call<string>('add_job_material', { p_stage_id: i.stageId, p_product_id: i.productId }),
+  usePlanMutation(enquiryId, (i: { stageId: string; productId: string; quantity?: number }) =>
+    call<string>('add_job_material', {
+      p_stage_id: i.stageId,
+      p_product_id: i.productId,
+      ...(i.quantity !== undefined ? { p_quantity: i.quantity } : {}),
+    }),
   )
 
 export const useUpdateLine = (enquiryId: string) =>

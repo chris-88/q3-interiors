@@ -6,10 +6,11 @@ import {
   parseEuroToCents,
   parseQuantity,
   planByStage,
-  planSummary,
   priceText,
   quantityText,
+  nextStageLine,
   productPriceLine,
+  toGetLine,
   totalsOf,
   type PlanLine,
   type Product,
@@ -64,14 +65,6 @@ describe('job plan totals', () => {
     expect(plan[1]?.lines.map((l) => l.id)).toEqual(['a', 'b'])
     expect(plan[1]?.totals.cents).toBe(7350)
     expect(plan[0]?.totals.items).toBe(0)
-  })
-
-  it('the summary line', () => {
-    expect(planSummary(0, [])).toBe('Not started')
-    expect(planSummary(5, [line({ quantity: 100, price_cents: 3420 })])).toBe(
-      '5 stages · 1 item · €3,420',
-    )
-    expect(planSummary(1, [line({}), line({})])).toBe('1 stage · 2 items · €49')
   })
 
   it('euro, whole or with cents', () => {
@@ -131,5 +124,38 @@ describe('a product’s price line', () => {
     const list = [product('Grout'), product('Grout white')]
     expect(exactProduct(list, ' grout ')?.name).toBe('Grout')
     expect(exactProduct(list, 'grou')).toBeNull()
+  })
+})
+
+describe('what is left to get, and what is next', () => {
+  it('to get', () => {
+    expect(toGetLine([])).toBe('Nothing to get yet')
+    expect(
+      toGetLine([
+        line({ quantity: 2, price_cents: 4950 }),
+        line({ quantity: 1, price_cents: 8000 }),
+        line({ got_at: '2026-11-28T10:00:00Z' }),
+      ]),
+    ).toBe('To get: 2 items · €179')
+    expect(toGetLine([line({ got_at: '2026-11-28T10:00:00Z' })])).toBe('Everything got')
+  })
+
+  it('next: the first stage not done, and who does it', () => {
+    const stages = [
+      {
+        id: 'a',
+        name: 'Strip out',
+        position: 1,
+        done_at: '2026-11-28T10:00:00Z',
+        tradesperson_id: null,
+      },
+      { id: 'b', name: 'First fix plumbing', position: 2, done_at: null, tradesperson_id: 'p' },
+    ]
+    const people = [
+      { id: 'p', name: 'Pat Example', trade: 'Plumber', phone: null, archived_at: null },
+    ]
+    expect(nextStageLine(stages, people)).toBe('Next: First fix plumbing · Pat Example (Plumber)')
+    expect(nextStageLine(stages, [])).toBe('Next: First fix plumbing')
+    expect(nextStageLine([stages[0]!], [])).toBe('Every stage done')
   })
 })

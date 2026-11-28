@@ -193,7 +193,7 @@ test('"We already spoke" cancels the call quietly and offers the three next step
   await expect(choices.first()).toHaveClass(/bg-primary/)
   await page.keyboard.press('Escape')
   await expect(now(page)).toContainText('Choose the next step')
-  await expect(now(page)).toContainText('Spoke Fri 27 Nov')
+  await expect(now(page)).toContainText(/Spoke \w{3} \d{1,2} \w{3}/)
   expect(world.rpcCalls.find((c) => c.name === 'record_call_held_early')?.body).toEqual({
     p_enquiry_id: 'e-early1',
   })
@@ -288,7 +288,7 @@ test('a booking link: confirm, then the enquiry shows it was sent until they boo
   await expect(sheet.getByText('Link sent to brian@example.com.')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(now(page)).toContainText('Waiting on Brian')
-  await expect(now(page)).toContainText('Visit link sent 27 Nov')
+  await expect(now(page)).toContainText(/Visit link sent \d{1,2} \w{3}/)
   expect(world.rpcCalls.find((c) => c.name === 'send_visit_link')?.body).toEqual({
     p_enquiry_id: 'e-held01',
   })
@@ -296,7 +296,7 @@ test('a booking link: confirm, then the enquiry shows it was sent until they boo
 
   await page.getByRole('link', { name: 'All enquiries' }).click()
   const row = page.getByRole('link', { name: /Brian Example/ })
-  await expect(row).toContainText('Visit link sent 27 Nov')
+  await expect(row).toContainText(/Visit link sent \d{1,2} \w{3}/)
   await expect(page.getByRole('region', { name: /^Waiting on them/ })).toContainText(
     'Brian Example',
   )

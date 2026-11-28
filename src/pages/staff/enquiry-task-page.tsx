@@ -17,8 +17,17 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatShortWhen } from '@/lib/format'
+import { siteAddress } from '@/lib/enquiry-stage'
+import {
+  useJobPlan,
+  useProducts,
+  useStageTemplate,
+  useStartPlan,
+  useTradespeople,
+} from '@/api/job-plan'
+import { PlanLists, PlanView } from '@/components/staff/job-plan'
 
-export const TASKS = ['estimate', 'quote', 'visit', 'call'] as const
+export const TASKS = ['estimate', 'quote', 'visit', 'call', 'plan'] as const
 type Task = (typeof TASKS)[number]
 
 /** A task that cannot start here (nothing to estimate yet, already won): say so, and the way back. */
@@ -93,11 +102,112 @@ function BookCallTask({ enquiry }: { enquiry: EnquiryDetail }) {
   )
 }
 
+/** The job plan (won jobs): start it from the job type's stages, then stages and materials. */
+function PlanTask({ enquiry }: { enquiry: EnquiryDetail }) {
+  const plan = useJobPlan(enquiry.id)
+  const products = useProducts()
+  const people = useTradespeople()
+  const projectType =
+    typeof enquiry.answers.project_type === 'string' ? enquiry.answers.project_type : null
+  const notStarted = plan.data?.stages.length === 0
+  const template = useStageTemplate(projectType, notStarted)
+  const start = useStartPlan(enquiry.id)
+  const address = siteAddress(enquiry.answers, enquiry.site_details)
+  const failed = plan.isError || products.isError || people.isError
+  return (
+    <TaskFrame
+      enquiryId={enquiry.id}
+      name={enquiryName(enquiry)}
+      title="Job plan"
+      about={[address, 'Stages, materials and who does each stage. Only staff see this.']
+        .filter(Boolean)
+        .join(' · ')}
+      layout="stacked"
+      focusTitle
+      bar={
+        notStarted ? (
+          <Button
+            className="h-12 flex-1"
+            disabled={start.isPending || !template.data}
+            onClick={() => start.mutate()}
+          >
+            {start.isPending ? 'Starting…' : 'Start the plan'}
+          </Button>
+        ) : undefined
+      }
+    >
+      {failed ? (
+        <Alert variant="destructive" role="alert">
+          <AlertTitle>Could not load the plan</AlertTitle>
+          <AlertDescription>
+            <Button
+              variant="outline"
+              className="mt-2 h-12"
+              onClick={() => {
+                void plan.refetch()
+                void products.refetch()
+                void people.refetch()
+              }}
+            >
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : !plan.data || !products.data || !people.data ? (
+        <Skeleton className="h-64 w-full" />
+      ) : notStarted ? (
+        <div className="flex flex-col gap-3">
+          <p>
+            Start from the usual stages for this kind of job. You can rename, reorder, add and
+            remove them after.
+          </p>
+          {template.isError ? (
+            <p role="alert" className="text-destructive text-sm">
+              Could not load the usual stages. Reload to try again.
+            </p>
+          ) : !template.data ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (
+            <ol aria-label="The usual stages" className="list-decimal pl-6">
+              {template.data.map((name) => (
+                <li key={name} className="py-0.5">
+                  {name}
+                </li>
+              ))}
+            </ol>
+          )}
+          {start.isError && (
+            <p role="alert" className="text-destructive text-sm">
+              {start.error.message.includes('not won')
+                ? 'A plan starts once the job is won.'
+                : 'The plan was not started. Try again.'}
+            </p>
+          )}
+          <PlanLists />
+        </div>
+      ) : (
+        <PlanView
+          enquiryId={enquiry.id}
+          plan={plan.data}
+          products={products.data}
+          people={people.data}
+        />
+      )}
+    </TaskFrame>
+  )
+}
+
 function TaskView({ enquiry, task, now }: { enquiry: EnquiryDetail; task: Task; now: number }) {
   const bookings = useEnquiryBookings(enquiry.id)
   const closed = enquiry.outcome === 'won' || enquiry.outcome === 'lost'
   if (task === 'visit') return <BookVisitTask enquiry={enquiry} />
   if (task === 'call') return <BookCallTask enquiry={enquiry} />
+  if (task === 'plan')
+    return enquiry.outcome === 'won' ? (
+      <PlanTask enquiry={enquiry} />
+    ) : (
+      <Unavailable enquiry={enquiry} title="Job plan" why="A plan starts once the job is won." />
+    )
   if (task === 'quote')
     return closed ? (
       <Unavailable

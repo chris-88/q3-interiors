@@ -140,6 +140,15 @@ select pg_temp.expect((select count(*) from private.rate_limit_hits where addr_h
 update public.enquiries set submitted_at = now() - interval '13 months'
 where idempotency_key in (pg_temp.key(1), pg_temp.key(2), pg_temp.key(3));
 update public.enquiries set outcome = 'won', outcome_at = now(), won_date = current_date where idempotency_key = pg_temp.key(3);
+-- A job plan on the old enquiry 1 (stages and a material line) goes with it.
+insert into public.job_stages (id, enquiry_id, name, position)
+select gen_random_uuid(), id, 'Strip out', 1 from public.enquiries where idempotency_key = pg_temp.key(1);
+insert into public.products (name, unit, price_cents) values ('Hardening test product 1', 'each', 100)
+  on conflict do nothing;
+insert into public.job_materials (enquiry_id, stage_id, product_id, name, quantity, unit, price_cents)
+select s.enquiry_id, s.id, p.id, p.name, 1, 'each', 100 from public.job_stages s
+join public.enquiries e on e.id = s.enquiry_id, public.products p
+where e.idempotency_key = pg_temp.key(1) and p.name = 'Hardening test product 1';
 -- Live may have retention set; test the off state explicitly (rolled back).
 update public.booking_settings set retention_months = null;
 select pg_temp.expect((select retention_months is null from public.booking_settings), 'retention can be off');
@@ -178,6 +187,11 @@ reset role;
 select pg_temp.expect(private.run_retention() >= 2, 'on: deletes old enquiries');
 select pg_temp.expect(not exists (select 1 from public.enquiries where idempotency_key in (pg_temp.key(1), pg_temp.key(2))),
   'old non-won enquiries deleted');
+select pg_temp.expect(not exists (select 1 from public.job_stages where enquiry_id not in (select id from public.enquiries))
+  and not exists (select 1 from public.job_materials where enquiry_id not in (select id from public.enquiries)),
+  'retention removes the job plan with the enquiry');
+select pg_temp.expect(exists (select 1 from public.products where name = 'Hardening test product 1'),
+  'the product list is kept');
 select pg_temp.expect(exists (select 1 from public.enquiries where idempotency_key = pg_temp.key(3)), 'won enquiry kept');
 select pg_temp.expect(exists (select 1 from public.enquiries where idempotency_key = pg_temp.key(5)), 'recent enquiry kept');
 select pg_temp.expect(exists (select 1 from private.pending_event_deletions
@@ -190,6 +204,14 @@ select pg_temp.expect(not exists (select 1 from public.communications c where c.
 -- -------------------------------------------------------------------------------------------
 -- Staff delete for a data request
 -- -------------------------------------------------------------------------------------------
+insert into public.job_stages (id, enquiry_id, name, position)
+select gen_random_uuid(), id, 'Strip out', 1 from public.enquiries where idempotency_key = pg_temp.key(5);
+insert into public.products (name, unit, price_cents) values ('Hardening test product 5', 'each', 100)
+  on conflict do nothing;
+insert into public.job_materials (enquiry_id, stage_id, product_id, name, quantity, unit, price_cents)
+select s.enquiry_id, s.id, p.id, p.name, 1, 'each', 100 from public.job_stages s
+join public.enquiries e on e.id = s.enquiry_id, public.products p
+where e.idempotency_key = pg_temp.key(5) and p.name = 'Hardening test product 5';
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', public.bookable_staff(), 'role', 'authenticated')::text, true);
 select pg_temp.expect_error(format('select public.delete_enquiry(%L, ''Q3-WRONG1'')',
@@ -202,6 +224,9 @@ select pg_temp.expect((select count(*) from public.deletion_log where reason = '
   'staff deletion logged with who, no personal data');
 reset role;
 select pg_temp.expect(not exists (select 1 from public.enquiries where idempotency_key = pg_temp.key(5)), 'deleted');
+select pg_temp.expect(not exists (select 1 from public.job_stages where enquiry_id not in (select id from public.enquiries))
+  and not exists (select 1 from public.job_materials where enquiry_id not in (select id from public.enquiries)),
+  'a data-request delete removes the job plan');
 select pg_temp.expect(not exists (select 1 from public.communications c where c.enquiry_id not in (select id from public.enquiries)),
   'no messages left for deleted enquiries');
 

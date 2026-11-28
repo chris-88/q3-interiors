@@ -21,6 +21,7 @@ export function TaskFrame({
   bar,
   padded = false,
   focusTitle = false,
+  layout = 'columns',
   children,
 }: {
   enquiryId: string
@@ -38,6 +39,8 @@ export function TaskFrame({
   padded?: boolean
   /** A task with no first field to start in (booking) starts at its title. */
   focusTitle?: boolean
+  /** "stacked": the header above the content at every width (a wide table needs the room). */
+  layout?: 'columns' | 'stacked'
   children: ReactNode
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
@@ -49,9 +52,9 @@ export function TaskFrame({
   }, [at, focusTitle])
   return (
     <div
-      className={`mx-auto grid w-full max-w-2xl gap-4 lg:max-w-none lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-8 ${bar || padded ? 'pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0' : ''}`}
+      className={`mx-auto grid w-full gap-4 ${layout === 'stacked' ? 'max-w-2xl lg:max-w-none' : 'max-w-2xl lg:max-w-none lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start lg:gap-8'} ${bar || padded ? 'pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0' : ''}`}
     >
-      <div className="flex flex-col gap-4 lg:sticky lg:top-4">
+      <div className={`flex flex-col gap-4 ${layout === 'stacked' ? '' : 'lg:sticky lg:top-4'}`}>
         <Link
           to={`/enquiries/${enquiryId}`}
           className="text-primary inline-flex min-h-12 items-center gap-1 self-start text-sm underline"

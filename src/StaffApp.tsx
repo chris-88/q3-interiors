@@ -17,6 +17,8 @@ import {
   StaffSetPasswordRoute,
   StaffSettingsRoute,
   StaffTaskRoute,
+  StaffProductsRoute,
+  StaffTradespeopleRoute,
   StaffWordingRoute,
 } from '@/pages/staff/routes'
 import { useQueryClient } from '@tanstack/react-query'
@@ -113,6 +115,8 @@ export default function StaffApp() {
         <Route path="/report" element={<StaffReportRoute />} />
         <Route path="/settings" element={<StaffSettingsRoute />} />
         <Route path="/settings/people" element={<StaffPeopleRoute />} />
+        <Route path="/settings/products" element={<StaffProductsRoute />} />
+        <Route path="/settings/tradespeople" element={<StaffTradespeopleRoute />} />
         <Route path="/settings/checklist" element={<StaffChecklistRoute />} />
         <Route path="/settings/booking" element={<StaffBookingRulesRoute />} />
         <Route path="/settings/campaigns" element={<StaffCampaignsRoute />} />

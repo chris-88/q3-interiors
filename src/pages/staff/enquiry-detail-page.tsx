@@ -53,6 +53,9 @@ import {
   telHref,
 } from '@/lib/enquiry-stage'
 import { formatEuro as formatAmount } from '@/lib/outcome'
+import { useJobPlan, useTradespeople } from '@/api/job-plan'
+import { PlanFoldBody } from '@/components/staff/job-plan'
+import { planSummary } from '@/lib/job-plan'
 import { formatDateTime, formatDayMonth, formatShortWhen } from '@/lib/format'
 import { isKnown } from '@/lib/tolerant'
 import { neighbours } from '@/lib/walk'
@@ -682,6 +685,10 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
   const quote = currentQuote(enquiry.quotes)
   const showEstimate = !!estimate || (bookings.data && !!estimateSource(enquiry, rows, now))
   const showQuote = !!quote || enquiry.estimates.length > 0 || enquiry.quote_amount != null
+  // A won job's plan (stages, materials, tradespeople): its own fold.
+  const won = enquiry.outcome === 'won'
+  const plan = useJobPlan(enquiry.id, won)
+  const people = useTradespeople(won)
   const notes = enquiry.enquiry_events.filter((e) => e.kind === 'note_added').length
   const bar = barAction(view)
   return (
@@ -717,6 +724,27 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
         <ActionBar enquiry={enquiry} view={view} bookings={rows} now={now} />
       </div>
       <div className="flex flex-col gap-3">
+        {won && (
+          <Fold
+            id="plan"
+            title="Plan"
+            summary={
+              plan.isError
+                ? 'Could not load'
+                : plan.data
+                  ? planSummary(plan.data.stages.length, plan.data.lines)
+                  : null
+            }
+          >
+            {plan.isError ? (
+              <p role="alert" className="text-destructive text-sm">
+                Could not load the plan. Reload to try again.
+              </p>
+            ) : (
+              <PlanFoldBody enquiryId={enquiry.id} plan={plan.data} people={people.data ?? []} />
+            )}
+          </Fold>
+        )}
         <Fold id="answers" title="Their answers" summary={projectLine(enquiry, form)}>
           {forms.isPending ? (
             <Skeleton className="h-40 w-full" />

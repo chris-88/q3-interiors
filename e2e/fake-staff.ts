@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test'
+import { jobPlanRpc } from './fake-job-plan'
 import { estimateRange, isValidPercent } from '../supabase/functions/_shared/estimate.ts'
 import { WORDING } from '../supabase/functions/_shared/messages.ts'
 import type { AuthAdmin } from '../supabase/functions/_shared/gotrue.ts'
@@ -311,6 +312,16 @@ export async function installFakeStaff(page: Page, world: StaffWorld = staffWorl
         })
       }
       if (table === 'rpc/funnel_report') return json(route, 200, world.funnel)
+      const plan = jobPlanRpc(
+        world.tables,
+        table.slice(4),
+        (req.postDataJSON() ?? {}) as Record<string, unknown>,
+        {
+          active: !!caller?.active,
+          display_name: caller?.display_name ?? '',
+        },
+      )
+      if (plan) return json(route, plan.status, plan.body)
       if (table === 'rpc/pilot_report_by_content') {
         if (!caller?.active) return json(route, 403, { code: '42501', message: 'not allowed' })
         const campaign = (req.postDataJSON() as { p_campaign: string }).p_campaign

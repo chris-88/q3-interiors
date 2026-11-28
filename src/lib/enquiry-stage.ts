@@ -694,6 +694,7 @@ export type ActionKey =
   | 'mark_lost'
   | 'not_suitable'
   | 'edit_result'
+  | 'plan'
 
 /**
  * When the stage is due: `date` is an Irish calendar day (YYYY-MM-DD) or, for the diary, the
@@ -827,7 +828,8 @@ export function stageOf(e: ViewInput, now: number): StageView {
 
   switch (stage.key) {
     case 'won':
-      return finished('deposit', stageLine(e, stage, now))
+      // A won job is planned next (stages, materials, who does what): the one action.
+      return { ...finished('deposit', stageLine(e, stage, now)), primary: 'plan' }
     case 'lost':
     case 'closed':
       return finished(null, stageLine(e, stage, now))

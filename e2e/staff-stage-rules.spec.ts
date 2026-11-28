@@ -320,9 +320,10 @@ test('F5: a won enquiry shows the result only; corrections are in the actions', 
   await h1(page, 'Fiona Test')
   await expect(nowCard(page)).toContainText('Result')
   await expect(nowCard(page)).toContainText('Won €18,000')
+  // The one filled action is the job plan (a won job is planned next); no outcome buttons.
   await expect(
     page.locator('[data-slot="button"].bg-primary:visible, a.bg-primary:visible'),
-  ).toHaveCount(0)
+  ).toHaveText(['Open the job plan'])
   const sheet = await chooseAction(page, /^Correct the result/)
   await expect(sheet.getByRole('button', { name: 'Edit win' })).toBeVisible()
 })

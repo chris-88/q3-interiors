@@ -29,6 +29,8 @@ const EVENT_TEXT: Record<string, string> = {
   visit_link_sent: 'Site visit link sent',
   visit_booked_by_staff: 'Site visit booked for the customer',
   call_booked_by_staff: 'Call booked for the customer',
+  plan_started: 'Job plan started',
+  stage_done: 'Stage done',
 }
 
 /** An `email_sent` event's detail is the message template. */

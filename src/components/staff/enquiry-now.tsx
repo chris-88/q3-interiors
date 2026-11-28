@@ -354,6 +354,11 @@ export const ACTIONS: Record<ActionKey, ActionDef> = {
     line: 'Change or clear the outcome',
     panel: outcomePanel(null),
   },
+  plan: {
+    title: () => 'Open the job plan',
+    line: 'Stages, materials and who does each stage',
+    href: (e) => `#/enquiries/${e.id}/plan`,
+  },
 }
 
 /** The bar's action: the stage's primary, or for a diary stage its first other action. */

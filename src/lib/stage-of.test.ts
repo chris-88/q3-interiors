@@ -174,11 +174,13 @@ describe('stageOf', () => {
   })
 
   it('won, lost and closed are finished; a newer release’s outcome stays in view, plainly', () => {
+    // A won job's one action is its plan; it is still finished (no "Your move" from a plan).
     expect(stageOf(enquiry({ outcome: 'won' }), now)).toMatchObject({
       group: 'finished',
       step: 'deposit',
-      primary: null,
+      primary: 'plan',
     })
+    expect(stageOf(enquiry({ outcome: 'lost' }), now).primary).toBeNull()
     expect(stageOf(enquiry({ status: 'unsuitable' }), now).group).toBe('finished')
     expect(stageOf(enquiry({ outcome: 'paused' }), now)).toMatchObject({
       key: 'other',

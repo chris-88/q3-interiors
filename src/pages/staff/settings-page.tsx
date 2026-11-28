@@ -531,6 +531,34 @@ const SETUP_LINKS: { to: string; label: string; hint: string }[] = [
   },
 ]
 
+/** The lists behind job plans, for everyone. */
+function PlanListLinks() {
+  const links = [
+    { to: '/settings/products', label: 'Product list', hint: 'Materials and their usual prices' },
+    { to: '/settings/tradespeople', label: 'Tradespeople', hint: 'Who you give stages to' },
+  ]
+  return (
+    <nav aria-labelledby="plan-lists-heading" className="bg-background rounded-md border p-4">
+      <h2 id="plan-lists-heading" className="text-base font-medium">
+        Job plans
+      </h2>
+      <ul className="mt-2 flex flex-col">
+        {links.map((l) => (
+          <li key={l.to}>
+            <Link
+              to={l.to}
+              className="hover:bg-muted flex min-h-12 flex-col justify-center rounded-md px-2 py-2"
+            >
+              <span className="text-primary font-medium underline">{l.label}</span>
+              <span className="text-muted-foreground text-sm">{l.hint}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
 function SetupLinks() {
   return (
     <nav aria-labelledby="setup-heading" className="bg-background rounded-md border p-4">
@@ -567,6 +595,7 @@ export function SettingsPage() {
       <h1 className="text-section text-ink font-medium">Settings</h1>
       <InstallHint />
       {isAdmin && <SetupLinks />}
+      <PlanListLinks />
       <CalendarCard />
       <Card title="Hours for bookings" id="availability-heading">
         {availability.isPending && hoursFor !== undefined ? (

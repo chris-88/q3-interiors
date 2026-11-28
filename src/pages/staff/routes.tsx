@@ -1,6 +1,7 @@
 import { StaffArea } from '@/components/staff/staff-layout'
 import { EnquiryDetailPage } from './enquiry-detail-page'
 import { EnquiryTaskPage } from './enquiry-task-page'
+import { ProductsPage, TradespeoplePage } from './plan-lists-pages'
 import { EnquiryListPage } from './enquiry-list-page'
 import { AppointmentsPage } from './appointments-page'
 import { ReportPage } from './report-page'
@@ -41,6 +42,22 @@ export function StaffTaskRoute() {
   return (
     <StaffArea>
       <EnquiryTaskPage />
+    </StaffArea>
+  )
+}
+
+export function StaffProductsRoute() {
+  return (
+    <StaffArea>
+      <ProductsPage />
+    </StaffArea>
+  )
+}
+
+export function StaffTradespeopleRoute() {
+  return (
+    <StaffArea>
+      <TradespeoplePage />
     </StaffArea>
   )
 }

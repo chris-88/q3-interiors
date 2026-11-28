@@ -50,6 +50,7 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
   - Deposit received: nothing records a deposit, so the Deposit step is never done.
   - The Report page is not on `stageOf()`: its funnel counts come from the database functions.
   - Drafts are per device: a draft started on the phone is not on the laptop.
+  - Job plans: no dates, no order-by, nothing sent to a tradesperson or supplier, stage templates seeded only (no screen to edit them), prices with no VAT label.
 
 ## 2. The strip is the record, not the stage
 
@@ -142,6 +143,18 @@ Every enquiry has exactly one stage, worked out in the browser by `stageOf()` in
   - Each draft records the estimate or quote it was started on, so one started before another went out is dropped.
   - While one waits: the task screen says "Saved on this device until you send it.", the now card "Estimate started, not sent (saved on this device)", the bar "Carry on with the estimate", and the list row "Draft ·".
 - **One document viewer:** `DocumentViewer` shows the estimate email, the quote and its PDF in a sandboxed frame (scripts off), with the lines on who it goes to and Download PDF when stored. The frame takes the document's own height, so the page scrolls, never a box inside it.
+
+### The job plan (a won job's own module)
+
+- **Way in:** a won job's one action is "Open the job plan" (`stageOf()` gives `won` the primary `plan`; it stays under Finished, and nothing in a plan puts a job back in "Your move"). The enquiry page has a "Plan" fold with its summary ("5 stages · 12 items · €3,420", or "Not started").
+- **Task screen** `#/enquiries/:id/plan` in the task frame, stacked (the title above the plan at every width, so the table has the room). Not started: the usual stages for the job type, listed, and "Start the plan" in the bar. Started: the job's total, items got and stages done on one line, then the plan; no bar (each stage's "Add item" is the action).
+- **390px: stage sections with rows**, never a wide table and never sideways scroll. Each stage: its name, Done, what it has ("2 items · 1 got · €318.25"), the tradesperson, its items (Got it, the name with "12.5 m2 × €24.50", the line total; tap the name to change quantity, unit or price each, or remove), "Add item", and "Change stage" (rename, move up or down, remove with a confirm).
+- **From 1024px: one table** with the columns Stage, Item, Qty, Unit, Price each, Total, Got it, Tradesperson. A stage's cell (name, totals, Done, Change stage) and its tradesperson span its rows; the footer is the job total.
+- **Recognition over recall:** "Add item" searches the product list as he types (names starting with it, then a word starting with it, then containing it; top five, each with its usual price and unit), then "Add “…” as new", which asks only the price each and unit (supplier optional) and adds it to the stage. A product is never entered twice.
+- **Picking from a list, or adding in place:** the tradesperson picker lists the people and ends with "Add someone new…", which opens name, trade and phone right there and assigns them on save.
+- **Ticks show at once** and say "Not saved" if the write fails.
+- **Prices:** "Price each", as paid, no VAT claim (open with Chris). A line keeps the price it was planned at; the product's usual price changes future lines only, and the product screen says so.
+- **The lists** (Settings > Job plans > Product list, Tradespeople; linked from the plan): search, change, archive (Show archived to bring one back). Any staff member.
 
 ### Confirming
 

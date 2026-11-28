@@ -122,20 +122,6 @@ export function formatCents(cents: number): string {
   return cents % 100 === 0 ? euro.format(cents / 100) : euroCents.format(cents / 100)
 }
 
-/** "5 stages · 12 items · €3,420", or "Not started". */
-export function planSummary(
-  stages: number,
-  lines: Pick<PlanLine, 'quantity' | 'price_cents' | 'got_at'>[],
-) {
-  if (stages === 0) return 'Not started'
-  const t = totalsOf(lines)
-  return [
-    `${stages} ${stages === 1 ? 'stage' : 'stages'}`,
-    `${t.items} ${t.items === 1 ? 'item' : 'items'}`,
-    formatCents(t.cents),
-  ].join(' · ')
-}
-
 /** Euro as people type it ("24.50", "€1,200", "1200") in cents; null when it is not a price. */
 export function parseEuroToCents(text: string): number | null {
   const t = text.replace(/[€\s,]/g, '')
@@ -163,3 +149,29 @@ export function exactProduct(products: Product[], query: string): Product | null
   const q = query.trim().toLowerCase().replace(/\s+/g, ' ')
   return products.find((p) => p.name.toLowerCase() === q) ?? null
 }
+
+/** What is still to get: the items not ticked and what they cost. */
+export function toGet(lines: Pick<PlanLine, 'quantity' | 'price_cents' | 'got_at'>[]) {
+  const left = lines.filter((l) => !l.got_at)
+  return { items: left.length, cents: left.reduce((c, l) => c + lineTotal(l), 0) }
+}
+
+/** "To get: 3 items · €179", "Everything got", or "Nothing to get yet". */
+export function toGetLine(lines: Pick<PlanLine, 'quantity' | 'price_cents' | 'got_at'>[]) {
+  if (lines.length === 0) return 'Nothing to get yet'
+  const t = toGet(lines)
+  if (t.items === 0) return 'Everything got'
+  return `To get: ${t.items} ${t.items === 1 ? 'item' : 'items'} · ${formatCents(t.cents)}`
+}
+
+/** "Next: First fix plumbing · Pat Example (Plumber)", or "Every stage done". */
+export function nextStageLine(stages: PlanStage[], people: Tradesperson[]) {
+  const next = [...stages].sort((a, b) => a.position - b.position).find((s) => !s.done_at)
+  if (!next) return 'Every stage done'
+  const who = people.find((p) => p.id === next.tradesperson_id)
+  const name = who ? ` · ${who.name}${who.trade ? ` (${who.trade})` : ''}` : ''
+  return `Next: ${next.name}${name}`
+}
+
+/** The units offered as chips (so "m2" and "sqm" do not split); anything else is typed. */
+export const UNITS = ['each', 'm2', 'm', 'bag', 'box', 'length', 'tin'] as const

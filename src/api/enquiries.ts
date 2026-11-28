@@ -39,6 +39,13 @@ const summaryBookingSchema = z
   })
   .transform(({ appointment_types, ...b }) => ({ ...b, mode: appointment_types?.mode ?? null }))
 
+const jobStageSummarySchema = z.object({
+  name: z.string(),
+  position: z.coerce.number(),
+  done_at: z.string().nullable().default(null),
+  tradespeople: z.object({ name: z.string() }).nullable().default(null),
+})
+
 const enquirySummarySchema = z.object({
   id: z.string(),
   reference: z.string(),
@@ -73,6 +80,11 @@ const enquirySummarySchema = z.object({
     .array(z.unknown())
     .default([])
     .transform((rows) => parseRows(quoteSchema, rows, 'quotes')),
+  // A won job's plan stages (2026-11-28): what is next, and whether the job is still on.
+  job_stages: z
+    .array(z.unknown())
+    .default([])
+    .transform((rows) => parseRows(jobStageSummarySchema, rows, 'plan stages')),
 })
 
 export type EnquirySummary = z.infer<typeof enquirySummarySchema>
@@ -136,7 +148,7 @@ const enquiryDetailSchema = enquirySummarySchema.extend({
 
 export type EnquiryDetail = z.infer<typeof enquiryDetailSchema>
 
-const SUMMARY_COLUMNS = `id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, call_held_at, visit_link_sent_at, bookings (starts_at, confirmed_at, state, attendance, appointment_types (mode)), ${ESTIMATE_COLUMNS}, ${QUOTE_COLUMNS}`
+const SUMMARY_COLUMNS = `id, reference, status, form_id, form_version, answers, submitted_at, contact_requested_at, added_after_booking_at, outcome, quote_amount, outcome_value, outcome_reason, call_held_at, visit_link_sent_at, bookings (starts_at, confirmed_at, state, attendance, appointment_types (mode)), ${ESTIMATE_COLUMNS}, ${QUOTE_COLUMNS}, job_stages (name, position, done_at, tradespeople (name))`
 
 export function useEnquiries() {
   return useQuery({

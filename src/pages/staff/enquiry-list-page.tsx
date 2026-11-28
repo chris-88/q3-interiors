@@ -25,6 +25,7 @@ const GROUP_HINTS = {
   your_move: 'overdue first',
   diary: 'next first',
   waiting: 'soonest good-until first',
+  jobs: 'won, until every stage is done',
 } as const
 
 /** Two lines: the name and the due chip; what has happened and the job. Nothing that matters is cut. */
@@ -47,7 +48,7 @@ function EnquiryRow({ enquiry, form }: { enquiry: Row; form: FormDefinition | un
           <span className="min-w-0 break-words">
             {/* An estimate or quote started on this device and not sent yet. */}
             {draftOf(enquiry, view) && <span className="text-ink font-medium">Draft · </span>}
-            {view.news}
+            {view.group === 'jobs' && view.job ? view.job : view.news}
             {enquiry.added_after_booking_at && ' · added after booking'}
           </span>
           {job && <span className="shrink-0">{job}</span>}
@@ -116,7 +117,8 @@ export function EnquiryListPage() {
   const now = useLoadedAt(enquiries.dataUpdatedAt)
   const all = enquiries.data ?? []
   const groups = groupStages(all, query, now)
-  const open = groups.your_move.length + groups.diary.length + groups.waiting.length
+  const open =
+    groups.your_move.length + groups.diary.length + groups.waiting.length + groups.jobs.length
   const refreshing = enquiries.isFetching && !enquiries.isPending
   const searching = query.trim() !== ''
 
@@ -218,7 +220,7 @@ export function EnquiryListPage() {
                   ` ${groups.finished.length} finished ${groups.finished.length === 1 ? 'one does' : 'ones do'}.`}
               </p>
             )}
-            {(['your_move', 'diary', 'waiting'] as const).map((g) => (
+            {(['your_move', 'diary', 'waiting', 'jobs'] as const).map((g) => (
               <Group
                 key={g}
                 id={`group-${g}`}
@@ -231,7 +233,9 @@ export function EnquiryListPage() {
                     ? 'Nothing for you to do.'
                     : g === 'diary'
                       ? 'Nothing booked.'
-                      : 'Nobody to wait on.'
+                      : g === 'waiting'
+                        ? 'Nobody to wait on.'
+                        : 'No jobs on.'
                 }
               />
             ))}

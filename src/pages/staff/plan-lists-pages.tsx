@@ -13,6 +13,7 @@ import {
   useUpdateProduct,
   useUpdateTradesperson,
 } from '@/api/job-plan'
+import { UnitChips } from '@/components/staff/job-plan'
 import { BackToSettings } from '@/components/staff/settings-ui'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -178,7 +179,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
       }}
     >
       <Field id={`${id}-name`} label="Name" value={name} onChange={setName} />
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex flex-col gap-2">
         <Field
           id={`${id}-price`}
           label="Usual price each (€)"
@@ -186,7 +187,7 @@ function ProductForm({ product, onDone }: { product: Product | null; onDone: () 
           value={price}
           onChange={setPrice}
         />
-        <Field id={`${id}-unit`} label="Unit" value={unit} onChange={setUnit} />
+        <UnitChips value={unit} onChange={setUnit} />
       </div>
       <Field
         id={`${id}-supplier`}

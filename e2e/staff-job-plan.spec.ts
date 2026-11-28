@@ -154,12 +154,16 @@ async function addNewProduct(
   name: string,
   price: string,
   unit: string,
+  quantity = '1',
 ) {
   const s = stage(page, stageName)
   await s.getByLabel(`Add item to ${stageName}`).fill(name)
   await s.getByRole('button', { name: `Add “${name}” as new` }).click()
+  // The quantity is asked as the item goes in.
+  await expect(s.getByLabel('Quantity')).toBeFocused()
+  await s.getByLabel('Quantity').fill(quantity)
   await s.getByLabel('Price each (€)').fill(price)
-  await s.getByLabel('Unit').fill(unit)
+  await s.getByRole('radio', { name: unit, exact: true }).check({ force: true })
   await s.getByRole('button', { name: 'Save and add' }).click()
 }
 
@@ -192,20 +196,22 @@ test('a won job: start the plan from its stages, add a new product, a tradespers
   await tiling.getByLabel('Add item to Tiling').fill('grou')
   await expect(tiling.getByRole('button', { name: /^Grout white/ })).toBeVisible()
   await tiling.getByRole('button', { name: /^Grout white/ }).click()
-  await expect(tiling.getByRole('list', { name: 'Items for Tiling' })).toContainText('1 bag × €12')
-
-  // A new product: saved to the list and added to the stage.
-  await addNewProduct(page, 'Tiling', 'Wall tile white', '24.50', 'm2')
+  // The new line opens asking the quantity; Enter saves it.
+  await expect(tiling.getByLabel('Quantity')).toBeFocused()
+  await tiling.getByLabel('Quantity').fill('2')
+  await tiling.getByLabel('Quantity').press('Enter')
   const items = tiling.getByRole('list', { name: 'Items for Tiling' })
+  await expect(items).toContainText('2 bag × €12')
+
+  // A new product: quantity, price and unit (as chips); saved to the list and to the stage.
+  await addNewProduct(page, 'Tiling', 'Wall tile white', '24.50', 'm2', '12.5')
   await expect(items).toContainText('Wall tile white')
-  await expect(items).toContainText('1 m2 × €24.50')
-  // Quantity on the line: 12.5 m2 → €306.25; the stage and job totals follow.
-  await items.getByRole('button', { name: /^Wall tile white/ }).click()
-  await tiling.getByLabel('Quantity').fill('12.5')
-  await tiling.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(items).toContainText('12.5 m2 × €24.50')
   await expect(items).toContainText('€306.25')
-  await expect(tiling).toContainText('2 items · 0 got · €318.25')
-  await expect(page.getByText('€318.25 · 2 items, 0 got')).toBeVisible()
+  await expect(tiling).toContainText('2 items · 0 got · €330.25')
+  // At the top: what is left to get, and what is next.
+  await expect(page.getByText('To get: 2 items · €330.25')).toBeVisible()
+  await expect(page.getByText('Next: Strip out', { exact: true })).toBeVisible()
   expect(world.rpcCalls.find((c) => c.name === 'add_product')?.body).toEqual({
     p_name: 'Wall tile white',
     p_unit: 'm2',
@@ -223,9 +229,28 @@ test('a won job: start the plan from its stages, add a new product, a tradespers
     'Tom Sample (Tiler)',
   )
 
-  // Got it, and the stage done.
+  // Got it, and the stage done. Both ticks are 48px targets (the label around the box).
+  const gotIt = tiling
+    .locator('label')
+    .filter({ has: page.getByRole('checkbox', { name: 'Got it: Grout white' }) })
+  const gotBox = await gotIt.boundingBox()
+  expect(gotBox?.width).toBeGreaterThanOrEqual(48)
+  expect(gotBox?.height).toBeGreaterThanOrEqual(48)
+  const doneBox = await tiling
+    .locator('label')
+    .filter({ has: page.getByRole('checkbox', { name: /^Done/ }) })
+    .boundingBox()
+  expect(doneBox?.width).toBeGreaterThanOrEqual(48)
+  expect(doneBox?.height).toBeGreaterThanOrEqual(48)
+  // Measured 2026-11-28: Got it 62 x 48, Done 60 x 48.
   await tiling.getByRole('checkbox', { name: 'Got it: Grout white' }).check()
   await expect(tiling).toContainText('2 items · 1 got')
+  await expect(page.getByText('To get: 1 item · €306.25')).toBeVisible()
+  // Show only these: what is still to get.
+  await page.getByRole('checkbox', { name: 'Show only these' }).check()
+  await expect(items).not.toContainText('Grout white')
+  await expect(stage(page, 'Strip out')).toHaveCount(0)
+  await page.getByRole('checkbox', { name: 'Show only these' }).uncheck()
   await tiling.getByRole('checkbox', { name: /^Done/ }).check()
   await expect(tiling.getByRole('checkbox', { name: /^Done/ })).toBeChecked()
   expect(world.rpcCalls.filter((c) => c.name === 'set_job_stage_done').map((c) => c.body)).toEqual([
@@ -250,10 +275,21 @@ test('a won job: start the plan from its stages, add a new product, a tradespers
 
   // Back on the enquiry: the fold's summary and the history.
   await page.getByRole('link', { name: 'Back to Aoife Sample' }).click()
-  await expect(page.locator('#fold-plan summary')).toContainText('6 stages · 2 items · €318.25')
+  await expect(page.locator('#fold-plan summary')).toContainText(
+    'To get: 1 item · €306.25 · Next: Strip out',
+  )
   await expect(nowCard(page)).toContainText('Result')
   await openFold(page, 'Plan')
   await expect(page.locator('#fold-plan')).toContainText('Tom Sample')
+
+  // The list: a job on is under "Jobs on" with what is next, not under Finished.
+  await page.getByRole('link', { name: 'All enquiries' }).click()
+  const jobs = page.getByRole('region', { name: /^Jobs on/ })
+  await expect(jobs.getByRole('link', { name: /Aoife Sample/ })).toContainText('Next: Strip out')
+  await expect(jobs.getByRole('link', { name: /Brian Example/ })).toContainText('Plan not started')
+  await expect(page.getByRole('link', { name: /^Finished/ })).toHaveText('Finished (0)')
+  await shot(page, 'list-jobs-on-390')
+  await page.getByRole('link', { name: /Aoife Sample/ }).click()
   await openFold(page, 'Notes and history')
   await expect(page.getByRole('region', { name: 'History' })).toContainText('Job plan started')
   await expect(page.getByRole('region', { name: 'History' })).toContainText('Tiling done')
@@ -292,6 +328,7 @@ test('the product list grows: reuse a product on a second job after its usual pr
   const tiling = stage(page, 'Tiling')
   await tiling.getByLabel('Add item to Tiling').fill('wall')
   await tiling.getByRole('button', { name: /^Wall tile white/ }).click()
+  await tiling.getByLabel('Quantity').press('Enter')
   await expect(tiling.getByRole('list', { name: 'Items for Tiling' })).toContainText('1 m2 × €26')
   // No duplicate product was made.
   expect(world.rpcCalls.filter((c) => c.name === 'add_product')).toHaveLength(1)
@@ -376,6 +413,7 @@ test('the catalogue: search in any word order, his own first, the supplier and i
   const strip = stage(page, 'Strip out')
   await strip.getByLabel('Add item to Strip out').fill('lime')
   await strip.getByRole('button', { name: /^Hydrated Lime 25Kg/ }).click()
+  await strip.getByLabel('Quantity').press('Enter')
   await expect(strip.getByRole('list', { name: 'Items for Strip out' })).toContainText(
     '1 each × €13.75',
   )
@@ -420,4 +458,26 @@ test('the catalogue: search in any word order, his own first, the supplier and i
   await page.getByLabel('Usual price each (€)').fill('11')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(list).toContainText('€11 / each, your price · Goodwins €12.80 inc VAT')
+})
+
+test('typing the next item while one is going in is never wiped', async ({ page }) => {
+  const world = await open(page, '/#/enquiries/e-plan01/plan')
+  // A slow save, so the typing lands while the item is still going in.
+  world.planLineDelayMs = 1500
+  await page
+    .getByRole('region', { name: 'Actions' })
+    .getByRole('button', { name: 'Start the plan' })
+    .click()
+  const tiling = stage(page, 'Tiling')
+  const box = tiling.getByLabel('Add item to Tiling')
+  await box.fill('grout')
+  await tiling.getByRole('button', { name: /^Grout white/ }).click()
+  // Straight on, with no wait for the save.
+  await box.pressSequentially('wall t')
+  await expect(tiling.getByRole('list', { name: 'Items for Tiling' })).toContainText('Grout white')
+  await expect(box).toHaveValue('wall t')
+  // He went on typing, so the new line does not take the focus from him.
+  await expect(box).toBeFocused()
+  await expect(tiling.getByLabel('Quantity')).not.toBeFocused()
+  expect(world.rpcCalls.filter((c) => c.name === 'add_job_material')).toHaveLength(1)
 })

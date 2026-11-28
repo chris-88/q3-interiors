@@ -200,9 +200,12 @@ const h1 = (page: Page, name: string) =>
 test('screens at 390px for the review (before and after)', async ({ page }) => {
   await open(page)
   await expect(rows(page).first()).toBeVisible()
+  // A won job is on (its plan not started), so it is listed under Jobs on, not Finished.
+  await expect(row(page, 'Fiona Test')).toContainText('Plan not started')
   await shot(page, 'list-open')
   await page.getByRole('link', { name: /^Finished/ }).click()
-  await expect(row(page, 'Fiona Test')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Finished')
+  await expect(row(page, 'Fiona Test')).toHaveCount(0)
   await shot(page, 'list-finished')
   for (const [id, name, file] of [
     ['e-mix001', 'Orla Test', 'f1-mixed-detail'],

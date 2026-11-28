@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   clearDraft,
+  draftAction,
   draftHasContent,
   estimateDraftSchema,
   hasDraft,
@@ -54,5 +55,15 @@ describe('task drafts (kept on this device until sent)', () => {
     const start = { price: '', percent: '10', work: '', ticked: [] }
     expect(draftHasContent(start, start)).toBe(false)
     expect(draftHasContent(values, start)).toBe(true)
+  })
+})
+
+describe('carrying on a draft from the bar', () => {
+  it('at any stage that offers it, not only where it is the primary', () => {
+    const choose = { primary: 'choose_next', others: ['book_visit', 'write_estimate'] }
+    expect(draftAction(choose, 'estimate')).toBe('write_estimate')
+    expect(draftAction(choose, null)).toBeNull()
+    expect(draftAction(choose, 'quote')).toBeNull()
+    expect(draftAction({ primary: 'revise_quote', others: [] }, 'quote')).toBe('revise_quote')
   })
 })

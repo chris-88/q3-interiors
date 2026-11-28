@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { publishedForms } from '../src/forms/published.ts'
 import {
   chooseAction,
+  openActions,
   installFakeStaff,
   primaryAction,
   signIn,
@@ -301,4 +302,19 @@ test('a booking link: confirm, then the enquiry shows it was sent until they boo
     'Brian Example',
   )
   await shot(page, 'after-call-list')
+})
+
+test('an estimate started at "Choose the next step": the bar carries it on, the stage’s own step is in the sheet', async ({
+  page,
+}) => {
+  await open(page, '/#/enquiries/e-held01')
+  await expect(primaryAction(page)).toHaveText('Choose the next step')
+  await page.goto('/#/enquiries/e-held01/estimate')
+  await page.getByLabel('Price in euro').fill('5000')
+  await page.getByRole('link', { name: /^Back to/ }).click()
+  await expect(primaryAction(page)).toHaveText('Carry on with the estimate')
+  await expect(now(page)).toContainText('Estimate started, not sent (saved on this device)')
+  const sheet = await openActions(page)
+  await expect(sheet.getByRole('button', { name: /^Choose the next step/ })).toBeVisible()
+  await expect(sheet.getByRole('link', { name: /^Write the estimate|^Carry on/ })).toHaveCount(0)
 })

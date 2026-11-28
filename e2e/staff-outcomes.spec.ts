@@ -164,9 +164,12 @@ test('staff record a quote, then the win, then correct it; the list filters by o
 
   // The list by outcome.
   await page.goto('/#/')
+  // A won job is on until its plan is done; the lost ones are finished.
+  await expect(page.getByRole('region', { name: /^Jobs on/ }).getByRole('listitem')).toContainText([
+    'Plan not started',
+  ])
   await page.getByRole('link', { name: /^Finished/ }).click()
-  await expect(list.getByRole('listitem')).toHaveCount(3)
-  await expect(list.getByRole('listitem').filter({ hasText: 'Won €18,000' })).toHaveCount(1)
+  await expect(list.getByRole('listitem')).toHaveCount(2)
   await expect(list.getByRole('listitem').filter({ hasText: /Lost/ })).toHaveCount(2)
 
   expect(

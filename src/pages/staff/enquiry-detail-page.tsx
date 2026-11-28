@@ -55,7 +55,7 @@ import {
 import { formatEuro as formatAmount } from '@/lib/outcome'
 import { useJobPlan, useTradespeople } from '@/api/job-plan'
 import { PlanFoldBody } from '@/components/staff/job-plan'
-import { planSummary } from '@/lib/job-plan'
+import { nextStageLine, toGetLine } from '@/lib/job-plan'
 import { formatDateTime, formatDayMonth, formatShortWhen } from '@/lib/format'
 import { isKnown } from '@/lib/tolerant'
 import { neighbours } from '@/lib/walk'
@@ -128,7 +128,7 @@ function EnquiryWalk({ id }: { id: string }) {
   if (!list.data) return null
   // The list as shown: Your move, In the diary, Waiting on them (or Finished, for a finished one).
   const g = groupStages(list.data, storedSearch(), now)
-  const open = [...g.your_move, ...g.diary, ...g.waiting].map((e) => e.id)
+  const open = [...g.your_move, ...g.diary, ...g.waiting, ...g.jobs].map((e) => e.id)
   const ids = open.includes(id) ? open : g.finished.map((e) => e.id)
   const place = neighbours(ids, id)
   return place ? (
@@ -732,7 +732,9 @@ function EnquiryView({ enquiry, now }: { enquiry: EnquiryDetail; now: number }) 
               plan.isError
                 ? 'Could not load'
                 : plan.data
-                  ? planSummary(plan.data.stages.length, plan.data.lines)
+                  ? plan.data.stages.length === 0
+                    ? 'Not started'
+                    : `${toGetLine(plan.data.lines)} · ${nextStageLine(plan.data.stages, people.data ?? [])}`
                   : null
             }
           >

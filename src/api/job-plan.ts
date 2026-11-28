@@ -1,6 +1,6 @@
 // The job plan's reads and writes (staff only; migration 20261201100000_job_plan). Reads are plain
 // table reads under RLS, joined here; every write is one of the security-definer functions.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { parseRows } from '@/lib/tolerant'
@@ -34,7 +34,15 @@ const productSchema = z.object({
   price_cents: z.coerce.number(),
   supplier: z.string().nullable().default(null),
   archived_at: z.string().nullable().default(null),
-}) satisfies z.ZodType<Product>
+  source: z.string().nullable().default(null),
+  supplier_sku: z.string().nullable().default(null),
+  source_url: z.string().nullable().default(null),
+  category: z.string().nullable().default(null),
+  supplier_price_cents: z.coerce.number().nullable().default(null),
+  price_edited_at: z.string().nullable().default(null),
+  uses: z.coerce.number().default(0),
+  total: z.coerce.number().default(0),
+}) satisfies z.ZodType<Product & { total: number }>
 
 const tradespersonSchema = z.object({
   id: z.string(),
@@ -100,16 +108,55 @@ export function useStageTemplate(projectType: string | null, enabled = true) {
   })
 }
 
-export function useProducts() {
+/** "mine_used" (the default list), "mine", "used", "all", or a supplier's slug ("goodwins"). */
+export type ProductFilter = string
+
+async function findProducts(
+  query: string,
+  filter: ProductFilter,
+  limit: number,
+  offset: number,
+  archived = false,
+) {
+  const { data, error } = await supabase.rpc('find_products', {
+    p_query: query,
+    p_filter: filter,
+    p_limit: limit,
+    p_offset: offset,
+    p_archived: archived,
+  })
+  if (error) throw toApiError(error)
+  return parseRows(productSchema, data, 'products')
+}
+
+/**
+ * What "Add item" offers for what he has typed: searched on the server (every word, any order,
+ * or the SKU), used-on-a-job first, then his own, then the catalogue. Nothing under 2 letters.
+ */
+export function useProductSearch(query: string) {
+  const q = query.trim().replace(/\s+/g, ' ')
   return useQuery({
-    queryKey: ['products'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, unit, price_cents, supplier, archived_at')
-        .order('name', { ascending: true })
-      if (error) throw toApiError(error)
-      return parseRows(productSchema, data, 'products')
+    queryKey: ['products', 'search', q],
+    enabled: q.length >= 2,
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+    queryFn: () => findProducts(q, 'all', 6, 0),
+  })
+}
+
+const PAGE = 50
+
+/** Settings > Product list: a page at a time, filtered and searched on the server. */
+export function useProductBrowse(filter: ProductFilter, query: string, archived: boolean) {
+  const q = query.trim().replace(/\s+/g, ' ')
+  return useInfiniteQuery({
+    queryKey: ['products', 'browse', filter, q, archived],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => findProducts(q, filter, PAGE, pageParam, archived),
+    getNextPageParam: (last, pages) => {
+      const seen = pages.reduce((n, p) => n + p.length, 0)
+      const total = last[0]?.total ?? 0
+      return last.length === PAGE && seen < total ? seen : undefined
     },
   })
 }

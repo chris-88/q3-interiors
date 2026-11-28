@@ -9,7 +9,7 @@ import {
   planSummary,
   priceText,
   quantityText,
-  searchProducts,
+  productPriceLine,
   totalsOf,
   type PlanLine,
   type Product,
@@ -109,27 +109,26 @@ describe('typed money and quantities', () => {
   })
 })
 
-describe('searching the product list', () => {
-  const list = [
-    product('Wall tile white'),
-    product('Floor tile grey'),
-    product('Tile adhesive'),
-    product('Grout'),
-    product('Old tile', { archived_at: '2026-11-01T00:00:00Z' }),
-  ]
-
-  it('starts-with first, then a word, then anywhere; never archived', () => {
-    expect(searchProducts(list, 'tile').map((p) => p.name)).toEqual([
-      'Tile adhesive',
-      'Floor tile grey',
-      'Wall tile white',
-    ])
-    expect(searchProducts(list, 'out').map((p) => p.name)).toEqual(['Grout'])
-    expect(searchProducts(list, '  ')).toEqual([])
-    expect(searchProducts(list, 't', 2)).toHaveLength(2)
+describe('a product’s price line', () => {
+  it('his own, a catalogue one, and one whose price he changed', () => {
+    expect(productPriceLine(product('Grout', { price_cents: 1200, unit: 'bag' }))).toBe('€12 / bag')
+    const cat = product('White Cement', {
+      source: 'goodwins',
+      supplier: 'Goodwins',
+      price_cents: 1280,
+      supplier_price_cents: 1280,
+    })
+    expect(productPriceLine(cat)).toBe('€12.80 inc VAT · Goodwins')
+    expect(
+      productPriceLine({ ...cat, price_cents: 1100, price_edited_at: '2026-11-28T10:00:00Z' }),
+    ).toBe('€11 / each, your price · Goodwins €12.80 inc VAT')
+    expect(productPriceLine({ ...cat, source: 'newsupplier', supplier: 'New Supplier' })).toBe(
+      '€12.80 inc VAT · New Supplier',
+    )
   })
 
   it('an exact name in any case is the product itself', () => {
+    const list = [product('Grout'), product('Grout white')]
     expect(exactProduct(list, ' grout ')?.name).toBe('Grout')
     expect(exactProduct(list, 'grou')).toBeNull()
   })

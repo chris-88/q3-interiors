@@ -104,6 +104,38 @@ function seed(world: StaffWorld) {
   world.tables.tradespeople = []
 }
 
+/** A few supplier catalogue rows (prices VAT included), beside his own. */
+function seedCatalogue(world: StaffWorld) {
+  const cat = (sku: string, name: string, price: number, category: string) => ({
+    id: `cat-${sku}`,
+    name,
+    unit: 'each',
+    price_cents: price,
+    supplier: 'Goodwins',
+    archived_at: null,
+    source: 'goodwins',
+    supplier_sku: sku,
+    source_url: `https://www.goodwins.example/products/${sku}.html`,
+    category,
+    supplier_price_cents: price,
+    price_edited_at: null,
+  })
+  world.tables.products = [
+    ...(world.tables.products ?? []),
+    {
+      id: 'product-own-cement',
+      name: 'White cement',
+      unit: 'bag',
+      price_cents: 1150,
+      supplier: null,
+      archived_at: null,
+    },
+    cat('0011011', "O'Brien Premium White Cement 25kg Bag", 1280, 'Building > Cement'),
+    cat('0011016', 'Hydrated Lime 25Kg', 1375, 'Building > Cement'),
+    cat('6000710', 'K Post Setting Cement (Postmix) 20kg', 935, 'Building > Cement Mixes'),
+  ]
+}
+
 async function open(page: Page, path: string) {
   const world = staffWorld()
   seed(world)
@@ -323,4 +355,69 @@ test('Tradespeople under Settings: add, change, archive', async ({ page }) => {
     'Tom Sample (archived)',
   )
   await shot(page, 'tradespeople-390')
+})
+
+test('the catalogue: search in any word order, his own first, the supplier and inc VAT on catalogue rows; the list filter', async ({
+  page,
+}) => {
+  const world = staffWorld()
+  seed(world)
+  seedCatalogue(world)
+  await page.clock.setFixedTime(new Date(NOW))
+  await installFakeStaff(page, world)
+  await page.goto('/#/enquiries/e-plan01/plan')
+  await signIn(page, 'staff@example.com', 'another long password')
+  await page
+    .getByRole('region', { name: 'Actions' })
+    .getByRole('button', { name: 'Start the plan' })
+    .click()
+
+  // Used on a job comes first: put the lime on Strip out.
+  const strip = stage(page, 'Strip out')
+  await strip.getByLabel('Add item to Strip out').fill('lime')
+  await strip.getByRole('button', { name: /^Hydrated Lime 25Kg/ }).click()
+  await expect(strip.getByRole('list', { name: 'Items for Strip out' })).toContainText(
+    '1 each × €13.75',
+  )
+
+  // "cement white": words in any order; his own first, then the catalogue, which says where from.
+  const tiling = stage(page, 'Tiling')
+  await tiling.getByLabel('Add item to Tiling').fill('cement white')
+  const matches = tiling.getByRole('list', { name: 'Matches for cement white' })
+  await expect(matches.getByRole('button')).toHaveText([
+    /^White cement.*€11\.50 \/ bag/,
+    /^O'Brien Premium White Cement 25kg Bag.*Building > Cement.*€12\.80 inc VAT · Goodwins/,
+    'Add “cement white” as new',
+  ])
+  await tiling.getByLabel('Add item to Tiling').fill('lime')
+  await expect(
+    tiling.getByRole('list', { name: 'Matches for lime' }).getByRole('button').first(),
+  ).toContainText('Used before')
+  await shot(page, 'plan-catalogue-search-390')
+
+  // Settings > Product list: Mine and used by default (the catalogue does not bury his own).
+  await page.goto('/#/settings/products')
+  const list = page.getByRole('list', { name: 'Products' })
+  await expect(page.getByRole('radio', { name: 'Mine and used' })).toBeChecked()
+  await expect(list).toContainText('Hydrated Lime 25Kg')
+  await expect(list).toContainText('White cement')
+  await expect(list).not.toContainText("O'Brien")
+  await page
+    .locator('label')
+    .filter({ hasText: /^Goodwins$/ })
+    .click()
+  await expect(list.getByRole('listitem')).toHaveCount(3)
+  await expect(list).toContainText("O'Brien Premium White Cement 25kg Bag")
+  const link = list.getByRole('link', { name: /View on Goodwins.*O'Brien/ })
+  await expect(link).toHaveAttribute('target', '_blank')
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  await expect(list).toContainText('Building > Cement Mixes')
+  await shot(page, 'products-goodwins-390')
+
+  // Changing a catalogue price: his price kept, the supplier's shown beside it.
+  await list.getByRole('button', { name: "Change O'Brien Premium White Cement 25kg Bag" }).click()
+  await expect(page.getByText(/later Goodwins updates keep yours/)).toBeVisible()
+  await page.getByLabel('Usual price each (€)').fill('11')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(list).toContainText('€11 / each, your price · Goodwins €12.80 inc VAT')
 })
